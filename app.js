@@ -1,4 +1,4 @@
-/* Ascent — offline quest / training / skill tracker. All data lives in localStorage on this device. */
+/* Deificatio — offline quest / training / skill tracker. All data lives in localStorage on this device. */
 'use strict';
 const { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG } = window.CATALOG;
 const ACT = Object.fromEntries(ACTIVITIES.map(a => [a.id, a]));
@@ -512,7 +512,7 @@ function render() {
 function renderSetup() {
   $('#top').innerHTML = ''; $('#nav').innerHTML = '';
   const cats = [...new Set(SKILLS.filter(s => s.unit).map(s => s.cat))];
-  $('#view').innerHTML = `<div class="hero">${emblem(0, 56)}<h1>Ascent</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
+  $('#view').innerHTML = `<div class="hero">${emblem(0, 56)}<h1>Deificatio</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
   <form id="setupForm" onsubmit="return false">
   <div class="card"><h3>Profile</h3>
     <label>Name</label><input name="name" placeholder="Your name" autocomplete="given-name">
@@ -1016,7 +1016,7 @@ const A = {
     toast('Saved');
   },
   listAdd: () => { const n = $('#newList').value.trim(); if (!n) return; if (S.lists.includes(n)) { toast('List already exists'); return; } S.lists.push(n); afterChange(); },
-  export: () => { const blob = new Blob([JSON.stringify(S)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `ascent-backup-${todayKey()}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); },
+  export: () => { const blob = new Blob([JSON.stringify(S)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `deificatio-backup-${todayKey()}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); },
   importOpen: () => {
     const i = $('#importFile'); if (!i) return;
     i.onchange = () => { const f = i.files[0]; if (!f) return; f.text().then(t => { try { const d = JSON.parse(t); if (!d.profile || !d.days) throw 0; if (!confirm('Replace all current data with this backup?')) return; S = Object.assign(fresh(), d); rebuildSK(); save(); boot(); toast('Backup restored'); } catch (e) { toast('Not a valid backup file', 'bad'); } }); i.value = ''; };
