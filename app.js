@@ -35,6 +35,7 @@ const ICON = {
   me: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z"/></svg>',
   flame: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2c1 4 5 5.5 5 11a5 5 0 01-10 0c0-2.5 1.2-3.8 2-5 .3 1.6 1 2.6 2 3-.5-3.5.2-6.5 1-9z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7M14 8.5v7"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/><path d="M12 15V10M9.5 12.5L12 10l2.5 2.5"/></svg>',
   chev: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg>',
 };
 
@@ -640,7 +641,7 @@ function renderSetup() {
   </div>
   <button class="btn-p btn-big" data-a="finishSetup">Start</button>
   </form>
-  <p class="mu2 small" style="text-align:center;margin-top:14px">Have a backup? <a href="#" data-a="importOpen">Import it</a><input type="file" id="importFile" accept="application/json,.json" hidden></p>`;
+  <p class="mu2 small" style="text-align:center;margin-top:14px">Have a backup? <a href="#" data-a="importOpen">Restore it</a><input type="file" id="importFile" accept="application/json,.json,text/plain,.txt" hidden></p>`;
 }
 function finishSetup() {
   const f = new FormData($('#setupForm')), g = k => f.get(k);
@@ -689,9 +690,9 @@ function viewToday() {
     return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''}"><button class="chk" data-a="tq" data-id="${esc(x.key)}" aria-label="Toggle ${esc(x.title)}">${x.done ? ICON.check : ''}</button>
       <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${prog}</div><div class="qx">+${x.xp}</div></div>`;
   };
-  if (pi && pi.all) return `${seasonHero(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : 'Everything is paused. Enjoy the break.'}</div>
+  if (pi && pi.all) return `${seasonHero(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}${backupNag(k)}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : 'Everything is paused. Enjoy the break.'}</div>
   <div class="row" style="justify-content:center"><button class="btn-s" data-a="tab" data-id="log">Log a workout anyway</button></div>`;
-  return `${seasonHero(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}
+  return `${seasonHero(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${backupNag(k)}
   <div class="card ring"><div style="flex:none">${ringSvg(pct)}</div><div class="sp"><div class="mu2 small">Day ${dayN}</div><h3>${fmtDate(k)}</h3>
     <div class="mu small"><span class="num">${done}/${q.length}</span> quests · <span class="gold num">+${xpToday} XP</span></div>${badges ? `<div class="badges">${badges}</div>` : ''}</div></div>
   ${q.length ? lists.map(l => `<div class="qlist"><div class="qhead"><h2 class="${l === 'Penalty' ? 'bad' : ''}">${esc(l)}</h2><span class="mu2 small num">${q.filter(x => x.list === l && x.done).length}/${q.filter(x => x.list === l).length}</span></div>
@@ -1029,10 +1030,33 @@ function meSettings() {
     <div class="mu2 small" style="margin-top:8px">${ft}′${inch}″ · started ${p.start ? fmtDate(p.start) : '—'}</div></div>
   <div class="card"><h3>Quest lists</h3><div class="chips" style="margin:8px 0">${S.lists.map(l => `<span class="chip">${esc(l)}</span>`).join('')}</div>
     <div class="row"><input id="newList" placeholder="New list name"><button class="btn-s" data-a="listAdd">Add</button></div></div>
-  <div class="card"><h3>Backup</h3><p class="mu small" style="margin-top:2px">Your data lives only on this phone. Export a backup regularly (for example to Google Drive).</p>
-    <div class="row"><button data-a="export">Export backup</button><button data-a="importOpen">Import</button><input type="file" id="importFile" accept="application/json,.json" hidden></div></div>
+  <div class="card"><h3>Backup</h3><p class="mu small" style="margin-top:2px">Your data lives only on this phone. ${S.lastBackup ? 'Last backup: <b>' + fmtDate(S.lastBackup) + '</b>' : '<b>No backup yet.</b>'}</p>
+    <p class="mu2 small">Back up now opens your share sheet: choose Google Drive, or Save to Files → iCloud Drive on iPhone. To restore, tap Restore and pick the file from Drive, iCloud or Downloads.</p>
+    <div class="row wrap" style="gap:8px"><button class="btn-p" data-a="backup">${ICON.cloud} Back up now</button><button data-a="export">Download</button><button data-a="importOpen">Restore</button><input type="file" id="importFile" accept="application/json,.json,text/plain,.txt" hidden></div></div>
   <div class="card"><h3>About</h3><p class="mu small">Food: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Exercise burn: MET values from the Adult Compendium of Physical Activities. Population norms are rough approximations for motivation, not a medical assessment.</p>
     <button class="btn-g bad" data-a="reset">Erase all data</button></div>`;
+}
+
+/* ---------- backups ---------- */
+const backupName = () => `deificatio-backup-${todayKey()}`;
+function markBackup(msg) { S.lastBackup = todayKey(); S.backupSnooze = null; save(); render(); toast(msg, 'ti'); }
+function downloadBackup() {
+  const blob = new Blob([JSON.stringify(S)], { type: 'application/json' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = backupName() + '.json'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000); markBackup('Backup downloaded');
+}
+function shareBackup() {
+  const data = JSON.stringify(S), opts = [new File([data], backupName() + '.json', { type: 'application/json' }), new File([data], backupName() + '.txt', { type: 'text/plain' })];
+  const file = navigator.share && navigator.canShare ? opts.find(f => { try { return navigator.canShare({ files: [f] }); } catch (e) { return false; } }) : null;
+  if (!file) { downloadBackup(); return; }
+  navigator.share({ files: [file], title: 'Deificatio backup' }).then(() => markBackup('Backup saved')).catch(e => { if (!e || e.name !== 'AbortError') downloadBackup(); });
+}
+function backupNag(k) {
+  const last = S.lastBackup || S.profile.start; if (!last || S.backupSnooze === k) return '';
+  const days = daysBetween(last, k); if (days < 7) return '';
+  return `<div class="banner bk"><div class="row">${ICON.cloud}<b class="sp">${S.lastBackup ? `Last backup ${days} days ago` : 'No backup yet'}</b></div>
+    <div class="small" style="margin-top:4px">Your progress lives only on this phone. Save a copy to Google Drive, or to Files → iCloud Drive on iPhone.</div>
+    <div class="row" style="margin-top:10px;gap:8px"><button class="btn-s btn-p" data-a="backup">Back up now</button><button class="btn-s" data-a="backupLater">Remind me tomorrow</button></div></div>`;
 }
 
 /* ---------- actions ---------- */
@@ -1137,7 +1161,9 @@ const A = {
     toast('Saved');
   },
   listAdd: () => { const n = $('#newList').value.trim(); if (!n) return; if (S.lists.includes(n)) { toast('List already exists'); return; } S.lists.push(n); afterChange(); },
-  export: () => { const blob = new Blob([JSON.stringify(S)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `deificatio-backup-${todayKey()}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); },
+  export: () => downloadBackup(),
+  backup: () => shareBackup(),
+  backupLater: () => { S.backupSnooze = todayKey(); save(); render(); },
   importOpen: () => {
     const i = $('#importFile'); if (!i) return;
     i.onchange = () => { const f = i.files[0]; if (!f) return; f.text().then(t => { try { const d = JSON.parse(t); if (!d.profile || !d.days) throw 0; if (!confirm('Replace all current data with this backup?')) return; S = Object.assign(fresh(), d); rebuildSK(); save(); boot(); toast('Backup restored'); } catch (e) { toast('Not a valid backup file', 'bad'); } }); i.value = ''; };
