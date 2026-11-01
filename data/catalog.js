@@ -47,7 +47,8 @@
   const S = (id, name, cat, list, unit, base, max, stats, phys) => ({ id, name, cat, list, unit, base, max, stats, phys: !!phys });
 
   const SKILLS = [
-    S('prayer', 'Prayer', 'Faith', 'Faith', 'min', 10, 60, [r('devotion', 'Devotion'), r('focus', 'Focus'), H(100), C]),
+    // Prayer moved to task quests in v7 (no hexagon). Kept here so its old XP and earned titles stay valid.
+    Object.assign(S('prayer', 'Prayer', 'Faith', 'Faith', 'min', 10, 60, [r('devotion', 'Devotion'), r('focus', 'Focus'), H(100), C]), { moved: 'pray' }),
     S('bible', 'Bible Reading', 'Faith', 'Faith', 'ch', 1, 10, [r('scripture', 'Scripture knowledge'), r('memory', 'Memorization'), H(100), C]),
     S('theology', 'Theology', 'Faith', 'Study', 'min', 20, 90, [r('doctrine', 'Doctrine'), r('history', 'Church history'), r('apol', 'Apologetics'), H(200), C]),
     S('philosophy', 'Philosophy', 'Study', 'Study', 'min', 20, 90, [r('know', 'Knowledge'), r('reason', 'Reasoning'), r('texts', 'Primary texts'), H(200), C]),
@@ -117,5 +118,54 @@
     Milestones: ['Graduated College', 'Moved Out', 'Moved Abroad', 'Half Marathon', 'Marathon', 'First Amateur Fight', 'First Muay Thai Fight', 'BJJ Blue Belt', 'BJJ Purple Belt', 'BJJ Brown Belt', 'BJJ Black Belt', 'Climbed V5', 'Climbed V8', 'Black Diamond Run', 'Published Writing', 'First Performance (music)', 'Baptism', 'Confirmation', 'Got Married', 'Became a Parent', 'Bought a Home', 'Debt-Free'],
   };
 
-  window.CATALOG = { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG };
+  /* Task quests: everyday things that don't need a hexagon. unit 'times' = check-offs (sessions per day),
+     unit 'min' = a timed session whose length grows with the task's level. diff 1 easy / 2 medium / 3 hard.
+     ach = 6 achievement names for 1 / 7 / 30 / 100 / 365 / 1,000 days of completions (scaled for tasks that
+     aren't daily). IDs are permanent (achievement IDs are built from them). */
+  const T = (id, name, unit, sessions, base, max, diff, list, days, ach, extra) => Object.assign({ id, name, unit, sessions, base, max, diff, list, days, ach }, extra || {});
+  const ALL = [0, 1, 2, 3, 4, 5, 6];
+  const TASKS = [
+    T('bed', 'Make the bed', 'times', 1, 0, 0, 1, 'Morning', ALL, ['Sheet Happens', 'Tucked In', 'Hospital Corners', 'Pillow Architect', 'Admiral of the Mattress', 'The Bed Is Made. Forever.']),
+    T('teeth', 'Brush teeth', 'times', 2, 0, 0, 1, 'Daily', ALL, ['Minty Fresh', 'Plaque Patrol', 'Enamel Guardian', "Dentist's Favorite", 'Smile of the Year', 'Thousand-Watt Smile']),
+    T('floss', 'Floss', 'times', 1, 0, 0, 1, 'Wind Down', ALL, ['String Theory', 'Gumline Ranger', 'Floss Boss', 'Your Dentist Is Speechless', 'Year of the Floss', 'Floss Legend']),
+    T('shower', 'Shower', 'times', 1, 0, 0, 1, 'Daily', ALL, ['Freshly Rinsed', 'Squeaky Clean', 'Soap Opera Star', 'Loofah Legend', 'Certified Not Smelly', 'Human Waterfall']),
+    T('face', 'Wash face', 'times', 2, 0, 0, 1, 'Daily', ALL, ['Face Value', 'Fresh Face', 'Pores Under Control', 'Skin in the Game', 'Radiant', 'Face of the Franchise']),
+    T('water', 'Drink a glass of water', 'times', 8, 0, 0, 1, 'Daily', ALL, ['First Sip', 'Hydrated', 'Camel Mode: Off', 'Walking Aquifer', 'Human Reservoir', 'Mostly Water Now']),
+    T('pray', 'Prayer', 'min', 1, 10, 60, 2, 'Faith', ALL, ['First Prayer', 'A Week of Prayer', 'Forty Days of Prayer', 'Steadfast in Prayer', 'A Year on Your Knees', 'Pray Without Ceasing']),
+    T('phone', 'Phone away & asleep', 'times', 1, 0, 0, 2, 'Wind Down', ALL, ['Lights Out', 'Sleep Hygienist', 'Doomscroll Dodger', "Sandman's Apprentice", 'Well-Rested Legend', 'Hibernation Master'], { lock: 'sleep' }),
+    T('stretch', 'Stretch', 'min', 1, 5, 20, 1, 'Morning', ALL, ['Limber Up', 'Bendy', 'Rubber Band', 'Pretzel Apprentice', 'Human Slinky', 'Noodle Ascended']),
+    T('sun', 'Morning sunlight', 'min', 1, 10, 30, 1, 'Morning', ALL, ['Sun-Kissed', 'Photon Collector', 'Solar Powered', 'Daylight Devotee', 'Vitamin D Dealer', 'Child of the Sun']),
+    T('tidy', 'Tidy up', 'min', 1, 10, 30, 1, 'Chores', ALL, ['Clutter Cutter', 'Tidy Tactician', 'Dust Bunny Hunter', 'Feng Shui Sergeant', 'Zen Den', 'Minimalist Monk']),
+    T('dishes', 'Do the dishes', 'times', 1, 0, 0, 1, 'Chores', ALL, ['Sink Is Clear', 'Suds Soldier', 'Plate Whisperer', 'Sponge Sage', 'Lord of the Rinse', 'The Dishwasher Is You']),
+    T('trash', 'Take out the trash', 'times', 1, 0, 0, 1, 'Chores', [2, 5], ['Curbside Hero', 'Bin There, Done That', 'Garbage Day Guardian', "Raccoon's Nemesis", 'Waste Management Exec', 'Trash Titan']),
+    T('laundry', 'Do laundry', 'times', 1, 0, 0, 2, 'Chores', [6], ['Spin Cycle', 'Sock Matchmaker', 'Wrinkle Warrior', 'Fold Master', 'Laundry Lord', 'The Pile Has Been Defeated']),
+    T('plants', 'Water the plants', 'times', 1, 0, 0, 1, 'Chores', [0, 3], ['Green Thumb', 'Plant Parent', 'Photosynthesis Sponsor', 'Leaf Whisperer', 'Jungle Keeper', 'Botanical Overlord']),
+    T('journal', 'Journal', 'min', 1, 5, 20, 2, 'Wind Down', ALL, ['Dear Diary', 'Ink Spiller', 'Memoirist', 'Chronicler', 'Keeper of Days', 'Living Archive']),
+    T('plan', 'Plan tomorrow', 'min', 1, 5, 15, 1, 'Wind Down', ALL, ['Plan Made', 'Ahead of Schedule', 'List Maker', 'Strategist', 'Chief of Tomorrow', 'Prophet of Productivity']),
+  ];
+
+  /* One-time and time-limited quest ideas the user can adopt and edit. dur: [n, 'd'|'w'|'m'|'y'] or null = until done. */
+  const SIDE_TEMPLATES = {
+    once: [
+      { title: 'Go camping with friends', diff: 3, reward: { kind: 'custom', text: 'S’mores by the fire' } },
+      { title: 'Watch a sunrise', diff: 1 },
+      { title: 'Hike a trail you’ve never walked', diff: 2 },
+      { title: 'Cook a recipe you’ve never made', diff: 2 },
+      { title: 'Call an old friend', diff: 1 },
+      { title: 'Visit a city you’ve never been to', diff: 3, reward: { kind: 'custom', text: 'A souvenir for yourself' } },
+      { title: 'Donate clothes you no longer wear', diff: 1 },
+      { title: 'Spend a full day offline', diff: 3, reward: { kind: 'pass', days: 1, all: true } },
+    ],
+    timed: [
+      { title: 'Finish a personal project', dur: null, track: 'cp', cps: ['Plan it out', 'Build the first version', 'Polish', 'Share it'], diff: 4, reward: { kind: 'pass', days: 1, all: true } },
+      { title: 'Deep-clean the whole house', dur: [3, 'd'], track: 'cp', cps: ['Kitchen', 'Bathroom', 'Bedroom', 'Living room'], diff: 2, reward: { kind: 'custom', text: 'Order takeout' } },
+      { title: 'Train for a 5K', dur: [8, 'w'], track: 'time', goalH: 20, diff: 3, reward: { kind: 'custom', text: 'New running shoes' } },
+      { title: 'Read the Gospels', dur: [1, 'm'], track: 'cp', cps: ['Matthew', 'Mark', 'Luke', 'John'], diff: 2 },
+      { title: 'Learn 100 new Hanja', dur: [3, 'm'], track: 'time', goalH: 30, diff: 3 },
+      { title: 'Build a portfolio', dur: [6, 'm'], track: 'cp', cps: ['Pick the best work', 'Write case studies', 'Make the site', 'Send it to 5 people'], diff: 4, reward: { kind: 'pass', days: 2, all: true } },
+      { title: 'Practice an instrument for 50 hours', dur: [1, 'y'], track: 'time', goalH: 50, diff: 3 },
+    ],
+  };
+
+  window.CATALOG = { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES };
 })();

@@ -1,9 +1,11 @@
 /* Deificatio — offline quest / training / skill tracker. All data lives in localStorage on this device. */
 'use strict';
-const { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG } = window.CATALOG;
+const { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES } = window.CATALOG;
 const ACT = Object.fromEntries(ACTIVITIES.map(a => [a.id, a]));
+const TASK_DEF = Object.fromEntries(TASKS.map(t => [t.id, t]));
 const STORE = 'ascent.v1';
-const LIST_ORDER = ['Penalty', 'Faith', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Nutrition'];
+const LIST_ORDER = ['Penalty', 'Faith', 'Morning', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Chores', 'Nutrition'];
+const DAY_CAP = 1440; // most minutes any one skill (or side quest, or all workouts) can log in one day: 24 h
 const DIET_BAND = { cut: [0.90, 1.05], maintain: [0.90, 1.10], bulk: [0.95, 1.10] };
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const UNIT = { min: 'min', reps: 'reps', sec: 's', km: 'km', ch: 'ch.', sprints: 'sprints', sessions: 'sessions', pages: 'pages' };
@@ -38,15 +40,24 @@ const ICON = {
   cloud: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/><path d="M12 15V10M9.5 12.5L12 10l2.5 2.5"/></svg>',
   chev: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg>',
   plate: '<svg class="ic-plate" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="5"/></svg>',
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 19.5l6-9 3.5 5 2.5-3.5 7 7.5z"/><circle cx="17" cy="6.5" r="2.2"/></svg>',
+  board: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3.5h9l3.5 3.5v13.5H6z"/><path d="M15 3.5V7h3.5M9 11h6M9 14.5h6M9 18h3.5"/></svg>',
+  gift: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="9" width="17" height="11.5" rx="1.5"/><path d="M2.5 9h19M12 9v11.5M12 9c-3-4.5-7-3-5.5-.5C7.4 9.5 12 9 12 9zm0 0c3-4.5 7-3 5.5-.5C16.6 9.5 12 9 12 9z"/></svg>',
+  img: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M5.5 16l4-4.5 3 3 2-2 4 4"/><circle cx="14.5" cy="7.5" r="1.4"/></svg>',
+  minus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg>',
 };
 
 /* ---------- state ---------- */
 function fresh() {
   return {
-    v: 2, setup: false,
+    v: 3, setup: false,
     profile: { name: '', sex: 'M', birthYear: 2003, heightCm: 178, weightKg: 75, units: 'imperial', wake: '07:00', sleep: '23:00', goal: 'maintain', dietQuest: true, start: null },
-    lists: ['Faith', 'Training', 'Study', 'Craft', 'Work', 'Daily'],
+    lists: ['Faith', 'Morning', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Chores'],
     skills: {}, customSkills: [], events: [], days: {}, rest: [], pauses: [], lastEval: null,
+    tasks: {},      // task quests the user adopted or made: { id: { id, name, unit, sessions, base, max, diff, list, days, active, xp, done, logs, custom, lock } }
+    side: [],       // one-time and time-limited quests
+    rewards: [],    // rewards earned from side quests
+    fx: null,       // { sound, haptic, cele } (null = all on)
     streak: { cur: 0, best: 0 }, pendingPen: null, owed: [], xp: 0,
     workouts: [], food: [], customFoods: [], favs: [], fasts: [], body: [], tests: {}, books: [],
     szView: null,
@@ -72,14 +83,57 @@ function skState(id) {
   const s = S.skills[id] || (S.skills[id] = { active: false, days: [1, 2, 3, 4, 5], load: 1, xp: 0, min: 0, cnt: 0, done: 0, r: {}, cefr: {}, sm: {} });
   if (!s.sm) s.sm = {};
   if (!s.sc) s.sc = {};
+  if (!s.hsm) s.hsm = {}; // historic minutes per custom part (hexagon only, never XP)
+  if (s.hist == null) s.hist = 0; // historic minutes for built-in skills (hexagon only)
   return s;
+}
+const isSkill = c => c && c.unit && !c.moved;
+/* ---------- task quests ---------- */
+const TASK_XP = { 1: 4, 2: 7, 3: 12 };
+const EXP_MULT = { new: .5, some: 1, habit: 1.5 };
+const needTask = L => Math.round(15 * Math.pow(L, 1.25));
+const taskLevel = t => levelOf(t.xp || 0, needTask);
+function taskTarget(t) { // minutes per session: grows 5% per task level, capped at the task's max
+  if (t.unit !== 'min') return 0;
+  return roundUnit(Math.min(t.max || 999, (t.base || 5) * (1 + 0.05 * (taskLevel(t).L - 1))), 'min');
+}
+const taskXpPer = t => (TASK_XP[t.diff] || 4) + (t.unit === 'min' ? Math.round(3 * Math.log2(1 + taskTarget(t) / Math.max(1, t.base0 || t.base || 5))) : 0);
+const taskTitle = t => t.lock === 'sleep' ? `${t.name} by ${fmtClock(S.profile.sleep)}` : t.name;
+function adoptTask(id, over = {}) { // copy a default task into the user's tasks (editable from then on)
+  const d = TASK_DEF[id]; if (!d) return null;
+  const exp = over.exp || 'some', base = d.unit === 'min' ? roundUnit(d.base * EXP_MULT[exp], 'min') : 0;
+  const t = Object.assign({ id: d.id, name: d.name, unit: d.unit, sessions: d.sessions, base, base0: base, max: d.max, diff: d.diff, list: d.list, days: d.days.slice(), lock: d.lock || null, exp, active: true, xp: 0, done: 0, logs: 0, custom: false }, over);
+  S.tasks[id] = t; if (t.list && !S.lists.includes(t.list)) S.lists.push(t.list);
+  return t;
+}
+const activeTasks = () => Object.values(S.tasks || {}).filter(t => t.active);
+/* v6 -> v7: hygiene quests and Prayer become task quests */
+function migrate() {
+  if (!S.tasks) S.tasks = {}; if (!S.side) S.side = []; if (!S.rewards) S.rewards = [];
+  if ((S.v || 0) >= 3) return;
+  S.v = 3;
+  if (!S.setup) return;
+  ['teeth', 'shower', 'phone'].forEach(id => { if (!S.tasks[id]) adoptTask(id, id === 'teeth' ? { sessions: 1, list: 'Wind Down' } : { list: 'Wind Down' }); });
+  const ps = S.skills.prayer;
+  if (ps && ps.active && !S.tasks.pray) {
+    const base = roundUnit(SK.prayer.base * ps.load, 'min');
+    adoptTask('pray', { days: (ps.days || [0, 1, 2, 3, 4, 5, 6]).slice(), base, base0: base, done: ps.done || 0, logs: ps.done || 0, xp: (ps.done || 0) * 7 });
+    ps.active = false;
+  }
+  S.events.forEach(e => { if (e.skill === 'prayer') e.skill = null; });
+  ['Morning', 'Chores'].forEach(l => { if (!S.lists.includes(l)) S.lists.push(l); });
+  const d = S.days[todayKey()];
+  if (d) { // carry today's progress over to the new quests
+    const map = { 'h:teeth': 't:teeth', 'h:shower': 't:shower', 'h:phone': 't:phone', 'skill:prayer': 't:pray' };
+    d.q.forEach(q => { if (map[q.key]) { q.key = map[q.key]; q.task = q.key.slice(2); if (q.task === 'pray') { delete q.skill; } q.sessions = 1; q.progress = q.done ? 1 : 0; q.xpPer = q.xp; } });
+  }
 }
 /* ---------- seasons (72 micro-seasons) & themes ---------- */
 const THEMES = {
-  spring: { bg: '#0f1514', s1: 'rgba(22,31,28,.87)', s1s: '#16201d', s2: '#1d2925', line: '#253430', line2: '#31443e', ac: '#f2a9bb', ac2: '#c97f93', acA: 'rgba(242,169,187,.13)', bar: 'rgba(15,21,20,.86)', gold: '#e2c27a' },
-  summer: { bg: '#08141a', s1: 'rgba(12,28,34,.87)', s1s: '#0f2229', s2: '#14303a', line: '#1a333c', line2: '#24434e', ac: '#62d6c6', ac2: '#3fa597', acA: 'rgba(98,214,198,.13)', bar: 'rgba(8,20,26,.86)', gold: '#f2c96b' },
-  autumn: { bg: '#15100c', s1: 'rgba(33,24,18,.87)', s1s: '#21180f', s2: '#2c2118', line: '#35281e', line2: '#47372a', ac: '#eda25a', ac2: '#b8773a', acA: 'rgba(237,162,90,.13)', bar: 'rgba(21,16,12,.86)', gold: '#f0d08a' },
-  winter: { bg: '#0b0f17', s1: 'rgba(18,24,38,.87)', s1s: '#141b2b', s2: '#1b2438', line: '#222c42', line2: '#2f3a55', ac: '#a0c9f2', ac2: '#6f97c6', acA: 'rgba(160,201,242,.13)', bar: 'rgba(11,15,23,.86)', gold: '#e2c27a' },
+  spring: { bg: '#0f1514', s1: 'rgba(22,31,28,.72)', s1s: '#16201d', s2: '#1d2925', line: '#253430', line2: '#31443e', ac: '#f2a9bb', ac2: '#c97f93', acA: 'rgba(242,169,187,.13)', bar: 'rgba(15,21,20,.74)', gold: '#e2c27a' },
+  summer: { bg: '#08141a', s1: 'rgba(12,28,34,.72)', s1s: '#0f2229', s2: '#14303a', line: '#1a333c', line2: '#24434e', ac: '#62d6c6', ac2: '#3fa597', acA: 'rgba(98,214,198,.13)', bar: 'rgba(8,20,26,.74)', gold: '#f2c96b' },
+  autumn: { bg: '#15100c', s1: 'rgba(33,24,18,.72)', s1s: '#21180f', s2: '#2c2118', line: '#35281e', line2: '#47372a', ac: '#eda25a', ac2: '#b8773a', acA: 'rgba(237,162,90,.13)', bar: 'rgba(21,16,12,.74)', gold: '#f0d08a' },
+  winter: { bg: '#0b0f17', s1: 'rgba(18,24,38,.72)', s1s: '#141b2b', s2: '#1b2438', line: '#222c42', line2: '#2f3a55', ac: '#a0c9f2', ac2: '#6f97c6', acA: 'rgba(160,201,242,.13)', bar: 'rgba(11,15,23,.74)', gold: '#e2c27a' },
 };
 function huStarts(year) {
   const out = [];
@@ -104,8 +158,29 @@ function applySeason() {
     const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = th.bg;
     curSeason = si.season; document.documentElement.dataset.season = si.season;
   }
-  if (bgIdx !== si.idx) { $('#bg').innerHTML = SCENES.render(si.h[3], si.season, si.idx); bgIdx = si.idx; }
+  if (bgIdx !== si.idx) { // drawn once into an <img> (cheap to composite under the blurred cards)
+    bgSvg = SCENES.render(si.h[3], si.season, si.idx); bgIdx = si.idx;
+    try { if (bgUrl) URL.revokeObjectURL(bgUrl); bgUrl = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' })); $('#bg').innerHTML = `<img src="${bgUrl}" alt="">`; }
+    catch (e) { $('#bg').innerHTML = bgSvg; }
+  }
   return si;
+}
+let bgSvg = '', bgUrl = null;
+/* save the current scene as a phone wallpaper (PNG at the screen's real resolution) */
+function saveWallpaper() {
+  const dpr = Math.min(3, window.devicePixelRatio || 1), w = Math.round(Math.min(screen.width, screen.height) * dpr), h = Math.round(Math.max(screen.width, screen.height) * dpr);
+  const img = new Image(), url = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' }));
+  img.onload = () => {
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d');
+    const s = Math.max(w / SCENES.W, h / SCENES.H); g.drawImage(img, (w - SCENES.W * s) / 2, (h - SCENES.H * s) / 2, SCENES.W * s, SCENES.H * s); URL.revokeObjectURL(url);
+    cv.toBlob(b => {
+      const si = ui.season, name = `deificatio-wallpaper-${huNumber(si.idx)}.png`, file = new File([b], name, { type: 'image/png' });
+      const dl = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); toast('Wallpaper saved to Downloads'); };
+      if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'Deificatio wallpaper' }).catch(e => { if (!e || e.name !== 'AbortError') dl(); }); else dl();
+    }, 'image/png');
+  };
+  img.onerror = () => toast('Could not draw the wallpaper', 'bad');
+  img.src = url;
 }
 const fmtShort = k => dparse(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 /* ---------- season display options ----------
@@ -168,7 +243,7 @@ function szCard() {
       : `<div class="cb"><input type="checkbox" data-c="szChk" data-l="${lv}" data-p="${p}" ${o.show[lv][p] ? 'checked' : ''} aria-label="${esc(SZ_LV_NAME[lv])}: ${p}"></div>`;
   };
   return `<div class="card" id="szCard"><h3>Season display</h3>
-    <p class="mu small" style="margin-top:2px">Choose what the season header on Quests shows. Changes apply right away.</p>
+    <p class="mu small" style="margin-top:2px">Choose what the season header on Home shows. Changes apply right away.</p>
     <div class="sz-prev">${seasonHero(si, true)}</div>
     <label>Large main text</label>
     <div class="seg tight">${[['hu', 'Micro-season 候'], ['term', 'Minor season 節氣']].map(([v, n]) => `<button class="${o.level === v ? 'on' : ''}" data-a="szLevel" data-id="${v}">${n}</button>`).join('')}</div>
@@ -190,7 +265,7 @@ function seasonListModal() {
     <div class="jg-row">${j[6].map((h, hi) => { const idx = ji * 3 + hi, ht = szText('hu', { h }); return `<button class="hu ${idx === cur ? 'now' : ''}" data-a="seasonPick" data-id="${idx}"><span class="${lat ? 'lat' : ''}"${lat ? '' : ' lang="ko"'}>${esc(ht[pm])}</span>${extras('hu', ht, 'small')}</button>`; }).join('')}</div></div>`; }).join('')}
   <div class="actions"><button data-a="close">Close</button></div>`);
 }
-const ui = { previewHu: null, tab: 'today', logSeg: 'workout', profSeg: 'overview', calMonth: null, calSel: null, bodyRange: 90, intensity: 1, foodRes: [], openSkill: null, emDur: 3 };
+const ui = { previewHu: null, tab: 'home', boardSeg: 'tasks', sideOpen: null, logSeg: 'workout', profSeg: 'overview', calMonth: null, calSel: null, bodyRange: 90, intensity: 1, foodRes: [], openSkill: null, emDur: 3 };
 let curDay = null;
 
 /* ---------- levels & ranks ---------- */
@@ -232,14 +307,15 @@ function fmtClock(s) { const m = hm(s), h = Math.floor(m / 60); return `${(h % 1
 const pausesOn = k => S.pauses.filter(p => k >= p.start && (!p.end || k <= p.end));
 function pauseInfo(k) {
   const ps = pausesOn(k); if (!ps.length) return null;
-  const lists = new Set(), skills = new Set();
-  ps.forEach(p => { (p.lists || []).forEach(x => lists.add(x)); (p.skills || []).forEach(x => skills.add(x)); });
-  return { ps, lists, skills, all: ps.some(p => p.all), emergency: ps.some(p => p.type === 'emergency') };
+  const lists = new Set(), skills = new Set(), tasks = new Set();
+  ps.forEach(p => { (p.lists || []).forEach(x => lists.add(x)); (p.skills || []).forEach(x => skills.add(x)); (p.tasks || []).forEach(x => tasks.add(x)); });
+  return { ps, lists, skills, tasks, all: ps.some(p => p.all), emergency: ps.some(p => p.type === 'emergency') };
 }
 function scopeTxt(p) {
   if (p.all) return 'everything';
-  return [...(p.lists || []), ...(p.skills || []).map(id => SK[id] ? SK[id].name : id)].join(', ') || 'nothing';
+  return [...(p.lists || []), ...(p.skills || []).map(id => SK[id] ? SK[id].name : id), ...(p.tasks || []).map(id => S.tasks[id] ? S.tasks[id].name : id)].join(', ') || 'nothing';
 }
+const PAUSE_NAME = { vacation: 'Vacation', emergency: 'Extreme emergency', pass: 'Rest pass' };
 
 /* ---------- schedule ---------- */
 function occursOn(ev, k) {
@@ -285,7 +361,7 @@ function generate(k) {
   for (const ev of S.events) {
     if (!occursOn(ev, k)) continue;
     if (rest && ev.list !== 'Faith') continue;
-    if (ev.skill && SK[ev.skill] && SK[ev.skill].unit) {
+    if (ev.skill && isSkill(SK[ev.skill])) {
       if (used.has(ev.skill)) continue; used.add(ev.skill);
       const sq = makeSkillQuest(ev.skill, k, ev.title, ev.list || SK[ev.skill].list);
       if (ev.target) { sq.target = ev.target; sq.xp = questXp(ev.skill, ev.target); }
@@ -294,16 +370,19 @@ function generate(k) {
   }
   for (const c of SKL) {
     const s = S.skills[c.id];
-    if (!s || !s.active || !c.unit || used.has(c.id) || !s.days.includes(wd)) continue;
+    if (!s || !s.active || !isSkill(c) || used.has(c.id) || !s.days.includes(wd)) continue;
     if (rest && c.list !== 'Faith') continue;
     used.add(c.id); q.push(makeSkillQuest(c.id, k));
   }
   if (dietWanted(k)) q.push({ key: 'diet', title: 'Met diet requirements', list: 'Nutrition', progress: 0, done: false, xp: 15, auto: true });
-  q.push({ key: 'h:teeth', title: 'Brush teeth', list: 'Wind Down', progress: 0, done: false, xp: 5 });
-  q.push({ key: 'h:shower', title: 'Shower', list: 'Wind Down', progress: 0, done: false, xp: 5 });
-  q.push({ key: 'h:phone', title: `Phone away & asleep by ${fmtClock(S.profile.sleep)}`, list: 'Wind Down', progress: 0, done: false, xp: 10, lockAt: sleepDeadline(k) + 15 * 60000 });
+  for (const t of activeTasks()) { // task quests also run on rest days: they're the everyday basics
+    if (!(t.days || []).includes(wd)) continue;
+    const per = taskXpPer(t), n = Math.max(1, t.sessions || 1), tq = { key: 't:' + t.id, title: taskTitle(t), list: t.list || 'Daily', task: t.id, unit: t.unit === 'min' ? 'min' : '', target: taskTarget(t), sessions: n, progress: 0, done: false, xpPer: per, xp: per * n };
+    if (t.lock === 'sleep') tq.lockAt = sleepDeadline(k) + 15 * 60000;
+    q.push(tq);
+  }
   const pi = pauseInfo(k);
-  if (pi) q = pi.all ? [] : q.filter(x => !pi.lists.has(x.list) && !(x.skill && pi.skills.has(x.skill)));
+  if (pi) q = pi.all ? [] : q.filter(x => !pi.lists.has(x.list) && !(x.skill && pi.skills.has(x.skill)) && !(x.task && pi.tasks.has(x.task)));
   return q;
 }
 function penaltyQuests(tier) {
@@ -322,7 +401,7 @@ function ensureToday() {
 function regenToday() {
   const k = todayKey(), d = ensureDay(k), old = d.q, nq = generate(k), pi = pauseInfo(k);
   const byKey = Object.fromEntries(old.map(q => [q.key, q]));
-  const merged = nq.map(q => { const o = byKey[q.key]; if (!o) return q; return Object.assign(q, { progress: o.progress, done: o.done, addMin: o.addMin, smAdd: o.smAdd, wid: o.wid, xp: o.done ? o.xp : q.xp, target: o.done ? o.target : q.target }); });
+  const merged = nq.map(q => { const o = byKey[q.key]; if (!o) return q; const keep = o.done || (o.task && o.progress > 0); return Object.assign(q, { progress: o.progress, done: o.done, addMin: o.addMin, smAdd: o.smAdd, wid: o.wid, xp: keep ? o.xp : q.xp, xpPer: keep && o.xpPer ? o.xpPer : q.xpPer, target: keep ? o.target : q.target }, q.task && !o.done && o.progress > (q.sessions || 1) ? { progress: q.sessions } : {}); });
   const keys = new Set(merged.map(q => q.key)), fasting = !!fastOn(k);
   old.forEach(o => {
     if (keys.has(o.key)) return;
@@ -383,12 +462,22 @@ function defaultActivity(id) {
   const a = ACTIVITIES.find(a => a.skill === id); return a ? a.id : null;
 }
 function workoutKcal(actId, min, int) { const a = ACT[actId]; return a ? Math.round(a.met[int] * latestWeightKg() * min / 60) : 0; }
+/* 24 h cap: no skill (or side quest) can log more than a full day of time in one day */
+const dayMins = k => { const d = S.days[k] || ensureDay(k); return d.skm || (d.skm = {}); };
+function capMin(id, k, want, quiet) { // how many of `want` minutes fit under today's cap; records them
+  const m = dayMins(k), used = m[id] || 0, ok = Math.max(0, Math.min(want, DAY_CAP - used));
+  m[id] = used + ok;
+  if (ok < want && !quiet) toast(ok ? `Capped at 24 h for today · logged ${ok} min` : 'Already 24 h logged for this today', 'bad');
+  return ok;
+}
+const uncapMin = (id, k, n) => { const m = dayMins(k); m[id] = Math.max(0, (m[id] || 0) - (n || 0)); };
 function toggleQuest(key, focus) {
-  const d = S.days[todayKey()]; if (!d) return;
+  const k = todayKey(), d = S.days[k]; if (!d) return;
   const q = d.q.find(x => x.key === key); if (!q) return;
   if (q.auto) { ui.tab = 'log'; ui.logSeg = 'food'; render(); window.scrollTo(0, 0); toast('This quest checks itself from your food log'); return; }
   const c = q.skill && SK[q.skill] ? SK[q.skill] : null;
   if (!q.done && q.lockAt && Date.now() > q.lockAt) { toast('Deadline passed. This one is locked.', 'bad'); return; }
+  if (q.task) { stepTask(q, 1); return; }
   if (!q.done && c && c.custom && focus === undefined && (q.target || 0) > (q.progress || 0)) { focusModal(q, c); return; }
   const sign = q.done ? -1 : 1;
   q.done = !q.done;
@@ -400,26 +489,45 @@ function toggleQuest(key, focus) {
     s.done = Math.max(0, s.done + sign); s.cnt = Math.max(0, s.cnt + sign * (q.target || 0));
     if (sign > 0) {
       const remain = Math.max(0, (q.target || 0) - (q.progress || 0));
-      q.addMin = Math.round(remain * (EST_MIN[c.unit] ?? 0));
+      q.addMin = capMin(q.skill, k, Math.round(remain * (EST_MIN[c.unit] ?? 0)), true);
       s.min += q.addMin;
       if (c.custom && q.addMin) {
         const ks = focus && focus.length ? focus : c.stats.map(x => x.k); q.smAdd = {};
         ks.forEach(k => { const m = q.addMin / ks.length; s.sm[k] = (s.sm[k] || 0) + m; q.smAdd[k] = m; });
       }
-      const act = c.phys && c.unit === 'min' && remain > 0 ? defaultActivity(q.skill) : null;
-      if (act) { const w = { id: uid(), date: todayKey(), act, min: remain, int: 1, skill: q.skill, auto: true, xp: 0, kcal: workoutKcal(act, remain, 1) }; S.workouts.push(w); q.wid = w.id; }
+      const act = c.phys && c.unit === 'min' && q.addMin > 0 ? defaultActivity(q.skill) : null;
+      if (act) { const w = { id: uid(), date: k, act, min: q.addMin, int: 1, skill: q.skill, auto: true, xp: 0, kcal: workoutKcal(act, q.addMin, 1) }; S.workouts.push(w); q.wid = w.id; }
     } else {
-      s.min = Math.max(0, s.min - (q.addMin || 0)); q.addMin = 0;
+      s.min = Math.max(0, s.min - (q.addMin || 0)); uncapMin(q.skill, k, q.addMin); q.addMin = 0;
       if (q.smAdd) { for (const k in q.smAdd) s.sm[k] = Math.max(0, (s.sm[k] || 0) - q.smAdd[k]); q.smAdd = null; }
       if (q.wid) { S.workouts = S.workouts.filter(w => w.id !== q.wid); q.wid = null; }
     }
   }
   const pens = d.q.filter(x => x.pen);
   if (q.pen && pens.length && pens.every(x => x.done) && !d.penCleared) { d.penCleared = true; S.stats.penCleared++; toast('Penalty cleared', 'ti'); }
+  if (sign > 0) fx('check');
+  afterChange();
+}
+function taskXp(t, amt) {
+  if (!t) return; const b = taskLevel(t).L; t.xp = Math.max(0, (t.xp || 0) + amt);
+  const a = taskLevel(t).L; if (a > b) toast(`${t.name} reached level ${a}`, 'lv');
+}
+function stepTask(q, dir) { // one session of a task quest forward (+1) or back (-1)
+  const t = S.tasks[q.task], n = q.sessions || 1, per = q.xpPer || q.xp || 5;
+  if (dir > 0 && q.done) dir = -1; // tapping a finished task takes its last session back
+  if (dir > 0) {
+    if ((q.progress || 0) < n) { q.progress = (q.progress || 0) + 1; if (t) t.logs = (t.logs || 0) + 1; taskXp(t, per); addXp(null, per); }
+    if (q.progress >= n) { q.done = true; S.stats.qdone++; addXp('discipline', 2, true); if (t) t.done = (t.done || 0) + 1; fx('check'); } else fx('tick');
+  } else {
+    if (!q.progress) return;
+    if (q.done) { q.done = false; S.stats.qdone = Math.max(0, S.stats.qdone - 1); addXp('discipline', -2, true); if (t) t.done = Math.max(0, (t.done || 0) - 1); }
+    q.progress--; if (t) t.logs = Math.max(0, (t.logs || 0) - 1); taskXp(t, -per); addXp(null, -per, true);
+  }
   afterChange();
 }
 function logPractice(id, min, keys) {
   const c = SK[id], s = skState(id), k = todayKey();
+  min = capMin(id, k, min); if (!min) { render(); return; }
   s.min += min;
   if (c.custom) { const ks = keys.length ? keys : c.stats.map(x => x.k); ks.forEach(x => { s.sm[x] = (s.sm[x] || 0) + min / ks.length; }); }
   const act = c.phys ? defaultActivity(id) : null;
@@ -430,9 +538,9 @@ function logPractice(id, min, keys) {
     q.progress = (q.progress || 0) + min;
     if (q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, keys); return; }
   }
-  toast(`Logged ${min} min of ${c.name}`); afterChange();
+  fx('tick'); toast(`Logged ${min} min of ${c.name}`); afterChange();
 }
-function afterChange(full = true) { syncDiet(todayKey()); checkTitles(); save(); if (full) render(); }
+function afterChange(full = true) { syncDiet(todayKey()); checkTitles(); checkPerfect(); save(); if (full) render(); }
 
 /* ---------- titles ---------- */
 const CUSTOM_TIERS = [[3, 'Novice'], [5, 'Apprentice'], [10, 'Journeyman'], [20, 'Adept'], [35, 'Expert'], [50, 'Master'], [75, 'Grandmaster']];
@@ -469,13 +577,15 @@ function titleTracks() {
   add('Training & body', new Set(S.food.map(f => f.date)).size, [stp(30, 'fuel', 'Fuel Accountant', 'Log food on 30 days')], null, v => v + ' days');
   // faith & reading
   add('Faith & reading', (S.skills.bible || {}).cnt || 0, [], k => stp((k + 1) * 1189, 'bible' + (k + 1), k ? `Through the Word ×${k + 1}` : 'Through the Word', 'Read all 1,189 chapters of the Bible'), v => num0(v) + ' ch.', { hidden: !active('bible') });
-  add('Faith & reading', (S.skills.prayer || {}).done || 0, [stp(40, 'pray40', 'Forty Days of Prayer', 'Complete 40 prayer quests'), stp(365, 'pray365', 'A Year on Your Knees', 'Complete 365 prayer quests')], null, v => v + ' prayers', { hidden: !active('prayer') });
+  const prayN = Math.max((S.skills.prayer || {}).done || 0, (S.tasks.pray || {}).done || 0);
+  add('Faith & reading', prayN, [[7, 'pray7', 'A Week of Prayer'], [40, 'pray40', 'Forty Days of Prayer'], [100, 'pray100', 'Steadfast in Prayer'], [365, 'pray365', 'A Year on Your Knees'], [1000, 'pray1000', 'Pray Without Ceasing']].map(([n, id, nm]) => stp(n, id, nm, `Complete ${n.toLocaleString()} prayer quests`)), null, v => v + ' prayers', { hidden: !active('prayer') && !(S.tasks.pray && (S.tasks.pray.active || S.tasks.pray.done)) });
   const fb = S.books.filter(b => b.finished).length;
   add('Faith & reading', fb, [[1, 'Reader'], [5, 'Bookworm'], [10, 'Well-Read'], [25, 'Scholar'], [50, 'Bibliophile'], [100, 'Living Library']].map(([n, nm]) => stp(n, 'book' + n, nm, `Finish ${n} book${n > 1 ? 's' : ''}`)),
     k => { const n = 200 + k * 100; return stp(n, 'book' + n, `Library of ${n}`, `Finish ${n} books`); }, v => v + ' books');
   // skills
   for (const c of SKL) {
     if (!c.unit && c.id !== 'discipline') continue;
+    if (c.moved && !((S.skills[c.id] || {}).xp > 0)) continue;
     const L = skLevel(c.id).L;
     if (c.custom) {
       const role = customRole(c);
@@ -496,6 +606,17 @@ function titleTracks() {
   add('Languages', b2, [stp(3, 'poly3', 'Polyglot', 'B2+ in three languages'), stp(5, 'poly5', 'Hyperpolyglot', 'B2+ in five languages')], null, v => v + ' languages', { hidden: !anyLang });
   const hg = ((S.skills.hanja || {}).sc || {}).grade || 0, hopts = SK.hanja.stats[0].opts.map(o => o.split(' · ')[0]);
   add('Languages', hg, [[4, 'hanja5', 'Character Apprentice', '5급'], [6, 'hanja3', 'Hanja Scholar', '3급'], [8, 'hanja1', 'Master of Characters', '1급'], [9, 'hanjaT', 'Grand Master of Characters', '특급']].map(([g, id, nm, l]) => stp(g, id, `${nm} (${l})`, `Reach Hanja grade ${l}`)), null, v => hopts[v], { hidden: !active('hanja') && !hg });
+  // task quests (achievements scale with how many days a week the task runs)
+  for (const t of Object.values(S.tasks || {})) {
+    if (t.id === 'pray') continue;
+    const th = taskThresholds(t), names = taskAchNames(t), pre = (t.custom ? 'tc_' : 'tk_') + t.id + '_', unit = (t.days || []).length < 7 ? 'times' : 'days';
+    const steps = th.map((n, i) => stp(n, pre + i, names[i], `${t.name}: complete it ${n.toLocaleString()} ${n === 1 ? 'time' : unit}`));
+    add(t.custom ? 'Your tasks' : 'Tasks', t.done || 0, steps, k => { const n = th[5] + (k + 1) * th[6]; return stp(n, pre + (6 + k), `${names[5]} ${roman(k + 2)}`, `${t.name}: complete it ${n.toLocaleString()} ${unit}`); }, v => v + '×', { hidden: !t.active && !t.done });
+  }
+  // side quests
+  const sideN = (S.side || []).filter(q => q.status === 'done').length;
+  add('Side quests', sideN, [[1, 'Adventurer'], [5, 'Quester'], [10, 'Seasoned Quester'], [25, 'Saga Keeper'], [50, 'Living Legend']].map(([n, nm]) => stp(n, 'side' + n, nm, `Finish ${n} one-time or time-limited quest${n > 1 ? 's' : ''}`)),
+    k => { const n = 100 + k * 50; return stp(n, 'side' + n, 'Living Legend ' + roman(k + 2), `Finish ${n} side quests`); }, v => v + ' done', { hidden: !(S.side || []).length });
   // penance
   add('Penance', S.stats.donated, [stp(1, 'paid', 'Paid the Price', 'Make your first penalty donation')], null, v => v + ' paid');
   add('Penance', S.stats.penCleared, [stp(1, 'redeemed', 'Redeemed', 'Clear a penalty set'), stp(10, 'redeemed10', 'Forged in Penance', 'Clear 10 penalty sets')], null, v => v + ' cleared');
@@ -503,9 +624,17 @@ function titleTracks() {
   add('Discovery', S.customSkills.length, [stp(1, 'pioneer', 'Pathfinder', 'Create your own skill')], null, num0, { hidden: true });
   return T;
 }
+const ACH_DAYS = [1, 7, 30, 100, 365, 1000];
+const CUSTOM_ACH = ['Started', 'Steady', 'Habit Formed', 'Devoted', 'Unshakable', 'Legendary'];
+function taskThresholds(t) { // completions for each tier, scaled to how often the task is scheduled; [6] = step after the last tier
+  const f = Math.max(1, (t.days || []).length || 7) / 7, th = [];
+  ACH_DAYS.forEach((n, i) => th.push(i ? Math.max(th[i - 1] + 1, Math.round(n * f)) : 1));
+  th.push(Math.max(1, Math.round(1000 * f))); return th;
+}
+const taskAchNames = t => !t.custom && TASK_DEF[t.id] ? TASK_DEF[t.id].ach : CUSTOM_ACH.map(w => `${w}: ${t.name}`);
 function autoTitles() { return titleTracks().flatMap(t => t.earned); }
 function checkTitles(silent) {
-  for (const t of autoTitles()) if (!S.titles.auto[t.id]) { S.titles.auto[t.id] = todayKey(); if (!silent) toast('Title earned: ' + t.name, 'ti'); }
+  for (const t of autoTitles()) if (!S.titles.auto[t.id]) { S.titles.auto[t.id] = todayKey(); if (!silent) toast((/^t[kc]_/.test(t.id) ? 'Achievement: ' : 'Title earned: ') + t.name, 'ti'); }
 }
 
 /* ---------- stats & norms ---------- */
@@ -526,7 +655,7 @@ function autoStat(k) {
   if (k === 'd_streak') return Math.round(100 * (1 - Math.exp(-S.streak.cur / 30)));
   const ds = evaluatedDays(30); if (!ds.length) return null;
   if (k === 'd_comp') return Math.round(ds.reduce((a, d) => a + (d.pct || 0), 0) / ds.length * 100);
-  if (k === 'd_sleep') { const w = ds.filter(d => d.q.some(q => q.key === 'h:phone')); return w.length ? Math.round(w.filter(d => d.q.find(q => q.key === 'h:phone').done).length / w.length * 100) : null; }
+  if (k === 'd_sleep') { const sq = d => d.q.find(q => q.key === 'h:phone' || q.key === 't:phone'), w = ds.filter(sq); return w.length ? Math.round(w.filter(d => sq(d).done).length / w.length * 100) : null; }
   if (k === 'd_clean') return Math.round(ds.filter(d => !d.tier).length / ds.length * 100);
   if (k === 'd_perfect') return Math.round(ds.filter(d => d.pct >= 1).length / ds.length * 100);
   return null;
@@ -537,8 +666,8 @@ function statValue(id, st) {
     case 'r': return RATING_PCT[s.r[st.k] || 1];
     case 'cefr': return CEFR_PCT[s.cefr[st.k] || 0];
     case 'scale': return st.pct[s.sc[st.k] || 0];
-    case 'h': return Math.round(100 * (1 - Math.exp(-(s.min / 60) / st.scale)));
-    case 'ch': { const h = (s.sm[st.k] || 0) / 60, sc = SK[id].scale || 100; return Math.round(100 * (1 - Math.pow(2, -h / sc))); }
+    case 'h': return Math.round(100 * (1 - Math.exp(-((s.min + (s.hist || 0)) / 60) / st.scale)));
+    case 'ch': { const h = ((s.sm[st.k] || 0) + (s.hsm[st.k] || 0)) / 60, sc = SK[id].scale || 100; return Math.round(100 * (1 - Math.pow(2, -h / sc))); }
     case 'c': return skillConsistency(id);
     case 'm': return normPct(st.norm, (S.tests[st.norm] || {}).v ?? null);
     case 'a': return autoStat(st.k);
@@ -638,15 +767,15 @@ function radar(axes, size = 250) {
   const pt = (i, v) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [cx + Math.cos(a) * R * v / 100, cy + Math.sin(a) * R * v / 100]; };
   const P = v => axes.map((_, i) => pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
   let g = '';
-  [25, 50, 75, 100].forEach(l => g += `<polygon points="${P(l)}" fill="none" stroke="${l === 50 ? '#4a505a' : '#20252d'}" ${l === 50 ? 'stroke-dasharray="3 3"' : ''}/>`);
-  axes.forEach((_, i) => { const [x, y] = pt(i, 100); g += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#20252d"/>`; });
+  [25, 50, 75, 100].forEach(l => g += `<polygon points="${P(l)}" fill="none" stroke="${l === 50 ? 'rgba(255,255,255,.34)' : 'rgba(255,255,255,.12)'}" ${l === 50 ? 'stroke-dasharray="3 3"' : ''}/>`);
+  axes.forEach((_, i) => { const [x, y] = pt(i, 100); g += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.12)"/>`; });
   const poly = axes.map((a, i) => pt(i, a.v == null ? 0 : Math.max(4, a.v)).map(x => x.toFixed(1)).join(',')).join(' ');
   g += `<polygon points="${poly}" fill="var(--acA)" stroke="var(--ac)" stroke-width="1.6" stroke-linejoin="round"/>`;
   axes.forEach((a, i) => { if (a.v != null) { const [x, y] = pt(i, Math.max(4, a.v)); g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="var(--ac)"/>`; } });
   axes.forEach((a, i) => {
     const [x, y] = pt(i, 120), anc = Math.abs(x - cx) < 8 ? 'middle' : x > cx ? 'start' : 'end';
     const yy = y < cy - 4 ? y - 6 : y + (Math.abs(y - cy) < 4 ? 0 : 6);
-    g += `<text x="${x.toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${anc}" font-size="10.5" fill="#8b929d">${esc(a.n)}</text>`;
+    g += `<text x="${x.toFixed(1)}" y="${yy.toFixed(1)}" text-anchor="${anc}" font-size="10.5" fill="#a9afb8">${esc(a.n)}</text>`;
     g += `<text x="${x.toFixed(1)}" y="${(yy + 12).toFixed(1)}" text-anchor="${anc}" font-size="10.5" fill="${a.v == null ? '#5d636d' : '#e7e9ec'}" font-family="ui-monospace,monospace">${a.v == null ? '—' : a.v}</text>`;
   });
   return `<svg class="chart" viewBox="-78 -14 ${size + 156} ${size + 34}" style="max-width:${size + 156}px">${g}</svg>`;
@@ -661,7 +790,7 @@ function bodyChart(range) {
   const series = (key, conv) => { const v = pts.filter(p => p[key] != null).map(p => [p.date, conv(p[key])]); if (!v.length) return null; let lo = Math.min(...v.map(x => x[1])), hi = Math.max(...v.map(x => x[1])); if (hi - lo < 1) { lo -= 1; hi += 1; } const pd = (hi - lo) * 0.12; lo -= pd; hi += pd; return { v, lo, hi, Y: y => T + (1 - (y - lo) / (hi - lo)) * (H - T - B) }; };
   const ws = series('w', kg => imperial() ? kg * 2.20462 : kg), bs = series('bf', x => x);
   let g = '';
-  for (let i = 0; i <= 3; i++) { const y = T + i * (H - T - B) / 3; g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="#1c2027"/>`; }
+  for (let i = 0; i <= 3; i++) { const y = T + i * (H - T - B) / 3; g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="rgba(255,255,255,.09)"/>`; }
   const path = (s, color) => s ? `<polyline fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" points="${s.v.map(p => `${X(p[0]).toFixed(1)},${s.Y(p[1]).toFixed(1)}`).join(' ')}"/>` + s.v.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${s.Y(p[1]).toFixed(1)}" r="2" fill="${color}"/>`).join('') : '';
   g += path(ws, 'var(--ac)') + path(bs, 'var(--gold)');
   const axis = (s, x, anc, color) => s ? [s.hi, (s.hi + s.lo) / 2, s.lo].map((v, i) => `<text x="${x}" y="${T + i * (H - T - B) / 2 + 4}" font-size="9.5" text-anchor="${anc}" fill="${color}" font-family="ui-monospace,monospace">${v.toFixed(1)}</text>`).join('') : '';
@@ -671,7 +800,7 @@ function bodyChart(range) {
 }
 function ringSvg(p, size = 58) {
   const r = size / 2 - 4, c = 2 * Math.PI * r;
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="flex:none"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="#232832" stroke-width="4"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--ac)" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/><text x="50%" y="54%" text-anchor="middle" font-size="13" fill="#e7e9ec" font-family="ui-monospace,monospace">${Math.round(p * 100)}%</text></svg>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="flex:none"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,.13)" stroke-width="4"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--ac)" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/><text x="50%" y="54%" text-anchor="middle" font-size="13" fill="#e7e9ec" font-family="ui-monospace,monospace">${Math.round(p * 100)}%</text></svg>`;
 }
 
 /* ---------- formatting helpers ---------- */
@@ -706,6 +835,62 @@ function focusModal(q, c) {
   <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="focusDone" data-id="${esc(q.key)}">Complete</button></div>`);
 }
 
+/* ---------- feedback: check sound, vibration, celebrations ---------- */
+const fxOpts = () => Object.assign({ sound: true, haptic: true, cele: true }, S.fx || {});
+let actx = null;
+function chime(notes) { // tiny synthesized "tick" so no audio files are needed
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    const t0 = actx.currentTime;
+    notes.forEach(([freq, at, dur, vol = .16, type = 'triangle']) => {
+      const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.setValueAtTime(freq, t0 + at);
+      g.gain.setValueAtTime(0, t0 + at); g.gain.linearRampToValueAtTime(vol, t0 + at + .008); g.gain.exponentialRampToValueAtTime(.0008, t0 + at + dur);
+      o.connect(g); g.connect(actx.destination); o.start(t0 + at); o.stop(t0 + at + dur + .02);
+    });
+  } catch (e) { }
+}
+function fx(kind) {
+  const o = fxOpts();
+  if (o.haptic && navigator.vibrate) { try { navigator.vibrate(kind === 'day' ? [18, 60, 18, 60, 40] : kind === 'tick' ? 10 : [14, 40, 22]); } catch (e) { } }
+  if (!o.sound) return;
+  if (kind === 'tick') chime([[1180, 0, .07, .1]]);
+  else if (kind === 'day') chime([[784, 0, .16], [988, .1, .16], [1175, .2, .18], [1568, .32, .42, .12, 'sine']]);
+  else chime([[880, 0, .07], [1320, .055, .16, .14, 'sine']]);
+}
+const STREAK_MARKS = [3, 7, 14, 21, 30, 45, 60, 75, 100, 150, 200, 250, 300, 365];
+const isMilestone = n => STREAK_MARKS.includes(n) || (n > 365 && (n % 100 === 0 || n % 365 === 0));
+function checkPerfect() { // the moment the last daily quest is checked
+  const k = todayKey(), d = S.days[k], pi = pauseInfo(k); if (!d || d.cele || (pi && pi.all) || !d.q.length || !d.q.every(q => q.done)) return;
+  d.cele = true; const n = S.streak.cur + 1;
+  setTimeout(() => {
+    fx('day');
+    if (isMilestone(n)) celebrate(`${n}-day streak`, n === 3 ? 'Three perfect days in a row. The habit is taking root.' : n < 30 ? `${n} perfect days in a row. Keep the fire going.` : n < 100 ? `${n} days without missing a single quest. That's discipline.` : `${n} days. Unbroken. Truly remarkable.`, { big: String(n) });
+    else toast(`Perfect day · streak ${n} tomorrow`, 'lv');
+  }, 250);
+}
+function celebrate(title, msg, o = {}) {
+  const box = document.createElement('div'); box.className = 'cele';
+  box.innerHTML = `<canvas></canvas><div class="cele-card">${o.big ? `<div class="cele-n">${esc(o.big)}</div>` : `<div class="cele-ic">${ICON.gift}</div>`}<h3>${esc(title)}</h3><p>${esc(msg)}</p>${o.reward ? `<div class="cele-rw">${esc(o.reward)}</div>` : ''}<button class="btn-p" data-a="celeClose">${o.btn || 'Keep going'}</button></div>`;
+  document.body.appendChild(box);
+  box.addEventListener('click', e => { if (e.target === box || e.target.tagName === 'CANVAS' || e.target.closest('[data-a=celeClose]')) box.remove(); });
+  if (fxOpts().cele && !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) fireworks(box.querySelector('canvas'));
+}
+function fireworks(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.width = innerWidth * dpr, H = cv.height = innerHeight * dpr, g = cv.getContext('2d');
+  const cs = getComputedStyle(document.documentElement), cols = [cs.getPropertyValue('--gold').trim() || '#e2c27a', cs.getPropertyValue('--ac').trim() || '#f2a9bb', '#ffffff', '#ffd27a', '#9fd4ff'];
+  const parts = [], t0 = performance.now();
+  const burst = (x, y) => { const c = cols[Math.floor(Math.random() * cols.length)], n = 46; for (let i = 0; i < n; i++) { const a = i / n * 6.283 + Math.random() * .2, v = (2.2 + Math.random() * 2.6) * dpr; parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, c }); } };
+  const plan = [[.25, .3, 0], [.72, .24, 380], [.5, .18, 760], [.3, .4, 1150], [.68, .38, 1500], [.5, .3, 1900]].map(([x, y, at]) => ({ x: x * W, y: y * H, at, done: false }));
+  (function frame(now) {
+    if (!cv.isConnected) return;
+    const t = now - t0; g.clearRect(0, 0, W, H);
+    plan.forEach(p => { if (!p.done && t >= p.at) { p.done = true; burst(p.x, p.y); } });
+    for (let i = parts.length - 1; i >= 0; i--) { const q = parts[i]; q.x += q.vx; q.y += q.vy; q.vy += .045 * dpr; q.vx *= .985; q.vy *= .985; q.life -= .011; if (q.life <= 0) { parts.splice(i, 1); continue; } g.globalAlpha = Math.max(0, q.life); g.fillStyle = q.c; g.beginPath(); g.arc(q.x, q.y, 2.1 * dpr, 0, 6.283); g.fill(); }
+    if (t < 3800 || parts.length) requestAnimationFrame(frame);
+  })(t0);
+}
+
 /* ---------- render: chrome ---------- */
 function renderTop() {
   const o = overall(), rk = rankOf(o.L);
@@ -714,24 +899,38 @@ function renderTop() {
     <div class="streak" title="Streak">${ICON.flame}<span class="num">${S.streak.cur}</span></div></div>`;
 }
 function renderNav() {
-  const tabs = [['today', 'Quests', ICON.today], ['cal', 'Calendar', ICON.cal], ['log', 'Log', ICON.log], ['body', 'Body', ICON.body], ['me', 'Profile', ICON.me]];
+  const tabs = [['home', 'Home', ICON.home], ['today', 'Quests', ICON.today], ['board', 'Board', ICON.board], ['cal', 'Calendar', ICON.cal], ['log', 'Log', ICON.log], ['me', 'Profile', ICON.me]];
   $('#nav').innerHTML = tabs.map(([id, n, ic]) => `<button class="${ui.tab === id ? 'on' : ''}" data-a="tab" data-id="${id}">${ic}<span>${n}</span></button>`).join('');
 }
 function render() {
   ui.season = applySeason();
   if (!S.setup) return renderSetup();
+  if (ui.tab === 'body') { ui.tab = 'log'; ui.logSeg = 'body'; }
+  document.body.dataset.tab = ui.tab;
   renderTop(); renderNav();
-  $('#view').innerHTML = ({ today: viewToday, cal: viewCal, log: viewLog, body: viewBody, me: viewMe })[ui.tab]();
+  $('#view').innerHTML = ({ home: viewHome, today: viewToday, board: viewBoard, cal: viewCal, log: viewLog, me: viewMe })[ui.tab]();
   fitSeason($('#view'));
   if (ui.tab === 'log' && ui.logSeg === 'workout') updateWkcal();
   if (S.owed.length) showDonation();
 }
-
+/* ---------- views: home (the season scene, no quests) ---------- */
+function viewHome() {
+  const k = todayKey(), d = ensureDay(k), q = d.q, done = q.filter(x => x.done).length, o = overall(), rk = rankOf(o.L);
+  const side = (S.side || []).filter(x => x.status === 'active' && x.start <= k).length, rw = (S.rewards || []).filter(r => !r.used).length;
+  return `<div class="home">${seasonHero(ui.season)}
+    <div class="home-st">
+      <span class="hs gold">${ICON.flame}<b class="num">${S.streak.cur}</b></span>
+      <span class="hs"><b>Lv ${o.L}</b>&nbsp;${esc(rk.name)}</span>
+      <button class="hs hs-q" data-a="tab" data-id="today"><b class="num">${done}/${q.length}</b>&nbsp;today${side ? ` · ${side} side` : ''}${ICON.chev}</button>
+      ${rw ? `<button class="hs gold" data-a="goBoard" data-id="rewards" aria-label="${rw} rewards waiting">${ICON.gift}<b class="num">${rw}</b></button>` : ''}
+      <span class="sp"></span><button class="hs hs-ic" data-a="wallpaper" aria-label="Save this scene as a wallpaper" title="Save as wallpaper">${ICON.img}</button>
+    </div></div>`;
+}
 /* ---------- views: setup ---------- */
 function renderSetup() {
   applySeason();
   $('#top').innerHTML = ''; $('#nav').innerHTML = '';
-  const cats = [...new Set(SKILLS.filter(s => s.unit).map(s => s.cat))];
+  const cats = [...new Set(SKILLS.filter(isSkill).map(s => s.cat))], tdef = ['teeth', 'shower', 'phone', 'pray'];
   $('#view').innerHTML = `<div class="hero"><img src="icons/icon-192.png" class="hero-icon" alt=""><h1>Deificatio</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
   <form id="setupForm" onsubmit="return false">
   <div class="card"><h3>Profile</h3>
@@ -747,9 +946,12 @@ function renderSetup() {
     <div class="grid2"><div><label>Wake time</label><input name="wake" type="time" value="07:00"></div><div><label>Sleep time</label><input name="sleep" type="time" value="23:00"></div></div>
   </div>
   <div class="card"><h3>Skills to train</h3><p class="mu small">Tick what goes on your quest list, then pick your current level. Weekdays can be changed later in Calendar → Weekly plan, and you can create your own skills in Profile → Skills.</p>
-  ${cats.map(cat => `<h2>${esc(cat)}</h2>` + SKILLS.filter(s => s.cat === cat && s.unit).map(s => `
-    <div class="skpick"><label><input type="checkbox" name="sk_${s.id}" ${s.id === 'prayer' || s.id === 'bible' ? 'checked' : ''}> ${esc(s.name)}</label>
+  ${cats.map(cat => `<h2>${esc(cat)}</h2>` + SKILLS.filter(s => s.cat === cat && isSkill(s)).map(s => `
+    <div class="skpick"><label><input type="checkbox" name="sk_${s.id}" ${s.id === 'bible' ? 'checked' : ''}> ${esc(s.name)}</label>
     <select name="lv_${s.id}"><option value="1">Beginner</option><option value="2">Intermediate</option><option value="3">Advanced</option></select></div>`).join('')).join('')}
+  </div>
+  <div class="card"><h3>Daily tasks</h3><p class="mu small">Everyday basics with an XP bar and achievements instead of a hexagon. You can change these any time in Board → Tasks.</p>
+  ${TASKS.map(t => `<div class="skpick"><label><input type="checkbox" name="tk_${t.id}" ${tdef.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}</label><span class="mu2 small">${esc(taskDesc(t))}</span></div>`).join('')}
   </div>
   <button class="btn-p btn-big" data-a="finishSetup">Start</button>
   </form>
@@ -764,8 +966,9 @@ function finishSetup() {
   p.goal = g('goal'); p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00';
   const today = todayKey(); p.start = today;
   const bf = num(g('bf')); if (w || bf != null) S.body.push({ id: uid(), date: today, w: w ? p.weightKg : null, bf });
+  for (const t of TASKS) if (f.get('tk_' + t.id)) adoptTask(t.id);
   for (const s of SKILLS) {
-    if (!s.unit || !f.get('sk_' + s.id)) continue;
+    if (!isSkill(s) || !f.get('sk_' + s.id)) continue;
     const st = skState(s.id), lv = +g('lv_' + s.id);
     st.active = true; st.load = [1, 1, 1.6, 2.3][lv];
     st.days = s.cat === 'Faith' || s.cat === 'Languages' ? [0, 1, 2, 3, 4, 5, 6] : s.phys ? [1, 3, 5] : [1, 2, 3, 4, 5];
@@ -782,14 +985,19 @@ function finishSetup() {
 function pauseBanner(p, tk) {
   const em = p.type === 'emergency';
   const until = p.end ? (p.end === tk ? 'Ends today' : 'Until ' + fmtDate(p.end)) : 'Until you end it';
-  return `<div class="banner ${em ? 'em' : ''}"><div class="row">${ICON.pause}<b class="sp">${em ? 'Extreme emergency' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</b></div>
-    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
+  return `<div class="banner ${em ? 'em' : p.type === 'pass' ? 'ps' : ''}"><div class="row">${p.type === 'pass' ? ICON.gift : ICON.pause}<b class="sp">${PAUSE_NAME[p.type] || 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</b></div>
+    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : p.type === 'pass' ? `You earned this. Paused: ${esc(scopeTxt(p))}. No logging needed, no penalties.` : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
     <div class="row" style="margin-top:10px;gap:8px">${p.start === tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">${em ? 'Resume today' : 'Cancel pause'}</button>` : ''}${p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">${em ? 'Resume tomorrow' : 'End early'}</button>` : ''}</div></div>`;
+}
+function seasonMini(si) { // one-line season label for the Quests tab (the full header lives on Home)
+  if (!si) return '';
+  const o = szOpts(), m = o.main, lat = m === 'en' || m === 'rom', t = szText('term', si), h = szText('hu', si);
+  return `<div class="sz-mini" data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"><b${lat ? '' : ' lang="ko"'} class="${lat ? 'lat' : ''}">${esc(h[m])}</b><span class="mu small">${esc(m === 'en' ? t.en : t[m] + (m === 'hj' || m === 'ko' ? ' · ' + h.en : ''))}</span></div>`;
 }
 function viewToday() {
   const k = todayKey(), d = ensureDay(k), q = d.q, pi = pauseInfo(k);
   const done = q.filter(x => x.done).length, pct = q.length ? done / q.length : 0;
-  const xpToday = q.filter(x => x.done).reduce((a, x) => a + x.xp, 0);
+  const xpToday = q.reduce((a, x) => a + (x.task ? (x.progress || 0) * (x.xpPer || 0) : x.done ? x.xp : 0), 0);
   const lists = [...new Set(q.map(x => x.list))].sort((a, b) => listRank(a) - listRank(b));
   const now = Date.now(), dayN = S.profile.start ? daysBetween(S.profile.start, k) + 1 : 1;
   const fst = fastOn(k);
@@ -797,23 +1005,263 @@ function viewToday() {
     fst ? `<span class="pill gold">Fasting · day ${fastDay(fst, k)}/${fastLen(fst)}</span>` : ''].filter(Boolean).join(' ');
   const qrow = x => {
     const locked = !x.done && x.lockAt && now > x.lockAt;
-    const lv = x.skill && SK[x.skill] ? `Lv ${skLevel(x.skill).L}` : '';
-    const hasProg = x.progress > 0 && !x.done;
+    const t = x.task ? S.tasks[x.task] : null, n = x.sessions || 1;
+    const lv = x.skill && SK[x.skill] ? `Lv ${skLevel(x.skill).L}` : t ? `Lv ${taskLevel(t).L}` : '';
+    const hasProg = x.progress > 0 && !x.done && !x.task;
     const prog = hasProg && x.target ? `<div class="prog"><i style="width:${Math.min(100, x.progress / x.target * 100)}%"></i></div>` : '';
-    const sub = x.key === 'diet' ? dietSub(k) : [hasProg ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit), lv, locked ? 'locked' : ''].filter(Boolean).join(' · ');
-    return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''}"><button class="chk" data-a="tq" data-id="${esc(x.key)}" aria-label="Toggle ${esc(x.title)}">${x.done ? ICON.check : ''}</button>
-      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${prog}</div><div class="qx">+${x.xp}</div></div>`;
+    const sub = x.key === 'diet' ? dietSub(k) : [x.task ? (x.unit === 'min' ? fmtTarget(x.target, 'min') + (n > 1 ? ' each' : '') : '') : hasProg ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit), x.task && n > 1 ? `${x.progress || 0} of ${n}` : '', lv, locked ? 'locked' : ''].filter(Boolean).join(' · ');
+    const pips = x.task && n > 1 ? `<div class="pips">${Array.from({ length: n }, (_, i) => `<i class="${i < (x.progress || 0) ? 'on' : ''}"></i>`).join('')}</div>` : '';
+    const minus = x.task && n > 1 && x.progress > 0 && !x.done ? `<button class="btn-g x" data-a="tqMinus" data-id="${esc(x.key)}" aria-label="Undo one">${ICON.minus}</button>` : '';
+    const chk = x.done ? ICON.check : x.task && n > 1 && x.progress ? `<span class="num chk-n">${x.progress}</span>` : '';
+    return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''} ${x.task ? 'task' : ''}"><button class="chk${x.task && n > 1 && x.progress && !x.done ? ' part' : ''}" data-a="tq" data-id="${esc(x.key)}" aria-label="Check ${esc(x.title)}">${chk}</button>
+      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${pips}${prog}</div>${minus}<div class="qx">+${x.xp}</div></div>`;
   };
-  if (pi && pi.all) return `${seasonHero(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}${backupNag(k)}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : 'Everything is paused. Enjoy the break.'}</div>
-  <div class="row" style="justify-content:center"><button class="btn-s" data-a="tab" data-id="log">Log a workout anyway</button></div>`;
-  return `${seasonHero(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${backupNag(k)}
+  const rw = (S.rewards || []).filter(r => !r.used), side = sideSection();
+  const rwBanner = rw.length ? `<button class="banner rw" data-a="goBoard" data-id="rewards"><div class="row">${ICON.gift}<b class="sp">${rw.length === 1 ? 'You have a reward waiting' : rw.length + ' rewards waiting'}</b>${ICON.chev}</div><div class="small mu" style="margin-top:3px;text-align:left">${esc(rw.slice(0, 2).map(rewardName).join(' · '))}</div></button>` : '';
+  if (pi && pi.all) return `${seasonMini(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}${backupNag(k)}${rwBanner}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : pi.ps.some(p => p.type === 'pass') ? 'You earned this rest. Nothing to log today.' : 'Everything is paused. Enjoy the break.'}</div>
+  ${side}<div class="row" style="justify-content:center;margin-top:12px"><button class="btn-s" data-a="tab" data-id="log">Log a workout anyway</button></div>`;
+  return `${seasonMini(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${backupNag(k)}${rwBanner}
   <div class="card ring"><div style="flex:none">${ringSvg(pct)}</div><div class="sp"><div class="mu2 small">Day ${dayN}</div><h3>${fmtDate(k)}</h3>
     <div class="mu small"><span class="num">${done}/${q.length}</span> quests · <span class="gold num">+${xpToday} XP</span></div>${badges ? `<div class="badges">${badges}</div>` : ''}</div></div>
   ${q.length ? lists.map(l => `<div class="qlist"><div class="qhead"><h2 class="${l === 'Penalty' ? 'bad' : ''}">${esc(l)}</h2><span class="mu2 small num">${q.filter(x => x.list === l && x.done).length}/${q.filter(x => x.list === l).length}</span></div>
     ${q.filter(x => x.list === l).map(qrow).join('')}</div>`).join('') : `<div class="empty">${pi && pi.emergency ? 'Nothing today. Take care of what matters.' : 'Nothing scheduled today.'}</div>`}
-  <div class="row" style="margin-top:16px"><button class="btn-s" data-a="regen">Refresh quests</button><span class="sp"></span><button class="btn-s" data-a="tab" data-id="log">Log workout</button></div>
-  <p class="mu2 small note">Targets adapt: finishing a skill raises it about 8% a week; missing lowers it 6%. Every 4th week is a deload. Under 100% means penalty exercises tomorrow; 0% means a $5 donation plus Tier III.</p>
+  ${side}
+  <div class="row" style="margin-top:16px"><button class="btn-s" data-a="regen">Refresh quests</button><span class="sp"></span><button class="btn-s" data-a="goBoard" data-id="tasks">Edit quests</button></div>
+  <p class="mu2 small note">Targets adapt: finishing a skill raises it about 8% a week; missing lowers it 6%. Every 4th week is a deload. Under 100% means penalty exercises tomorrow; 0% means a $5 donation plus Tier III. Side quests never count against you.</p>
   ${pi && pi.emergency ? '' : '<div style="text-align:center;margin-top:6px"><button class="btn-g bad small" data-a="emNew">Extreme emergency</button></div>'}`;
+}
+/* ---------- side quests: one-time & time-limited ----------
+   S.side = [{ id, type 'once'|'timed', title, note, diff 1-4, start, due|null, durN, durU 'd'|'w'|'m'|'y'|'done',
+     track 'check'|'cp'|'time', cps [{ id, t, day|null, done|null }], goalMin, log [{ date, min }],
+     reward null|{ kind 'custom', text }|{ kind 'pass', days, all, lists, skills, tasks }, status 'active'|'done'|'expired'|'given', doneOn, xpGot }]
+   They run on their own clock, never count toward the daily %, and expiring costs nothing. */
+const SIDE_XP = { 1: 25, 2: 50, 3: 100, 4: 200 };
+const SIDE_DIFF = ['', 'Easy', 'Medium', 'Hard', 'Epic'];
+const DUR_U = { d: 'days', w: 'weeks', m: 'months', y: 'years' };
+const durTxt = (n, u) => `${n} ${n === 1 ? DUR_U[u].slice(0, -1) : DUR_U[u]}`;
+const sideXp = q => SIDE_XP[q.diff || 2] * (q.type === 'timed' ? 2 : 1);
+const sideMin = q => (q.log || []).reduce((a, l) => a + l.min, 0);
+const cpDate = (q, c) => c.day ? addDays(q.start, c.day - 1) : null;
+function addDur(k, n, u) {
+  if (u === 'd') return addDays(k, n - 1);
+  if (u === 'w') return addDays(k, n * 7 - 1);
+  const d = dparse(k); if (u === 'm') d.setMonth(d.getMonth() + n); else d.setFullYear(d.getFullYear() + n); d.setDate(d.getDate() - 1); return dkey(d);
+}
+function sideProg(q) {
+  if (q.track === 'cp') return q.cps.length ? q.cps.filter(c => c.done).length / q.cps.length : 0;
+  if (q.track === 'time') return Math.min(1, sideMin(q) / Math.max(1, q.goalMin || 60));
+  return q.status === 'done' ? 1 : 0;
+}
+function sideLeft(q) {
+  if (q.status !== 'active') return q.status === 'done' ? `Done ${fmtDate(q.doneOn)}` : q.status === 'expired' ? `Expired ${fmtDate(q.due)}` : 'Given up';
+  if (q.start > todayKey()) return `Starts ${fmtDate(q.start)}`;
+  if (!q.due) return q.type === 'timed' ? 'Until it’s done' : 'No deadline';
+  const n = daysBetween(todayKey(), q.due); return n === 0 ? 'Last day today' : n === 1 ? '1 day left' : n < 60 ? `${n} days left` : `Until ${fmtDate(q.due)}`;
+}
+function passName(p) { const d = p.days || 1; return `${d === 1 ? 'A complete rest day' : d + ' complete rest days'}${p.all ? '' : ' · ' + scopeTxt(p)}`; }
+const rewardName = r => r.kind === 'pass' ? passName(r.pass || {}) : r.text || 'A treat';
+function completeSide(q) {
+  const k = todayKey(); q.status = 'done'; q.doneOn = k;
+  const xp = sideXp(q); q.xpGot = (q.xpGot || 0) + xp; addXp(null, xp); addXp('discipline', 5, true);
+  let rw = null;
+  if (q.reward && (q.reward.kind === 'custom' || q.reward.kind === 'pass')) {
+    rw = { id: uid(), qid: q.id, from: q.title, kind: q.reward.kind, text: q.reward.text || '', earned: k, used: null };
+    if (rw.kind === 'pass') rw.pass = { days: q.reward.days || 1, all: !!q.reward.all, lists: (q.reward.lists || []).slice(), skills: (q.reward.skills || []).slice(), tasks: (q.reward.tasks || []).slice() };
+    S.rewards.push(rw);
+  }
+  afterChange(); fx('day');
+  celebrate('Quest complete', q.title + ` · +${xp} XP`, { reward: rw ? 'You earned: ' + rewardName(rw) : null, btn: rw ? 'Claim it later' : 'Keep going' });
+}
+function expireSide(quiet) {
+  const tk = todayKey();
+  (S.side || []).forEach(q => { if (q.status === 'active' && q.due && q.due < tk) { q.status = 'expired'; if (!quiet) toast('Quest expired: ' + q.title + ' · no penalty'); } });
+}
+function sideRowMini(q) { // compact card on the Quests tab
+  const p = sideProg(q), tk = todayKey(), next = q.track === 'cp' ? q.cps.find(c => !c.done) : null, late = next && cpDate(q, next) && cpDate(q, next) < tk;
+  const ctl = q.track === 'cp' && next ? `<button class="chk" data-a="cpTog" data-id="${q.id}" data-c="${next.id}" aria-label="Done: ${esc(next.t)}"></button>`
+    : q.track === 'time' ? `<button class="btn-s" data-a="sideOpen" data-id="${q.id}">+ Time</button>` : `<button class="chk" data-a="sideDone" data-id="${q.id}" aria-label="Complete ${esc(q.title)}"></button>`;
+  const sub = q.track === 'cp' ? (next ? `Next: ${next.t}${cpDate(q, next) ? ' · ' + (late ? 'was due ' : 'by ') + fmtShort(cpDate(q, next)) : ''}` : '') : q.track === 'time' ? `${(sideMin(q) / 60).toFixed(1)} of ${(q.goalMin / 60).toFixed(0)} h` : '';
+  return `<div class="q side${late ? ' late' : ''}">${ctl}<div class="qb" data-a="sideOpen" data-id="${q.id}" role="button"><div class="qt">${esc(q.title)}</div><div class="qs">${esc([sub, sideLeft(q)].filter(Boolean).join(' · '))}</div>${q.track !== 'check' ? `<div class="prog"><i style="width:${(p * 100).toFixed(1)}%"></i></div>` : ''}</div>${q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic" title="Has a reward">${ICON.gift}</span>` : ''}<div class="qx">+${sideXp(q)}</div></div>`;
+}
+function sideSection() {
+  const tk = todayKey(), act = (S.side || []).filter(q => q.status === 'active' && q.start <= tk);
+  if (!act.length) return '';
+  return `<div class="qlist"><div class="qhead"><h2>Side quests</h2><span class="mu2 small">don’t count toward today</span></div>${act.sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(sideRowMini).join('')}</div>`;
+}
+function sideCard(q) { // full card on the Board
+  const tk = todayKey(), open = ui.sideOpen === q.id, p = sideProg(q), act = q.status === 'active';
+  let body = '';
+  if (open) {
+    if (q.note) body += `<p class="mu small">${esc(q.note)}</p>`;
+    if (q.track === 'cp') body += `<div class="cps">${q.cps.map(c => { const dd = cpDate(q, c), late = !c.done && dd && dd < tk; return `<div class="cp${c.done ? ' done' : ''}${late ? ' late' : ''}"><button class="chk" ${act ? `data-a="cpTog" data-id="${q.id}" data-c="${c.id}"` : 'disabled'} aria-label="${esc(c.t)}">${c.done ? ICON.check : ''}</button><div class="sp"><div>${esc(c.t)}</div>${dd || c.done ? `<div class="mu2 small">${c.done ? 'Done ' + fmtShort(c.done) : `Day ${c.day} · ${fmtShort(dd)}${late ? ' · late' : ''}`}</div>` : ''}</div></div>`; }).join('')}</div>`;
+    if (q.track === 'time') body += `<div class="mu small" style="margin-top:6px">${(sideMin(q) / 60).toFixed(1)} of ${(q.goalMin / 60).toFixed(0)} hours logged</div>${act ? `<div class="row" style="margin-top:8px"><input id="sl_${q.id}" type="number" inputmode="numeric" placeholder="Minutes" style="flex:1"><button class="btn-s btn-p" data-a="sideLog" data-id="${q.id}">Log time</button></div>` : ''}`;
+    if (q.reward && q.reward.kind !== 'none') body += `<div class="rw-line">${ICON.gift}<span>${esc(q.reward.kind === 'pass' ? passName(q.reward) : q.reward.text)}</span></div>`;
+    body += `<div class="row wrap" style="margin-top:12px;gap:8px">${act && q.track === 'check' ? `<button class="btn-s btn-p" data-a="sideDone" data-id="${q.id}">Complete</button>` : ''}${act ? `<button class="btn-s" data-a="sideEdit" data-id="${q.id}">Edit</button><span class="sp"></span><button class="btn-g small" data-a="sideGive" data-id="${q.id}">Give up</button>` : `<span class="sp"></span><button class="btn-g bad small" data-a="sideDel" data-id="${q.id}">Delete</button>`}</div>`;
+  }
+  return `<div class="card side-card ${q.status}"><div class="row" data-a="sideOpen" data-id="${q.id}" role="button"><div class="sp"><div>${esc(q.title)} <span class="pill">${SIDE_DIFF[q.diff || 2]}</span></div><div class="mu small">${esc(sideLeft(q))}${q.track === 'cp' ? ` · ${q.cps.filter(c => c.done).length}/${q.cps.length} checkpoints` : q.track === 'time' ? ` · ${(sideMin(q) / 60).toFixed(1)}/${(q.goalMin / 60).toFixed(0)} h` : ''}</div>
+    ${q.track !== 'check' ? `<div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i></div>` : ''}</div>${q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic">${ICON.gift}</span>` : ''}<span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
+}
+function boardSide(type) {
+  const all = (S.side || []).filter(q => q.type === type), act = all.filter(q => q.status === 'active'), past = all.filter(q => q.status !== 'active').sort((a, b) => (b.doneOn || b.due || '') < (a.doneOn || a.due || '') ? -1 : 1);
+  const have = new Set(all.filter(q => q.status === 'active').map(q => q.title)), ideas = SIDE_TEMPLATES[type].filter(t => !have.has(t.title));
+  const intro = type === 'once' ? 'Things to do once, like going camping with friends. Set an optional deadline and a reward.' : 'Projects with their own clock: days, weeks, months, years, or until they’re done. Track them with checkpoints or time logged.';
+  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">${intro} They never count against your day.</p><button class="btn-p btn-s" data-a="sideNew" data-id="${type}">+ New</button></div>
+  <h2>Active</h2>${act.length ? act.map(sideCard).join('') : `<div class="card mu small">No ${type === 'once' ? 'one-time' : 'time-limited'} quests yet. Start one, or adopt an idea below.</div>`}
+  ${ideas.length ? `<h2>Ideas</h2><div class="card">${ideas.map((t, i) => `<div class="list-item"><div class="sp"><div>${esc(t.title)}</div><div class="mu small">${esc([SIDE_DIFF[t.diff], type === 'timed' ? (t.dur ? durTxt(t.dur[0], t.dur[1]) : 'until done') : '', t.track === 'cp' ? t.cps.length + ' checkpoints' : t.track === 'time' ? t.goalH + ' h' : '', t.reward ? 'reward' : ''].filter(Boolean).join(' · '))}</div></div><button class="chip" data-a="sideIdea" data-id="${type}" data-k="${SIDE_TEMPLATES[type].indexOf(t)}">Adopt</button></div>`).join('')}</div>` : ''}
+  ${past.length ? `<h2>History</h2>${past.slice(0, 20).map(sideCard).join('')}` : ''}`;
+}
+/* side quest editor */
+function sideModal(q, type, tpl) {
+  const tk = todayKey();
+  if (q) ui.sd = JSON.parse(JSON.stringify(q));
+  else {
+    const t = tpl || {}, dur = t.dur === null ? [1, 'done'] : t.dur || [2, 'w'];
+    ui.sd = { id: null, type, title: t.title || '', note: '', diff: t.diff || 2, start: tk, due: null, durN: dur[0], durU: dur[1], track: type === 'once' ? 'check' : t.track || 'cp',
+      cps: (t.cps || []).map(x => ({ id: uid(), t: x, day: null, done: null })), goalMin: (t.goalH || 10) * 60, log: [], reward: t.reward ? Object.assign({ days: 1, all: true, lists: [], skills: [], tasks: [] }, t.reward) : { kind: 'none', days: 1, all: true, lists: [], skills: [], tasks: [] }, status: 'active' };
+    if (type === 'timed' && !ui.sd.cps.length && ui.sd.track === 'cp') ui.sd.cps = [{ id: uid(), t: '', day: null, done: null }];
+  }
+  ui.sd.reward = Object.assign({ kind: 'none', text: '', days: 1, all: true, lists: [], skills: [], tasks: [] }, ui.sd.reward || {});
+  openModal(`<h3>${q ? 'Edit quest' : type === 'once' ? 'New one-time quest' : 'New time-limited quest'}</h3><div id="sdBody">${sdBody()}</div>
+    <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="sdSave">${q ? 'Save' : 'Start quest'}</button></div>`);
+}
+function scopeChips(sel, grp) { // reusable "what does this pause cover" picker (vacation + rest passes)
+  const act = SKL.filter(s => isSkill(s) && (S.skills[s.id] || {}).active), tks = activeTasks();
+  const chip = (g, k, n) => `<button class="chip ${(sel[g] || []).includes(k) ? 'on' : ''}" data-a="${grp}" data-g="${g}" data-k="${esc(k)}">${esc(n)}</button>`;
+  return `<label>Lists</label><div class="chips">${[...S.lists, 'Nutrition', 'Wind Down'].filter((l, i, a) => a.indexOf(l) === i).map(l => chip('lists', l, l)).join('')}</div>
+    ${act.length ? `<label>Skills</label><div class="chips">${act.map(s => chip('skills', s.id, s.name)).join('')}</div>` : ''}
+    ${tks.length ? `<label>Tasks</label><div class="chips">${tks.map(t => chip('tasks', t.id, t.name)).join('')}</div>` : ''}`;
+}
+function sdBody() {
+  const d = ui.sd, rw = d.reward, tk = todayKey(), started = d.id && d.start <= tk;
+  let h = `<label>Quest</label><input data-i="sd" data-k="title" value="${esc(d.title)}" placeholder="${d.type === 'once' ? 'e.g. Go camping with friends' : 'e.g. Finish my game demo'}" maxlength="80">
+    <label>Notes (optional)</label><input data-i="sd" data-k="note" value="${esc(d.note || '')}" maxlength="140">
+    <label>Difficulty · ${sideXp(d)} XP when done</label><div class="seg tight">${[1, 2, 3, 4].map(v => `<button class="${d.diff === v ? 'on' : ''}" data-a="sdSet" data-k="diff" data-id="${v}">${SIDE_DIFF[v]}</button>`).join('')}</div>`;
+  if (d.type === 'once') h += `<label>Deadline (optional)</label><input type="date" min="${tk}" data-c="sd" data-k="due" value="${d.due || ''}"><div class="mu2 small">Past the deadline it quietly expires. No penalty.</div>`;
+  else {
+    h += `<div class="grid2"><div><label>Starts</label><input type="date" ${started ? 'disabled' : `min="${tk}"`} data-c="sd" data-k="start" value="${d.start}"></div><div><label>Time limit</label><div class="row" style="gap:6px">${d.durU === 'done' ? '' : `<input type="number" inputmode="numeric" min="1" data-i="sd" data-k="durN" value="${d.durN || 1}" style="width:64px;flex:none">`}<select data-c="sd" data-k="durU">${[['d', 'Days'], ['w', 'Weeks'], ['m', 'Months'], ['y', 'Years'], ['done', 'Until done']].map(([v, n]) => `<option value="${v}" ${d.durU === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div></div>
+      <div class="mu2 small" id="sdEnd">${sdEndTxt()}</div>
+      <label>Track progress by</label><div class="seg tight"><button class="${d.track === 'cp' ? 'on' : ''}" data-a="sdSet" data-k="track" data-id="cp">Checkpoints</button><button class="${d.track === 'time' ? 'on' : ''}" data-a="sdSet" data-k="track" data-id="time">Time logged</button></div>`;
+    if (d.track === 'cp') h += `<div class="mu2 small">Optional: the quest day each checkpoint should be done by (day 1 = the start).</div><div class="cp-ed">${d.cps.map((c, i) => `<div class="row"><input data-i="sdCp" data-id="${i}" data-k="t" value="${esc(c.t)}" placeholder="Checkpoint ${i + 1}" ${c.done ? 'disabled' : ''}><input type="number" inputmode="numeric" min="1" data-i="sdCp" data-id="${i}" data-k="day" value="${c.day || ''}" placeholder="Day" style="width:70px;flex:none" ${c.done ? 'disabled' : ''}>${c.done ? '<span class="gold small">done</span>' : `<button class="btn-g x" data-a="sdCpDel" data-id="${i}" aria-label="Remove">✕</button>`}</div>`).join('')}</div><button class="btn-s" data-a="sdCpAdd" style="margin-top:8px">+ Checkpoint</button>`;
+    else h += `<label>Goal (hours)</label><input type="number" inputmode="decimal" step="any" min="0.5" data-i="sd" data-k="goalH" value="${(d.goalMin || 600) / 60}"><div class="mu2 small">Log time on the quest card. At most 24 h counts per day.</div>`;
+  }
+  h += `<hr><label>Reward for finishing</label><div class="seg tight">${[['none', 'None'], ['custom', 'Treat'], ['pass', 'Rest pass']].map(([v, n]) => `<button class="${rw.kind === v ? 'on' : ''}" data-a="sdRw" data-id="${v}">${n}</button>`).join('')}</div>`;
+  if (rw.kind === 'custom') h += `<input data-i="sdRwT" value="${esc(rw.text || '')}" placeholder="e.g. A meal from Portillo's" maxlength="80"><div class="mu2 small">Anything you'd like to give yourself.</div>`;
+  if (rw.kind === 'pass') h += `<div class="mu2 small">A pass you can use any time: those days don't need logging and can't give penalties.</div>
+    <div class="grid2"><div><label>Days</label><input type="number" inputmode="numeric" min="1" max="14" data-i="sdRwD" value="${rw.days || 1}"></div><div></div></div>
+    <label class="check"><input type="checkbox" data-c="sdRwAll" ${rw.all ? 'checked' : ''}> Covers everything</label>
+    <div id="sdScope" ${rw.all ? 'hidden' : ''}>${scopeChips(rw, 'sdScope')}</div>`;
+  return h;
+}
+function sdEndTxt() {
+  const d = ui.sd; if (d.type !== 'timed') return '';
+  if (d.durU === 'done') return 'No deadline: it runs until you finish it.';
+  const n = Math.round(num(d.durN) || 0); if (n < 1) return '<span class="bad">Set how long.</span>';
+  return `Ends ${fmtDate(addDur(d.start, n, d.durU))}. It expires on its own after that, with no penalty.`;
+}
+function saveSide() {
+  const d = ui.sd, tk = todayKey(), bad = m => { toast(m, 'bad'); return false; };
+  d.title = (d.title || '').trim(); if (!d.title) return bad('Name the quest');
+  if (d.type === 'timed') {
+    if (d.durU !== 'done') { const n = Math.round(num(d.durN) || 0); if (n < 1 || n > 999) return bad('Set a time limit'); d.durN = n; d.due = addDur(d.start, n, d.durU); } else d.due = null;
+    if (d.track === 'cp') { d.cps = d.cps.filter(c => (c.t || '').trim()).map(c => Object.assign(c, { t: c.t.trim(), day: c.day ? Math.max(1, Math.round(c.day)) : null })); if (!d.cps.length) return bad('Add at least one checkpoint'); }
+    else { if (!(d.goalMin >= 30)) return bad('Set a goal of at least half an hour'); }
+  }
+  if (d.due && d.due < tk) return bad('That deadline is in the past');
+  const rw = d.reward;
+  if (rw.kind === 'custom' && !(rw.text || '').trim()) return bad('Describe your treat');
+  if (rw.kind === 'pass') { rw.days = clamp(Math.round(rw.days || 1), 1, 14); if (!rw.all && !rw.lists.length && !rw.skills.length && !rw.tasks.length) return bad('Pick what the pass covers'); }
+  if (d.id) { const i = S.side.findIndex(x => x.id === d.id); if (i >= 0) S.side[i] = d; }
+  else { d.id = uid(); d.created = tk; S.side.push(d); }
+  closeModal(true); ui.boardSeg = d.type; ui.sideOpen = d.id;
+  const q = S.side.find(x => x.id === d.id); afterChange(); toast(d.created === tk && !q.xpGot ? 'Quest started' : 'Quest saved', 'ti');
+  if (q.track === 'cp' && q.cps.length && q.cps.every(c => c.done)) completeSide(q);
+  else if (q.track === 'time' && sideMin(q) >= q.goalMin) completeSide(q);
+}
+/* rewards */
+function boardRewards() {
+  const rs = S.rewards || [], ready = rs.filter(r => !r.used), used = rs.filter(r => r.used).sort((a, b) => a.used < b.used ? 1 : -1);
+  const row = r => `<div class="list-item rw-item"><span class="rw-ic">${ICON.gift}</span><div class="sp"><div>${esc(rewardName(r))}</div><div class="mu small">From “${esc(r.from)}” · ${r.used ? (r.kind === 'pass' ? 'used from ' : 'enjoyed ') + fmtDate(r.used) : 'earned ' + fmtDate(r.earned)}</div></div>
+    ${r.used ? '' : r.kind === 'pass' ? `<button class="btn-s btn-p" data-a="rwUse" data-id="${r.id}">Use pass</button>` : `<button class="btn-s btn-p" data-a="rwDone" data-id="${r.id}">Enjoyed it</button>`}</div>`;
+  return `<p class="mu small" style="margin-top:14px">Rewards come from finishing one-time and time-limited quests. Treats are whatever you promised yourself; rest passes give you real days off with nothing to log and no penalty.</p>
+  <h2>Ready · ${ready.length}</h2><div class="card">${ready.length ? ready.map(row).join('') : '<div class="mu small">Nothing yet. Add a reward to a quest and finish it.</div>'}</div>
+  ${used.length ? `<h2>Used</h2><div class="card">${used.slice(0, 30).map(row).join('')}</div>` : ''}`;
+}
+function passModal(r) {
+  const tk = todayKey(); ui.pass = r.id;
+  openModal(`<h3>Use rest pass</h3><p class="mu small">${esc(passName(r.pass))}. Those days are paused: nothing to log, your streak is frozen, and no penalties.${r.pass.all ? ' Any pending penalty exercises wait until you’re back.' : ''}</p>
+    <label>First day</label><input id="psStart" type="date" min="${tk}" value="${tk}" data-c="psCalc">
+    <div class="dg-aim" id="psEnd">${psEndTxt(tk, r)}</div>
+    <div class="actions"><button data-a="close">Not now</button><button class="btn-p" data-a="psGo" data-id="${r.id}">Use it</button></div>`);
+}
+const psEndTxt = (start, r) => `Paused ${r.pass.days === 1 ? '' : 'through '}<b>${fmtDate(addDays(start, r.pass.days - 1))}</b> · back on ${fmtDate(addDays(start, r.pass.days))}`;
+function usePass(r, start) {
+  const tk = todayKey(); if (!start || start < tk) { toast("A pass can't start in the past", 'bad'); return; }
+  const p = r.pass, end = addDays(start, p.days - 1), pz = { id: uid(), type: 'pass', start, end, all: p.all, lists: p.all ? [] : p.lists.slice(), skills: p.all ? [] : p.skills.slice(), tasks: p.all ? [] : p.tasks.slice(), note: r.from, reward: r.id };
+  if (start === tk && p.all) { const d = ensureDay(tk); if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || 1, (S.pendingPen || {}).tier || 0) }; delete d.penTier; } }
+  S.pauses.push(pz); r.used = start; r.pauseId = pz.id;
+  closeModal(true); if (start === tk) regenToday(); afterChange(); toast(start === tk ? 'Rest pass active · enjoy it' : 'Rest pass scheduled for ' + fmtDate(start), 'ti');
+}
+
+/* ---------- views: quest board (create / edit quests) ---------- */
+function viewBoard() {
+  const segs = [['skills', 'Skills'], ['tasks', 'Tasks'], ['once', 'One-time'], ['timed', 'Timed'], ['rewards', 'Rewards']];
+  const nr = (S.rewards || []).filter(r => !r.used).length;
+  return `<div class="seg board-seg">${segs.map(([id, n]) => `<button class="${ui.boardSeg === id ? 'on' : ''}" data-a="boardSeg" data-id="${id}">${n}${id === 'rewards' && nr ? ` <b class="dot-n">${nr}</b>` : ''}</button>`).join('')}</div>`
+    + ({ skills: meSkills, tasks: boardTasks, once: () => boardSide('once'), timed: () => boardSide('timed'), rewards: boardRewards })[ui.boardSeg]();
+}
+const wdTxt = days => { const d = (days || []).slice().sort(); return d.length === 7 ? 'every day' : d.join() === '1,2,3,4,5' ? 'weekdays' : d.join() === '0,6' ? 'weekends' : d.map(i => WD[i]).join(' '); };
+const taskDesc = t => [t.unit === 'min' ? `${fmtTarget(t.id && S.tasks[t.id] === t ? taskTarget(t) : t.base, 'min')}` : '', (t.sessions || 1) > 1 ? `${t.sessions}× a day` : '', wdTxt(t.days)].filter(Boolean).join(' · ');
+function taskCard(t) {
+  const L = taskLevel(t), open = ui.openTask === t.id, th = taskThresholds(t), names = taskAchNames(t), done = t.done || 0;
+  const nx = th.findIndex(n => done < n), nextTxt = nx < 0 ? `${names[5]} ${roman(Math.floor((done - th[5]) / th[6]) + 2)}` : names[nx];
+  let body = '';
+  if (open) {
+    body = `<div class="mu small" style="margin-top:8px">${esc(taskDesc(t))} · ${esc(t.list)} · ${['', 'Easy', 'Medium', 'Hard'][t.diff || 1]} · ${taskXpPer(t)} XP a session</div>
+      <div class="mu2 small">${t.done || 0} completions · ${t.logs || 0} sessions${t.unit === 'min' ? ` · grows 5% a level, up to ${t.max} min` : ''}</div>
+      ${t.id === 'pray' ? '' : `<div class="ach">${th.slice(0, 6).map((n, i) => `<div class="a ${done >= n ? 'got' : ''}"><span>${done >= n ? '★' : '☆'}</span><div class="sp">${esc(names[i])}</div><span class="mu2 small num">${n.toLocaleString()}</span></div>`).join('')}</div>`}
+      <div class="row wrap" style="margin-top:12px;gap:8px"><button class="btn-s" data-a="tkEdit" data-id="${t.id}">Edit</button><span class="sp"></span>${t.active ? `<button class="btn-s" data-a="tkToggle" data-id="${t.id}">Remove from quests</button>` : `<button class="btn-s btn-p" data-a="tkToggle" data-id="${t.id}">Add back</button>`}</div>`;
+  }
+  return `<div class="card skill-card task-card"><div class="row" data-a="tkOpen" data-id="${t.id}" role="button"><div class="sp"><div>${esc(taskTitle(t))} <span class="mu small num">Lv ${L.L}</span>${t.custom ? ' <span class="pill">Custom</span>' : ''}</div>
+    <div class="mu small">${esc(taskDesc(t))}</div><div class="bar" style="max-width:220px"><i style="width:${(L.into / L.need * 100).toFixed(1)}%"></i></div>
+    ${t.id === 'pray' ? '' : `<div class="gold small" style="margin-top:4px">Next: ${esc(nextTxt)} · <span class="num">${done}/${nx < 0 ? th[5] + (Math.floor((done - th[5]) / th[6]) + 1) * th[6] : th[nx]}</span></div>`}</div><span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
+}
+function boardTasks() {
+  const all = Object.values(S.tasks || {}), act = all.filter(t => t.active), off = all.filter(t => !t.active), lib = TASKS.filter(d => !S.tasks[d.id]);
+  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">Everyday basics: no hexagon, just an XP bar and achievements. Several sessions a day are fine (brush teeth 2×).</p><button class="btn-p btn-s" data-a="tkNew">+ New task</button></div>
+  <h2>Active</h2>${act.length ? act.map(taskCard).join('') : '<div class="card mu small">No task quests yet. Adopt some below.</div>'}
+  ${off.length ? `<h2>Paused</h2>${off.map(taskCard).join('')}` : ''}
+  ${lib.length ? `<h2>Library</h2><div class="card">${lib.map(d => `<div class="list-item"><div class="sp"><div>${esc(d.name)}</div><div class="mu small">${esc(taskDesc(d))} · ${esc(d.list)}</div></div><button class="chip" data-a="tkAdopt" data-id="${d.id}">Adopt</button></div>`).join('')}</div>` : ''}`;
+}
+function taskModal(t, def) { // t = existing task, def = a library task being adopted, neither = brand new custom task
+  const src = t || def || { name: '', unit: 'times', sessions: 1, base: 10, max: 30, diff: 1, list: 'Daily', days: [0, 1, 2, 3, 4, 5, 6] };
+  const isNew = !t, isMin = src.unit === 'min';
+  openModal(`<h3>${t ? 'Edit task' : def ? 'Adopt: ' + esc(def.name) : 'New task'}</h3><p class="mu small">A repeatable everyday quest with an XP bar and achievements${t && !t.custom ? '' : ' that scale with how often it runs'}.</p>
+  <form id="tkForm" onsubmit="return false">
+    <label>Name</label><input name="name" value="${esc(src.name)}" placeholder="e.g. Feed the cat" maxlength="40">
+    <div class="grid2"><div><label>Measured in</label><select name="unit" data-c="tkUnit"><option value="times" ${!isMin ? 'selected' : ''}>Check-offs</option><option value="min" ${isMin ? 'selected' : ''}>Minutes</option></select></div>
+    <div><label>Times per day</label><input name="sessions" type="number" inputmode="numeric" min="1" max="12" value="${src.sessions || 1}"></div></div>
+    <div id="tkMin" ${isMin ? '' : 'hidden'}>${isNew ? `<label>Your experience with it</label><select name="exp" data-c="tkExp">${[['new', 'New to this'], ['some', 'Some'], ['habit', 'Already a habit']].map(([v, n]) => `<option value="${v}" ${v === 'some' ? 'selected' : ''}>${n}</option>`).join('')}</select>` : ''}
+      <div class="grid2"><div><label>Minutes ${isNew ? 'to start' : 'per session'}</label><input name="base" type="number" inputmode="numeric" min="1" value="${t ? taskTarget(t) : src.base || 10}" data-b="${src.base || 10}"></div><div><label>Grows up to (min)</label><input name="max" type="number" inputmode="numeric" min="1" value="${src.max || 30}"></div></div>
+      <div class="mu2 small">The session grows about 5% each time the task levels up, so it stays approachable.</div></div>
+    <label>Difficulty</label><select name="diff">${[[1, 'Easy · 4 XP a session'], [2, 'Medium · 7 XP'], [3, 'Hard · 12 XP']].map(([v, n]) => `<option value="${v}" ${(src.diff || 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <label>Quest list</label><select name="list">${[...new Set([...S.lists, 'Wind Down', src.list].filter(Boolean))].map(l => `<option ${l === src.list ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+    <label>Days</label><div class="chips days" id="tkDays">${WD.map((w, i) => `<button type="button" class="chip ${(src.days || []).includes(i) ? 'on' : ''}" data-a="chipT" data-k="${i}">${w}</button>`).join('')}</div>
+  </form>
+  <div class="actions">${t && t.custom ? `<button class="btn-g bad" data-a="tkDel" data-id="${t.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="tkSave" data-id="${t ? t.id : ''}" data-d="${def ? def.id : ''}">${t ? 'Save' : def ? 'Adopt' : 'Create'}</button></div>`);
+}
+function saveTask(id, defId) {
+  const f = new FormData($('#tkForm')), name = (f.get('name') || '').trim(), unit = f.get('unit'), days = chipsOn('#tkDays').map(Number);
+  const sessions = clamp(Math.round(num(f.get('sessions')) || 1), 1, 12), base = Math.round(num(f.get('base')) || 0), max = Math.round(num(f.get('max')) || 0), diff = +f.get('diff') || 1;
+  if (!name) { toast('Name the task'); return; }
+  if (!days.length) { toast('Pick at least one day'); return; }
+  if (unit === 'min' && (base < 1 || base > 600)) { toast('Minutes should be 1–600'); return; }
+  const cfg = { name, unit, sessions, diff, list: f.get('list'), days, base: unit === 'min' ? base : 0, max: unit === 'min' ? Math.max(base, max || base) : 0 };
+  let t = id ? S.tasks[id] : null;
+  if (t) { if (unit === 'min') { if (t.unit !== 'min' || !t.base) cfg.base = cfg.base0 = base; else cfg.base = base !== taskTarget(t) ? base / (1 + 0.05 * (taskLevel(t).L - 1)) : t.base; } Object.assign(t, cfg); }
+  else if (defId) { t = adoptTask(defId, Object.assign(cfg, { exp: f.get('exp') || 'some', base0: cfg.base })); }
+  else { const nid = 'c' + uid().slice(0, 7); t = S.tasks[nid] = Object.assign({ id: nid, custom: true, active: true, xp: 0, done: 0, logs: 0, base0: cfg.base, exp: f.get('exp') || 'some', lock: null }, cfg); }
+  if (t.list && !S.lists.includes(t.list) && t.list !== 'Wind Down') S.lists.push(t.list);
+  closeModal(true); ui.openTask = t.id; regenToday(); afterChange(); toast(id ? 'Task updated' : 'Task added to your quests', 'ti');
 }
 
 /* ---------- views: calendar ---------- */
@@ -833,8 +1281,9 @@ function viewCal() {
   }
   const sel = ui.calSel, evs = S.events.filter(e => occursOn(e, sel)), day = S.days[sel], spi = pauseInfo(sel);
   const repTxt = e => ({ none: 'Once', daily: 'Daily', weekly: 'Weekly · ' + (e.days && e.days.length ? e.days : [dparse(e.start).getDay()]).map(i => WD[i]).join(' '), monthly: 'Monthly', yearly: 'Yearly' })[e.repeat || 'none'];
-  const active = SKL.filter(s => s.unit && S.skills[s.id] && S.skills[s.id].active);
+  const active = SKL.filter(s => isSkill(s) && S.skills[s.id] && S.skills[s.id].active), tks = activeTasks();
   const pauses = S.pauses.filter(p => !p.end || p.end >= tk).sort((a, b) => a.start < b.start ? -1 : 1);
+  const sideDue = (S.side || []).filter(q => q.status === 'active' && (q.due === sel || q.cps && q.cps.some(c => !c.done && cpDate(q, c) === sel)));
   return `<div class="row month"><button class="btn-g" data-a="calNav" data-id="-1" aria-label="Previous month">‹</button><h3 class="sp">${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3><button class="btn-g" data-a="calNav" data-id="1" aria-label="Next month">›</button></div>
   <div class="cal">${cells}</div>
   <div class="legend cal-legend"><span><i class="dot" style="background:var(--ac)"></i>event</span><span><i class="dot" style="background:var(--gold)"></i>perfect</span><span><i class="dot" style="background:var(--bad)"></i>missed</span><span><i class="dash" style="background:#5b7fa6"></i>vacation</span><span><i class="dash" style="background:var(--bad)"></i>emergency</span><span><i class="dash" style="background:var(--gold)"></i>fast</span></div>
@@ -846,16 +1295,19 @@ function viewCal() {
     ${day && day.ev ? `<div class="mu small" style="margin-top:8px">Result: ${day.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(day.pct * 100)}%</span>${day.tier ? ` · <span class="bad">${day.tier === 4 ? 'Donation' : PENALTY[day.tier].name}</span>` : ''}`}</div>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn-p btn-s" data-a="evNew">+ Event</button><span class="sp"></span>
     ${sel >= tk ? `<button class="btn-s" data-a="restToggle" data-id="${sel}">${S.rest.includes(sel) ? 'Unset rest day' : 'Mark rest day'}</button>` : ''}</div>
+    ${sideDue.length ? `<div class="mu small" style="margin-top:10px">${sideDue.map(q => `<div class="list-item"><span class="rw-ic">${ICON.board}</span><span class="sp">${esc(q.title)}</span><span class="mu2 small">${q.due === sel ? 'deadline' : 'checkpoint'}</span></div>`).join('')}</div>` : ''}
   </div>
   <h2>Pauses</h2>
-  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Extreme emergency</span>' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
+  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Extreme emergency</span>' : p.type === 'pass' ? '<span class="gold">Rest pass</span>' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
       <div class="mu small">${fmtDate(p.start)} → ${p.end ? fmtDate(p.end) : 'until ended'} · ${esc(scopeTxt(p))}</div></div>
       ${p.start >= tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">Cancel</button>` : ''}${p.start <= tk && p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">End</button>` : ''}</div>`).join('') : '<div class="mu small">No upcoming pauses. Plan vacations ahead; paused quests don\'t count against you.</div>'}
     <div class="row" style="margin-top:12px"><button class="btn-s" data-a="vacNew">+ Vacation pause</button></div></div>
   <h2>Weekly plan</h2>
   <div class="card"><p class="mu small" style="margin-top:0">Which days each active skill shows up as a quest. An event linked to a skill replaces its automatic quest that day.</p>
   ${active.length ? active.map(s => `<div class="list-item col"><div class="row"><span class="sp">${esc(s.name)}</span><span class="mu small num">${esc(fmtTarget(skillTarget(s.id, tk), s.unit))}</span></div>
-    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}</button>`).join('')}</div></div>`).join('') : '<div class="mu small">No active skills. Turn some on in Profile → Skills.</div>'}
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}</button>`).join('')}</div></div>`).join('') : '<div class="mu small">No active skills. Turn some on in Board → Skills.</div>'}
+  ${tks.length ? `<div class="tg" style="margin-top:14px">Tasks</div>${tks.map(t => `<div class="list-item col"><div class="row"><span class="sp">${esc(t.name)}</span><span class="mu small">${esc(taskDesc(t))}</span></div>
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}</button>`).join('')}</div></div>`).join('')}` : ''}
   </div>`;
 }
 function eventModal(ev) {
@@ -865,7 +1317,7 @@ function eventModal(ev) {
   <form id="evForm" onsubmit="return false">
   <label>Title</label><input name="title" value="${esc(e.title)}" placeholder="e.g. BJJ class">
   <div class="grid2"><div><label>List</label><select name="list">${lists.map(l => `<option ${l === e.list ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
-  <div><label>Linked skill</label><select name="skill"><option value="">None</option>${SKL.filter(s => s.unit).map(s => `<option value="${s.id}" ${s.id === e.skill ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div></div>
+  <div><label>Linked skill</label><select name="skill"><option value="">None</option>${SKL.filter(isSkill).map(s => `<option value="${s.id}" ${s.id === e.skill ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div></div>
   <div class="grid2"><div><label>Fixed target (optional)</label><input name="target" type="number" step="any" value="${esc(e.target || '')}" placeholder="adaptive"></div>
   <div><label>Unit (no skill)</label><input name="unit" value="${esc(e.unit || '')}" placeholder="min, reps…"></div></div>
   <label>Repeats</label><select name="repeat" data-c="evRepeat">${[['none', 'Does not repeat'], ['daily', 'Every day'], ['weekly', 'Weekly on…'], ['monthly', 'Every month'], ['yearly', 'Every year']].map(([v, n]) => `<option value="${v}" ${v === e.repeat ? 'selected' : ''}>${n}</option>`).join('')}</select>
@@ -886,13 +1338,14 @@ function saveEvent(id) {
   closeModal(true); regenToday(); afterChange();
 }
 function vacModal() {
-  const tk = todayKey(), active = SKL.filter(s => s.unit && (S.skills[s.id] || {}).active);
+  const tk = todayKey(), active = SKL.filter(s => isSkill(s) && (S.skills[s.id] || {}).active);
   openModal(`<h3>Vacation pause</h3><p class="mu small">Plan it ahead. Paused quests don't appear on those days. Days with nothing left don't touch your streak or give penalties.</p>
   <label>Label (optional)</label><input id="vNote" placeholder="e.g. Seoul trip">
   <div class="grid2"><div><label>First day</label><input id="vStart" type="date" min="${tk}" value="${addDays(tk, 1)}"></div><div><label>Last day</label><input id="vEnd" type="date" min="${tk}" value="${addDays(tk, 7)}"></div></div>
   <label class="check"><input type="checkbox" id="vAll"> Pause everything</label>
-  <label>Pause these lists</label><div class="chips" id="vLists">${[...S.lists, 'Nutrition', 'Wind Down'].map(l => `<button class="chip" data-a="chipT" data-k="${esc(l)}">${esc(l)}</button>`).join('')}</div>
+  <label>Pause these lists</label><div class="chips" id="vLists">${[...S.lists, 'Nutrition', 'Wind Down'].filter((l, i, a) => a.indexOf(l) === i).map(l => `<button class="chip" data-a="chipT" data-k="${esc(l)}">${esc(l)}</button>`).join('')}</div>
   ${active.length ? `<label>…or individual skills</label><div class="chips" id="vSkills">${active.map(s => `<button class="chip" data-a="chipT" data-k="${s.id}">${esc(s.name)}</button>`).join('')}</div>` : ''}
+  ${activeTasks().length ? `<label>…or tasks</label><div class="chips" id="vTasks">${activeTasks().map(t => `<button class="chip" data-a="chipT" data-k="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
   <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="vacSave">Schedule pause</button></div>`);
 }
 function emModal() {
@@ -905,7 +1358,7 @@ function emModal() {
 
 /* ---------- views: log ---------- */
 function viewLog() {
-  return `<div class="seg"><button class="${ui.logSeg === 'workout' ? 'on' : ''}" data-a="logSeg" data-id="workout">Workouts</button><button class="${ui.logSeg === 'food' ? 'on' : ''}" data-a="logSeg" data-id="food">Food</button></div>` + (ui.logSeg === 'workout' ? viewWorkout() : viewFood());
+  return `<div class="seg">${[['workout', 'Workouts'], ['food', 'Food'], ['body', 'Body']].map(([id, n]) => `<button class="${ui.logSeg === id ? 'on' : ''}" data-a="logSeg" data-id="${id}">${n}</button>`).join('')}</div>` + (ui.logSeg === 'workout' ? viewWorkout() : ui.logSeg === 'body' ? viewBody() : viewFood());
 }
 function viewWorkout() {
   const k = todayKey(), groups = [...new Set(ACTIVITIES.map(a => a.group))];
@@ -928,9 +1381,12 @@ function updateWkcal() {
   $('#wDistWrap').style.visibility = ['run', 'walk', 'hike'].includes(a.value) ? 'visible' : 'hidden';
 }
 function logWorkout() {
-  const act = $('#wAct').value, min = Math.round(num($('#wMin').value) || 0); if (min <= 0) { toast('Enter minutes'); return; }
+  const act = $('#wAct').value; let min = Math.round(num($('#wMin').value) || 0); if (min <= 0) { toast('Enter minutes'); return; }
   let dist = ['run', 'walk', 'hike'].includes(act) ? num($('#wDist').value) : null; if (dist && imperial()) dist = dist / 0.621371;
-  const a = ACT[act], k = todayKey(), w = { id: uid(), date: k, act, min, int: ui.intensity, kcal: workoutKcal(act, min, ui.intensity), skill: a.skill, xp: Math.round(min / 3), dist };
+  const a = ACT[act], k = todayKey(), room = DAY_CAP - S.workouts.filter(x => x.date === k).reduce((t, x) => t + (x.min || 0), 0);
+  if (min > room) { if (room <= 0) { toast('Already 24 h of workouts logged today', 'bad'); return; } min = room; toast(`Capped at 24 h for today · logged ${min} min`, 'bad'); }
+  if (a.skill) { min = capMin(a.skill, k, min); if (!min) return; }
+  const w = { id: uid(), date: k, act, min, int: ui.intensity, kcal: workoutKcal(act, min, ui.intensity), skill: a.skill, xp: Math.round(min / 3), dist };
   ui.lastAct = act;
   S.workouts.push(w);
   addXp(a.skill, w.xp);
@@ -942,7 +1398,7 @@ function logWorkout() {
       if (q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, []); return; }
     }
   }
-  toast(`Logged ${min} min · ${w.kcal} kcal`); afterChange();
+  fx('tick'); toast(`Logged ${min} min · ${w.kcal} kcal`); afterChange();
 }
 function kbar(s) {
   const ref = s.hi ?? s.lo ?? 1, max = Math.max(ref * 1.25, s.eaten * 1.04, 1), P = v => +clamp(v / max * 100, 0, 100).toFixed(1);
@@ -1140,7 +1596,7 @@ function viewBody() {
   const k = todayKey(), recent = [...S.body].sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 8);
   const w = latestWeightKg(), bf = latestBF(), t = S.tests;
   const tv = (key, conv = x => x) => t[key] ? conv(t[key].v) : '';
-  return `<div class="grid2" style="margin-top:14px"><div class="stat"><b>${fmtW(w)}</b><span>Weight</span></div><div class="stat"><b>${bf != null ? bf + '%' : '—'}</b><span>Body fat</span></div></div>
+  return `<div class="grid2"><div class="stat"><b>${fmtW(w)}</b><span>Weight</span></div><div class="stat"><b>${bf != null ? bf + '%' : '—'}</b><span>Body fat</span></div></div>
   <h2>Trend</h2><div class="card"><div class="seg" style="margin-top:0">${[[30, '30d'], [90, '90d'], [365, '1y'], [0, 'All']].map(([v, n]) => `<button class="${ui.bodyRange === v ? 'on' : ''}" data-a="range" data-id="${v}">${n}</button>`).join('')}</div>${bodyChart(ui.bodyRange)}</div>
   <div class="card"><h3>Log body stats</h3><div class="grid2"><div><label>Weight (${imperial() ? 'lb' : 'kg'})</label><input id="bW" type="number" step="0.1" inputmode="decimal"></div><div><label>Body fat %</label><input id="bF" type="number" step="0.1" inputmode="decimal"></div></div>
     <label>Date</label><input id="bD" type="date" value="${k}" max="${dkey(new Date())}"><button class="btn-p btn-big" data-a="bodyAdd">Save entry</button>
@@ -1161,8 +1617,9 @@ const parseMS = s => { if (!s) return null; s = String(s).trim(); if (s.includes
 
 /* ---------- views: profile ---------- */
 function viewMe() {
-  const segs = [['overview', 'Stats'], ['skills', 'Skills'], ['titles', 'Titles'], ['books', 'Books'], ['settings', 'Settings']];
-  return `<div class="seg">${segs.map(([id, n]) => `<button class="${ui.profSeg === id ? 'on' : ''}" data-a="profSeg" data-id="${id}">${n}</button>`).join('')}</div>` + ({ overview: meOverview, skills: meSkills, titles: meTitles, books: meBooks, settings: meSettings })[ui.profSeg]();
+  const segs = [['overview', 'Stats'], ['titles', 'Titles'], ['books', 'Books'], ['settings', 'Settings']];
+  if (ui.profSeg === 'skills') ui.profSeg = 'overview';
+  return `<div class="seg">${segs.map(([id, n]) => `<button class="${ui.profSeg === id ? 'on' : ''}" data-a="profSeg" data-id="${id}">${n}</button>`).join('')}</div>` + ({ overview: meOverview, titles: meTitles, books: meBooks, settings: meSettings })[ui.profSeg]();
 }
 function meOverview() {
   const o = overall(), rk = rankOf(o.L), titles = autoTitles();
@@ -1186,13 +1643,17 @@ function skillCard(id) {
   let body = '';
   if (open) {
     body = `<div class="hex-wrap" style="margin-top:6px">${radar(axes, 230)}</div>`;
-    if (s.unit) body += `<div class="mu small">Next target <b class="num">${esc(fmtTarget(skillTarget(id, todayKey()), s.unit))}</b> · difficulty ×${st.load.toFixed(2)} · ${(st.min / 60).toFixed(1)} h logged</div>`;
+    if (s.unit) body += `<div class="mu small">Next target <b class="num">${esc(fmtTarget(skillTarget(id, todayKey()), s.unit))}</b> · difficulty ×${st.load.toFixed(2)} · ${(st.min / 60).toFixed(1)} h logged${histMin(id) ? ` + ${(histMin(id) / 60).toFixed(0)} h past` : ''}</div>`;
     if (s.custom) body += `<div class="mu2 small" style="margin-top:4px">Each side grows with the hours you put into that part. ${s.scale || 100} h on one part = 50 (average).</div>`;
     body += s.stats.map(x => statEditor(id, x)).join('');
     if (s.unit) {
       body += `<hr><div class="small mu">Log practice time</div>
         ${s.custom ? `<div class="chips" id="pf_${id}" style="margin:8px 0">${s.stats.map(x => `<button class="chip" data-a="chipT" data-k="${esc(x.k)}">${esc(x.n)}</button>`).join('')}</div><div class="mu2 small" style="margin-bottom:8px">No parts picked = split evenly.</div>` : ''}
         <div class="row" style="margin-top:6px"><input id="pm_${id}" type="number" inputmode="numeric" placeholder="Minutes" style="flex:1"><button class="btn-s" data-a="practice" data-id="${id}">Log</button></div>
+        <div class="mu2 small" style="margin-top:4px">Up to 24 h per skill per day.</div>
+        <div class="hist"><div class="small mu">Past experience (before this app)</div><div class="mu2 small">Fills in the hexagon only. It never adds XP or levels.${s.custom ? ' Uses the parts picked above (none = split evenly).' : ''}</div>
+        <div class="row" style="margin-top:6px"><input id="ph_${id}" type="number" inputmode="decimal" step="any" placeholder="Hours" style="flex:1"><button class="btn-s" data-a="hist" data-id="${id}">Add hours</button></div>
+        ${histMin(id) ? `<div class="row small" style="margin-top:6px"><span class="sp mu">${(histMin(id) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })} h of past experience</span><button class="btn-g small" data-a="histClear" data-id="${id}">Clear</button></div>` : ''}</div>
         <div class="row wrap" style="margin-top:12px;gap:8px"><button class="btn-s" data-a="skLoad" data-id="${id}" data-v="0.85">Easier</button><button class="btn-s" data-a="skLoad" data-id="${id}" data-v="1.15">Harder</button><span class="sp"></span>
         ${s.custom ? `<button class="btn-s" data-a="csEdit" data-id="${id}">Edit skill</button>` : ''}<button class="btn-s" data-a="skToggle" data-id="${id}">${st.active ? 'Remove from quests' : 'Add to quests'}</button></div>`;
     }
@@ -1201,21 +1662,22 @@ function skillCard(id) {
     <div class="bar" style="max-width:200px"><i style="width:${l.into / l.need * 100}%"></i></div></div><span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
 }
 function meSkills() {
-  const active = SKL.filter(s => s.unit && S.skills[s.id] && S.skills[s.id].active);
-  const cats = [...new Set(SKL.filter(s => s.unit).map(s => s.cat))];
-  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">Tap a skill to see its hexagon and rate its stats. The dashed ring is the average adult (50).</p><button class="btn-p btn-s" data-a="csNew">+ New skill</button></div>
+  const active = SKL.filter(s => isSkill(s) && S.skills[s.id] && S.skills[s.id].active);
+  const cats = [...new Set(SKL.filter(isSkill).map(s => s.cat))];
+  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">Skills you train and level, each with its own hexagon. Tap one to rate its stats or add past experience. The dashed ring is the average adult (50).</p><button class="btn-p btn-s" data-a="csNew">+ New skill</button></div>
   <h2>Active</h2>${skillCard('discipline')}${active.map(s => skillCard(s.id)).join('')}
-  <h2>Library</h2><div class="card lib">${cats.map(cat => { const list = SKL.filter(s => s.cat === cat && s.unit); const on = list.filter(s => (S.skills[s.id] || {}).active).length;
+  <h2>Library</h2><div class="card lib">${cats.map(cat => { const list = SKL.filter(s => s.cat === cat && isSkill(s)); const on = list.filter(s => (S.skills[s.id] || {}).active).length;
     return `<details ${cat === 'Custom' ? 'open' : ''}><summary><span class="sp">${esc(cat)}</span><span class="mu2 small num">${on}/${list.length}</span>${ICON.chev}</summary>${list.map(s => { const a = (S.skills[s.id] || {}).active;
       return `<div class="list-item"><span class="sp">${esc(s.name)}</span><span class="mu2 small num">Lv ${skLevel(s.id).L}</span><button class="chip ${a ? 'on' : ''}" data-a="skToggle" data-id="${s.id}">${a ? 'Active' : 'Add'}</button></div>`; }).join('')}</details>`; }).join('')}</div>`;
 }
+const histMin = id => { const s = skState(id); return (s.hist || 0) + Object.values(s.hsm || {}).reduce((a, v) => a + v, 0); };
 function statEditor(id, x) {
   const st = skState(id);
   if (x.t === 'r') return `<label>${esc(x.n)}</label><select data-c="rate" data-id="${id}" data-k="${x.k}">${RATING_LABEL.slice(1).map((n, i) => `<option value="${i + 1}" ${(st.r[x.k] || 1) === i + 1 ? 'selected' : ''}>${i + 1} · ${n}</option>`).join('')}</select>`;
   if (x.t === 'cefr') return `<label>${esc(x.n)}</label><select data-c="cefr" data-id="${id}" data-k="${x.k}">${CEFR.map((n, i) => `<option value="${i}" ${(st.cefr[x.k] || 0) === i ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
   if (x.t === 'scale') return `<label>${esc(x.n)}</label><select data-c="scale" data-id="${id}" data-k="${x.k}">${x.opts.map((n, i) => `<option value="${i}" ${(st.sc[x.k] || 0) === i ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   if (x.t === 'm') return `<div class="mu small" style="margin-top:8px">${esc(x.n)}: set in Body → Fitness tests</div>`;
-  if (x.t === 'ch') return `<div class="row small" style="margin-top:6px"><span class="sp mu">${esc(x.n)}</span><span class="num">${((st.sm[x.k] || 0) / 60).toFixed(1)} h</span></div>`;
+  if (x.t === 'ch') return `<div class="row small" style="margin-top:6px"><span class="sp mu">${esc(x.n)}</span><span class="num">${((st.sm[x.k] || 0) / 60).toFixed(1)} h${st.hsm[x.k] ? ` <span class="mu2">+ ${(st.hsm[x.k] / 60).toFixed(1)} past</span>` : ''}</span></div>`;
   return '';
 }
 function csModal(c) {
@@ -1296,6 +1758,11 @@ function meSettings() {
     <button class="btn-p btn-big" data-a="setSave">Save profile</button></form>
     <div class="mu2 small" style="margin-top:8px">${ft}′${inch}″ · started ${p.start ? fmtDate(p.start) : '—'}</div></div>
   ${szCard()}
+  <div class="card" id="fxCard"><h3>Feedback</h3><p class="mu small" style="margin-top:2px">What happens when you check something off.</p>
+    <label class="check"><input type="checkbox" data-c="fx" data-k="sound" ${fxOpts().sound ? 'checked' : ''}> Checkmark sound</label>
+    <label class="check"><input type="checkbox" data-c="fx" data-k="haptic" ${fxOpts().haptic ? 'checked' : ''}> Vibration${navigator.vibrate ? '' : ' <span class="mu2 small">(not supported on this device)</span>'}</label>
+    <label class="check"><input type="checkbox" data-c="fx" data-k="cele" ${fxOpts().cele ? 'checked' : ''}> Fireworks for streak milestones</label>
+    <button class="btn-s" data-a="fxTest" style="margin-top:12px">Try it</button></div>
   <div class="card"><h3>Quest lists</h3><div class="chips" style="margin:8px 0">${S.lists.map(l => `<span class="chip">${esc(l)}</span>`).join('')}</div>
     <div class="row"><input id="newList" placeholder="New list name"><button class="btn-s" data-a="listAdd">Add</button></div></div>
   <div class="card"><h3>Backup</h3><p class="mu small" style="margin-top:2px">Your data lives only on this phone. ${S.lastBackup ? 'Last backup: <b>' + fmtDate(S.lastBackup) + '</b>' : '<b>No backup yet.</b>'}</p>
@@ -1334,6 +1801,64 @@ const A = {
   seasonReset: () => { ui.previewHu = null; render(); },
   tab: el => { ui.tab = el.dataset.id; render(); window.scrollTo(0, 0); },
   tq: el => toggleQuest(el.dataset.id),
+  tqMinus: el => { const d = S.days[todayKey()], q = d && d.q.find(x => x.key === el.dataset.id); if (q) stepTask(q, -1); },
+  goBoard: el => { ui.tab = 'board'; ui.boardSeg = el.dataset.id || 'tasks'; render(); window.scrollTo(0, 0); },
+  boardSeg: el => { ui.boardSeg = el.dataset.id; render(); },
+  wallpaper: () => saveWallpaper(),
+  fxTest: () => { fx('check'); setTimeout(() => celebrate('7-day streak', 'This is what a milestone looks like. Keep the fire going.', { big: '7' }), 300); },
+  // task quests
+  tkOpen: el => { ui.openTask = ui.openTask === el.dataset.id ? null : el.dataset.id; render(); },
+  tkNew: () => taskModal(null, null),
+  tkAdopt: el => taskModal(null, TASK_DEF[el.dataset.id]),
+  tkEdit: el => taskModal(S.tasks[el.dataset.id], null),
+  tkSave: el => saveTask(el.dataset.id, el.dataset.d),
+  tkToggle: el => { const t = S.tasks[el.dataset.id]; if (!t) return; t.active = !t.active; regenToday(); afterChange(); toast(t.active ? t.name + ' is back on your quests' : t.name + ' removed from quests (progress kept)'); },
+  tkDel: el => { if (!confirm('Delete this task? Its level and achievements go with it.')) return; delete S.tasks[el.dataset.id]; S.pauses.forEach(p => { if (p.tasks) p.tasks = p.tasks.filter(x => x !== el.dataset.id); }); closeModal(true); ui.openTask = null; regenToday(); afterChange(); },
+  tkDay: el => { const t = S.tasks[el.dataset.id], d = +el.dataset.d; if (!t) return; t.days = t.days.includes(d) ? t.days.filter(x => x !== d) : [...t.days, d].sort(); regenToday(); afterChange(); },
+  // side quests
+  sideNew: el => sideModal(null, el.dataset.id),
+  sideIdea: el => sideModal(null, el.dataset.id, SIDE_TEMPLATES[el.dataset.id][+el.dataset.k]),
+  sideOpen: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; if (ui.tab !== 'board') { ui.tab = 'board'; ui.boardSeg = q.type; ui.sideOpen = q.id; render(); window.scrollTo(0, 0); return; } ui.sideOpen = ui.sideOpen === q.id ? null : q.id; render(); },
+  sideEdit: el => { const q = S.side.find(x => x.id === el.dataset.id); if (q) sideModal(q, q.type); },
+  sideDone: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q || q.status !== 'active') return; if (!confirm(`Complete "${q.title}"?`)) return; completeSide(q); },
+  sideGive: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q || !confirm('Give up on this quest? There’s no penalty.')) return; q.status = 'given'; q.doneOn = todayKey(); afterChange(); },
+  sideDel: el => { if (!confirm('Delete this quest from your history?')) return; S.side = S.side.filter(x => x.id !== el.dataset.id); afterChange(); },
+  sideLog: el => {
+    const q = S.side.find(x => x.id === el.dataset.id), k = todayKey(); if (!q || q.status !== 'active') return;
+    let m = Math.round(num($('#sl_' + q.id).value) || 0); if (m <= 0) { toast('Enter minutes'); return; }
+    m = capMin('side:' + q.id, k, m); if (!m) return;
+    q.log.push({ date: k, min: m }); const xp = Math.round(m / 6); q.xpGot = (q.xpGot || 0) + xp; addXp(null, xp); fx('tick');
+    if (sideMin(q) >= q.goalMin) { completeSide(q); return; }
+    afterChange(); toast(`Logged ${m} min · ${(sideMin(q) / 60).toFixed(1)} of ${(q.goalMin / 60).toFixed(0)} h`);
+  },
+  cpTog: el => {
+    const q = S.side.find(x => x.id === el.dataset.id), c = q && q.cps.find(x => x.id === el.dataset.c); if (!c || q.status !== 'active') return;
+    if (!c.done) { c.done = todayKey(); q.xpGot = (q.xpGot || 0) + 10; addXp(null, 10); fx('tick'); } else { c.done = null; q.xpGot = Math.max(0, (q.xpGot || 0) - 10); addXp(null, -10, true); }
+    if (q.cps.every(x => x.done)) { completeSide(q); return; }
+    afterChange(); if (c.done) toast('Checkpoint done: ' + c.t, 'ti');
+  },
+  sdSet: el => { const k = el.dataset.k; ui.sd[k] = k === 'diff' ? +el.dataset.id : el.dataset.id; if (k === 'track' && ui.sd.track === 'cp' && !ui.sd.cps.length) ui.sd.cps.push({ id: uid(), t: '', day: null, done: null }); $('#sdBody').innerHTML = sdBody(); },
+  sdRw: el => { ui.sd.reward.kind = el.dataset.id; $('#sdBody').innerHTML = sdBody(); },
+  sdCpAdd: () => { if (ui.sd.cps.length >= 30) { toast('30 checkpoints max'); return; } ui.sd.cps.push({ id: uid(), t: '', day: null, done: null }); $('#sdBody').innerHTML = sdBody(); const ins = $$('#sdBody [data-i=sdCp][data-k=t]'); if (ins.length) ins[ins.length - 1].focus(); },
+  sdCpDel: el => { ui.sd.cps.splice(+el.dataset.id, 1); $('#sdBody').innerHTML = sdBody(); },
+  sdScope: el => { const r = ui.sd.reward, g = el.dataset.g, k = el.dataset.k; r[g] = r[g].includes(k) ? r[g].filter(x => x !== k) : [...r[g], k]; el.classList.toggle('on'); },
+  sdSave: () => saveSide(),
+  // rewards
+  rwUse: el => { const r = S.rewards.find(x => x.id === el.dataset.id); if (r) passModal(r); },
+  rwDone: el => { const r = S.rewards.find(x => x.id === el.dataset.id); if (!r) return; r.used = todayKey(); afterChange(); toast('Enjoy it. You earned it.', 'lv'); },
+  psGo: el => { const r = S.rewards.find(x => x.id === el.dataset.id); if (r) usePass(r, $('#psStart').value); },
+  // historic experience (hexagon only)
+  hist: el => {
+    const id = el.dataset.id, c = SK[id], s = skState(id), h = num($('#ph_' + id).value);
+    if (!h || h <= 0) { toast('Enter hours'); return; }
+    if (h > 50000) { toast('That looks too high', 'bad'); return; }
+    if (h >= 2000 && !confirm(`Add ${h.toLocaleString()} hours of past experience?`)) return;
+    const m = h * 60;
+    if (c.custom) { const ks = chipsOn('#pf_' + id), parts = ks.length ? ks : c.stats.map(x => x.k); parts.forEach(k => { s.hsm[k] = (s.hsm[k] || 0) + m / parts.length; }); }
+    else s.hist = (s.hist || 0) + m;
+    afterChange(); toast(`Added ${h.toLocaleString()} h of past experience to the hexagon`);
+  },
+  histClear: el => { if (!confirm('Clear past experience for this skill?')) return; const s = skState(el.dataset.id); s.hist = 0; s.hsm = {}; afterChange(); },
   regen: () => { regenToday(); afterChange(); toast('Quests refreshed'); },
   close: () => closeModal(true),
   chipT: el => el.classList.toggle('on'),
@@ -1354,12 +1879,12 @@ const A = {
   vacNew: () => vacModal(),
   vacSave: () => {
     const tk = todayKey(), start = $('#vStart').value, end = $('#vEnd').value, all = $('#vAll').checked;
-    const lists = chipsOn('#vLists'), skills = $('#vSkills') ? chipsOn('#vSkills') : [];
+    const lists = chipsOn('#vLists'), skills = $('#vSkills') ? chipsOn('#vSkills') : [], tasks = $('#vTasks') ? chipsOn('#vTasks') : [];
     if (!start || !end) { toast('Pick both dates'); return; }
     if (start < tk) { toast("Pauses can't start in the past"); return; }
     if (end < start) { toast('Last day is before first day'); return; }
-    if (!all && !lists.length && !skills.length) { toast('Pick what to pause'); return; }
-    S.pauses.push({ id: uid(), type: 'vacation', start, end, all, lists: all ? [] : lists, skills: all ? [] : skills, note: $('#vNote').value.trim() });
+    if (!all && !lists.length && !skills.length && !tasks.length) { toast('Pick what to pause'); return; }
+    S.pauses.push({ id: uid(), type: 'vacation', start, end, all, lists: all ? [] : lists, skills: all ? [] : skills, tasks: all ? [] : tasks, note: $('#vNote').value.trim() });
     closeModal(true); if (start === tk) regenToday(); afterChange(); toast('Vacation pause scheduled');
   },
   emNew: () => emModal(),
@@ -1371,14 +1896,14 @@ const A = {
     closeModal(true); regenToday(); afterChange(); toast('All quests paused');
   },
   pEnd: el => { const p = S.pauses.find(x => x.id === el.dataset.id); if (!p) return; p.end = todayKey(); afterChange(); toast('Quests resume tomorrow'); },
-  pCancel: el => { if (!confirm('Cancel this pause?')) return; S.pauses = S.pauses.filter(x => x.id !== el.dataset.id); regenToday(); ensureToday(); afterChange(); },
+  pCancel: el => { if (!confirm('Cancel this pause?')) return; const r = (S.rewards || []).find(x => x.pauseId === el.dataset.id); if (r) { r.used = null; r.pauseId = null; } S.pauses = S.pauses.filter(x => x.id !== el.dataset.id); regenToday(); ensureToday(); afterChange(); if (r) toast('Rest pass returned to your rewards'); },
   logSeg: el => { ui.logSeg = el.dataset.id; render(); },
   int: el => { ui.intensity = +el.dataset.id; $$('[data-a=int]').forEach(b => b.classList.toggle('on', b === el)); updateWkcal(); },
   wLog: () => logWorkout(),
   wDel: el => {
     const w = S.workouts.find(x => x.id === el.dataset.id); if (!w) return;
     S.workouts = S.workouts.filter(x => x !== w);
-    if (w.skill && SK[w.skill]) { const s = skState(w.skill); s.min = Math.max(0, s.min - w.min); const q = (S.days[w.date] || { q: [] }).q.find(x => x.skill === w.skill && !x.done); if (q) q.progress = Math.max(0, (q.progress || 0) - (q.unit === 'km' ? (w.dist || 0) : w.min)); }
+    if (w.skill && SK[w.skill]) { const s = skState(w.skill); s.min = Math.max(0, s.min - w.min); uncapMin(w.skill, w.date, w.min); const q = (S.days[w.date] || { q: [] }).q.find(x => x.skill === w.skill && !x.done); if (q) q.progress = Math.max(0, (q.progress || 0) - (q.unit === 'km' ? (w.dist || 0) : w.min)); }
     addXp(w.skill, -(w.xp || 0), true); afterChange();
   },
   foodPick: el => foodModal(ui.foodRes[+el.dataset.id]),
@@ -1500,6 +2025,10 @@ document.addEventListener('input', e => {
   if (k === 'dg' && ui.dg) { ui.dg[e.target.dataset.k] = num(e.target.value); $('#dgAim').innerHTML = dgAimTxt(); }
   if (k === 'fsCalc' && ui.fs) { fsRead(); $$('#fsChips .chip').forEach(b => b.classList.toggle('on', +b.dataset.id === ui.fs.len)); $('#fsEnd').innerHTML = fsEndTxt(); }
   if (k === 'fvName' && ui.fv) ui.fv.name = e.target.value;
+  if (k === 'sd' && ui.sd) { const f = e.target.dataset.k, v = e.target.value; if (f === 'goalH') ui.sd.goalMin = Math.round((num(v) || 0) * 60); else ui.sd[f] = f === 'durN' ? num(v) : v; if (f === 'durN' && $('#sdEnd')) $('#sdEnd').innerHTML = sdEndTxt(); }
+  if (k === 'sdCp' && ui.sd) { const c = ui.sd.cps[+e.target.dataset.id]; if (c) c[e.target.dataset.k] = e.target.dataset.k === 'day' ? num(e.target.value) : e.target.value; }
+  if (k === 'sdRwT' && ui.sd) ui.sd.reward.text = e.target.value;
+  if (k === 'sdRwD' && ui.sd) ui.sd.reward.days = num(e.target.value);
   if (k === 'fvG' && ui.fv) { const i = +e.target.dataset.id, it = ui.fv.items[i]; if (!it) return; it.g = num(e.target.value) || 0; $('#fvk_' + i).textContent = fmtK(itemMac(it).kcal) + ' kcal'; $('#fvTot').textContent = totTxt(favTot(ui.fv.items)); }
   if (k === 'fvq' && ui.fv) {
     const q = e.target.value; ui.fvRes = searchFood(q).slice(0, 25);
@@ -1514,6 +2043,12 @@ document.addEventListener('change', e => {
   if (k === 'rate') { skState(t.dataset.id).r[t.dataset.k] = +t.value; afterChange(); }
   if (k === 'cefr') { skState(t.dataset.id).cefr[t.dataset.k] = +t.value; afterChange(); }
   if (k === 'scale') { skState(t.dataset.id).sc[t.dataset.k] = +t.value; afterChange(); }
+  if (k === 'fx') { S.fx = Object.assign(fxOpts(), { [t.dataset.k]: t.checked }); save(); if (t.checked && t.dataset.k !== 'cele') fx('check'); }
+  if (k === 'tkUnit') { const m = $('#tkMin'); if (m) m.hidden = t.value !== 'min'; }
+  if (k === 'tkExp') { const b = $('#tkForm [name=base]'); if (b) b.value = roundUnit((+b.dataset.b || 10) * EXP_MULT[t.value], 'min'); }
+  if (k === 'sd' && ui.sd) { const f = t.dataset.k; ui.sd[f] = t.value || null; if (f === 'start' && !ui.sd.start) ui.sd.start = todayKey(); if (f === 'durU') $('#sdBody').innerHTML = sdBody(); else if ($('#sdEnd')) $('#sdEnd').innerHTML = sdEndTxt(); }
+  if (k === 'sdRwAll' && ui.sd) { ui.sd.reward.all = t.checked; const sc = $('#sdScope'); if (sc) sc.hidden = t.checked; }
+  if (k === 'psCalc') { const r = S.rewards.find(x => x.id === ui.pass); if (r && t.value) $('#psEnd').innerHTML = psEndTxt(t.value, r); }
   if (k === 'szChk') { szSet(o => { o.show[t.dataset.l][t.dataset.p] = t.checked ? 1 : 0; }); szRefresh(); }
   if (k === 'dgBurn' && ui.dg) { ui.dg.burn = t.checked; $('#dgAim').innerHTML = dgAimTxt(); }
   if (k === 'dgQuest' && ui.dg) ui.dg.quest = t.checked;
@@ -1523,8 +2058,9 @@ document.addEventListener('change', e => {
 
 /* ---------- boot ---------- */
 function boot() {
+  migrate();
   if (!S.setup) { renderSetup(); return; }
-  evaluate(); ensureToday(); checkTitles(true); save(); render();
+  evaluate(); ensureToday(); expireSide(); checkTitles(true); save(); render();
 }
 setInterval(() => { if (S.setup && todayKey() !== curDay) boot(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.setup && todayKey() !== curDay) boot(); });
