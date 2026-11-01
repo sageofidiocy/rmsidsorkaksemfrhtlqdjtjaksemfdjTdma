@@ -42,6 +42,8 @@
     stats: [{ k: 'L', n: 'Listening', t: 'cefr' }, { k: 'S', n: 'Speaking', t: 'cefr' }, { k: 'R', n: 'Reading', t: 'cefr' }, { k: 'W', n: 'Writing', t: 'cefr' }, H(200), C] });
   const inst = (id, name) => ({ id, name, cat: 'Instruments', list: 'Craft', unit: 'min', base: 20, max: 120,
     stats: [r('tech', 'Technique'), r('theory', 'Theory'), r('rep', 'Repertoire'), r('ear', 'Ear & rhythm'), H(200), C] });
+  // 한국어문회 한자능력검정시험 grades with the number of characters each requires
+  const HANJA_GRADES = ['None', '8급 · 50자', '7급 · 150자', '6급 · 300자', '5급 · 500자', '4급 · 1,000자', '3급 · 1,817자', '2급 · 2,355자', '1급 · 3,500자', '특급 · 5,978자'];
   const S = (id, name, cat, list, unit, base, max, stats, phys) => ({ id, name, cat, list, unit, base, max, stats, phys: !!phys });
 
   const SKILLS = [
@@ -51,6 +53,7 @@
     S('philosophy', 'Philosophy', 'Study', 'Study', 'min', 20, 90, [r('know', 'Knowledge'), r('reason', 'Reasoning'), r('texts', 'Primary texts'), H(200), C]),
     lang('korean', 'Korean'), lang('english', 'English'), lang('spanish', 'Spanish'), lang('german', 'German'),
     lang('french', 'French'), lang('japanese', 'Japanese'), lang('chinese', 'Chinese'),
+    S('hanja', 'Hanja (漢字)', 'Languages', 'Study', 'min', 15, 90, [{ k: 'grade', n: 'Grade (급수)', t: 'scale', opts: HANJA_GRADES, pct: [2, 25, 40, 52, 64, 75, 85, 91, 96, 99] }, r('read', 'Reading (훈·음)'), r('write', 'Writing'), r('vocab', 'Hanja vocabulary (한자어)'), H(200), C]),
     S('writing', 'Writing', 'Craft', 'Craft', 'min', 30, 180, [r('craft', 'Craft'), r('clarity', 'Clarity'), r('voice', 'Voice'), H(250), C]),
     S('video', 'Video Editing', 'Craft', 'Craft', 'min', 30, 180, [r('cut', 'Cutting & pacing'), r('color', 'Color'), r('sound', 'Sound'), r('motion', 'Motion graphics'), H(250), C]),
     S('drawing', 'Drawing', 'Craft', 'Craft', 'min', 30, 180, [r('fund', 'Fundamentals'), r('anat', 'Anatomy'), r('persp', 'Perspective'), r('color', 'Color'), H(250), C]),

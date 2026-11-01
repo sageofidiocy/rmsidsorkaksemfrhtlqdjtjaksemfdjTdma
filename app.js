@@ -3,7 +3,8 @@
 const { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG } = window.CATALOG;
 const ACT = Object.fromEntries(ACTIVITIES.map(a => [a.id, a]));
 const STORE = 'ascent.v1';
-const LIST_ORDER = ['Penalty', 'Faith', 'Training', 'Study', 'Craft', 'Work'];
+const LIST_ORDER = ['Penalty', 'Faith', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Nutrition'];
+const DIET_BAND = { cut: [0.90, 1.05], maintain: [0.90, 1.10], bulk: [0.95, 1.10] };
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const UNIT = { min: 'min', reps: 'reps', sec: 's', km: 'km', ch: 'ch.', sprints: 'sprints', sessions: 'sessions', pages: 'pages' };
 const EST_MIN = { min: 1, reps: 0.05, sec: 1 / 60, km: 6, ch: 4, sprints: 1.5, sessions: 45, pages: 2 };
@@ -41,7 +42,7 @@ const ICON = {
 function fresh() {
   return {
     v: 2, setup: false,
-    profile: { name: '', sex: 'M', birthYear: 2003, heightCm: 178, weightKg: 75, units: 'imperial', wake: '07:00', sleep: '23:00', goal: 'maintain', start: null },
+    profile: { name: '', sex: 'M', birthYear: 2003, heightCm: 178, weightKg: 75, units: 'imperial', wake: '07:00', sleep: '23:00', goal: 'maintain', dietQuest: true, start: null },
     lists: ['Faith', 'Training', 'Study', 'Craft', 'Work', 'Daily'],
     skills: {}, customSkills: [], events: [], days: {}, rest: [], pauses: [], lastEval: null,
     streak: { cur: 0, best: 0 }, pendingPen: null, owed: [], xp: 0,
@@ -67,9 +68,59 @@ rebuildSK();
 function skState(id) {
   const s = S.skills[id] || (S.skills[id] = { active: false, days: [1, 2, 3, 4, 5], load: 1, xp: 0, min: 0, cnt: 0, done: 0, r: {}, cefr: {}, sm: {} });
   if (!s.sm) s.sm = {};
+  if (!s.sc) s.sc = {};
   return s;
 }
-const ui = { tab: 'today', logSeg: 'workout', profSeg: 'overview', calMonth: null, calSel: null, bodyRange: 90, intensity: 1, foodRes: [], openSkill: null, emDur: 3 };
+/* ---------- seasons (72 micro-seasons) & themes ---------- */
+const THEMES = {
+  spring: { bg: '#0f1514', s1: 'rgba(22,31,28,.87)', s1s: '#16201d', s2: '#1d2925', line: '#253430', line2: '#31443e', ac: '#f2a9bb', ac2: '#c97f93', acA: 'rgba(242,169,187,.13)', bar: 'rgba(15,21,20,.86)', gold: '#e2c27a' },
+  summer: { bg: '#08141a', s1: 'rgba(12,28,34,.87)', s1s: '#0f2229', s2: '#14303a', line: '#1a333c', line2: '#24434e', ac: '#62d6c6', ac2: '#3fa597', acA: 'rgba(98,214,198,.13)', bar: 'rgba(8,20,26,.86)', gold: '#f2c96b' },
+  autumn: { bg: '#15100c', s1: 'rgba(33,24,18,.87)', s1s: '#21180f', s2: '#2c2118', line: '#35281e', line2: '#47372a', ac: '#eda25a', ac2: '#b8773a', acA: 'rgba(237,162,90,.13)', bar: 'rgba(21,16,12,.86)', gold: '#f0d08a' },
+  winter: { bg: '#0b0f17', s1: 'rgba(18,24,38,.87)', s1s: '#141b2b', s2: '#1b2438', line: '#222c42', line2: '#2f3a55', ac: '#a0c9f2', ac2: '#6f97c6', acA: 'rgba(160,201,242,.13)', bar: 'rgba(11,15,23,.86)', gold: '#e2c27a' },
+};
+function huStarts(year) {
+  const out = [];
+  SEASONS.JEOLGI.forEach((j, ji) => j[6].forEach((h, hi) => out.push({ idx: ji * 3 + hi, start: dkey(new Date(year, j[3] - 1, j[4] + hi * 5)) })));
+  return out;
+}
+function seasonOf(k) {
+  const y = +k.slice(0, 4), all = [...huStarts(y - 1), ...huStarts(y), ...huStarts(y + 1)].sort((a, b) => a.start < b.start ? -1 : 1);
+  let i = 0; for (let n = 0; n < all.length; n++) if (all[n].start <= k) i = n;
+  const idx = all[i].idx, ji = Math.floor(idx / 3), j = SEASONS.JEOLGI[ji];
+  return { idx, ji, hi: idx % 3, j, h: j[6][idx % 3], season: j[5], start: all[i].start, end: addDays(all[i + 1].start, -1) };
+}
+const huNumber = idx => ((idx - 6 + 72) % 72) + 1; // traditionally counted from 立春
+let bgIdx = null, curSeason = null;
+function applySeason() {
+  if (!window.SEASONS || !window.SCENES) return null;
+  const si = ui.previewHu != null ? seasonOf(huStarts(new Date().getFullYear()).find(h => h.idx === ui.previewHu).start) : seasonOf(todayKey());
+  if (curSeason !== si.season) {
+    const th = THEMES[si.season]; for (const k in th) document.documentElement.style.setProperty('--' + k, th[k]);
+    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = th.bg;
+    curSeason = si.season; document.documentElement.dataset.season = si.season;
+  }
+  if (bgIdx !== si.idx) { $('#bg').innerHTML = SCENES.render(si.h[3], si.season, si.idx); bgIdx = si.idx; }
+  return si;
+}
+const fmtShort = k => dparse(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+function seasonHero(si) {
+  if (!si) return '';
+  const nm = SEASONS.NAMES[si.season];
+  return `<div class="season" data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons">
+    <div class="sz-top">${nm[0]} ${nm[1]} · ${si.j[0]} ${si.j[1]} <span>${esc(si.j[2])}</span></div>
+    <div class="sz-h" lang="ko">${si.h[0]}</div>
+    <div class="sz-k"><span lang="ko">${si.h[1]}</span> · ${esc(si.h[2])}</div>
+    <div class="sz-d">${fmtShort(si.start)} – ${fmtShort(si.end)} · 七十二候 ${huNumber(si.idx)}/72</div>
+  </div>${ui.previewHu != null ? `<div class="preview row"><span class="sp small">Previewing another micro-season</span><button class="btn-s" data-a="seasonReset">Back to today</button></div>` : ''}`;
+}
+function seasonListModal() {
+  const cur = seasonOf(todayKey()).idx, order = [...Array(24).keys()].map(i => (i + 2) % 24);
+  openModal(`<h3>七十二候 · The 72 micro-seasons</h3><p class="mu small">Each of the 24 solar terms (節氣) has three five-day pentads. Tap one to preview its scene and colors.</p>
+  ${order.map(ji => { const j = SEASONS.JEOLGI[ji]; return `<div class="jg"><div class="jg-h"><b lang="ko">${j[0]}</b> <span lang="ko">${j[1]}</span> <span class="mu2 small">${esc(j[2])} · ~${j[3]}/${j[4]}</span></div>
+    <div class="jg-row">${j[6].map((h, hi) => { const idx = ji * 3 + hi; return `<button class="hu ${idx === cur ? 'now' : ''}" data-a="seasonPick" data-id="${idx}"><span lang="ko">${h[0]}</span><small lang="ko">${h[1]}</small><small>${esc(h[2])}</small></button>`; }).join('')}</div></div>`; }).join('')}
+  <div class="actions"><button data-a="close">Close</button></div>`);
+}
+const ui = { previewHu: null, tab: 'today', logSeg: 'workout', profSeg: 'overview', calMonth: null, calSel: null, bodyRange: 90, intensity: 1, foodRes: [], openSkill: null, emDur: 3 };
 let curDay = null;
 
 /* ---------- levels & ranks ---------- */
@@ -177,6 +228,7 @@ function generate(k) {
     if (rest && c.list !== 'Faith') continue;
     used.add(c.id); q.push(makeSkillQuest(c.id, k));
   }
+  if (S.profile.dietQuest !== false) q.push({ key: 'diet', title: 'Met diet requirements', list: 'Nutrition', progress: 0, done: false, xp: 15, auto: true });
   q.push({ key: 'h:teeth', title: 'Brush teeth', list: 'Wind Down', progress: 0, done: false, xp: 5 });
   q.push({ key: 'h:shower', title: 'Shower', list: 'Wind Down', progress: 0, done: false, xp: 5 });
   q.push({ key: 'h:phone', title: `Phone away & asleep by ${fmtClock(S.profile.sleep)}`, list: 'Wind Down', progress: 0, done: false, xp: 10, lockAt: sleepDeadline(k) + 15 * 60000 });
@@ -192,6 +244,8 @@ function ensureDay(k) { if (!S.days[k]) S.days[k] = { q: generate(k), ev: false 
 function ensureToday() {
   const k = todayKey(); curDay = k; const d = ensureDay(k), pi = pauseInfo(k);
   if (S.pendingPen && !(pi && pi.all)) { d.q = d.q.filter(q => !q.pen).concat(penaltyQuests(S.pendingPen.tier)); d.penTier = S.pendingPen.tier; S.pendingPen = null; }
+  if (S.profile.dietQuest !== false && !d.q.some(q => q.key === 'diet')) regenToday();
+  syncDiet(k, true);
   return d;
 }
 function regenToday() {
@@ -215,6 +269,7 @@ function evaluate() {
       const pi = pauseInfo(k);
       if (!d.q.length || (pi && pi.all)) { d.frozen = true; d.pct = null; }
       else {
+        syncDiet(k, true);
         const tot = d.q.length, done = d.q.filter(q => q.done).length, pct = done / tot;
         d.pct = pct;
         if (pct >= 1) { S.streak.cur++; S.streak.best = Math.max(S.streak.best, S.streak.cur); S.stats.perfect++; addXp('discipline', 20, true); }
@@ -254,6 +309,7 @@ function workoutKcal(actId, min, int) { const a = ACT[actId]; return a ? Math.ro
 function toggleQuest(key, focus) {
   const d = S.days[todayKey()]; if (!d) return;
   const q = d.q.find(x => x.key === key); if (!q) return;
+  if (q.auto) { ui.tab = 'log'; ui.logSeg = 'food'; render(); window.scrollTo(0, 0); toast('This quest checks itself from your food log'); return; }
   const c = q.skill && SK[q.skill] ? SK[q.skill] : null;
   if (!q.done && q.lockAt && Date.now() > q.lockAt) { toast('Deadline passed. This one is locked.', 'bad'); return; }
   if (!q.done && c && c.custom && focus === undefined && (q.target || 0) > (q.progress || 0)) { focusModal(q, c); return; }
@@ -299,55 +355,78 @@ function logPractice(id, min, keys) {
   }
   toast(`Logged ${min} min of ${c.name}`); afterChange();
 }
-function afterChange(full = true) { checkTitles(); save(); if (full) render(); }
+function afterChange(full = true) { syncDiet(todayKey()); checkTitles(); save(); if (full) render(); }
 
 /* ---------- titles ---------- */
-function autoTitles() {
-  const out = [], T = (id, name, desc) => out.push({ id, name, desc });
-  const best = S.streak.best;
-  [[3, 'Kindled'], [7, 'Week Unbroken'], [14, 'Fortnight Will'], [30, 'Iron Month'], [60, 'Relentless'], [100, 'Centurion'], [180, 'Half-Year Ascetic'], [365, 'Unbroken Year']].forEach(([n, nm]) => { if (best >= n) T('streak' + n, nm, `${n}-day streak`); });
-  for (let y = 2; y * 365 <= best; y++) T('streaky' + y, `Unbroken · ${y} Years`, `${y * 365}-day streak`);
-  const L = overall().L;
-  [[5, 'Awakened'], [10, 'Apprentice'], [20, 'Adept'], [35, 'Vanguard'], [50, 'Paragon'], [75, 'Ascendant'], [100, 'Sovereign']].forEach(([n, nm]) => { if (L >= n) T('lvl' + n, nm, `Reach level ${n}`); });
-  for (let n = 150; n <= L; n += 50) T('lvl' + n, 'Sovereign ' + roman((n - 100) / 50 + 1), `Reach level ${n}`);
-  const qd = S.stats.qdone;
-  [10, 50, 100, 250, 500, 1000, 2500, 5000].forEach(n => { if (qd >= n) T('q' + n, `${n.toLocaleString()} Quests`, `Complete ${n} quests`); });
-  for (let n = 10000; n <= qd; n += 10000) T('q' + n, `${n.toLocaleString()} Quests`, `Complete ${n} quests`);
-  [[7, 'Flawless Week'], [30, 'Flawless Month'], [100, 'Hundred Perfect Days'], [365, 'Perfect Year']].forEach(([n, nm]) => { if (S.stats.perfect >= n) T('perf' + n, nm, `${n} perfect days`); });
-  const fb = S.books.filter(b => b.finished).length;
-  [[1, 'Reader'], [5, 'Bookworm'], [10, 'Well-Read'], [25, 'Scholar'], [50, 'Bibliophile'], [100, 'Living Library']].forEach(([n, nm]) => { if (fb >= n) T('book' + n, nm, `Finish ${n} book${n > 1 ? 's' : ''}`); });
-  for (let n = 200; n <= fb; n += 100) T('book' + n, `Library of ${n}`, `Finish ${n} books`);
-  const wk = S.workouts.length;
-  [[1, 'First Sweat'], [10, 'Regular'], [50, 'Gym Rat'], [100, 'Hundred Sessions'], [250, 'Iron Habit'], [500, 'Machine'], [1000, 'Thousand Sessions']].forEach(([n, nm]) => { if (wk >= n) T('wk' + n, nm, `Log ${n} workouts`); });
-  const kc = S.workouts.reduce((a, w) => a + (w.kcal || 0), 0);
-  if (kc >= 10000) T('kc10k', 'Furnace', 'Burn 10,000 kcal');
-  for (let n = 100000; n <= kc; n += 100000) T('kc' + n, n === 100000 ? 'Inferno' : `Inferno ×${n / 100000}`, `Burn ${n.toLocaleString()} kcal`);
-  for (const c of SKL) {
-    if (!S.skills[c.id]) continue; const l = skLevel(c.id).L;
-    [[10, 'Adept'], [25, 'Expert'], [50, 'Master'], [100, 'Grandmaster']].forEach(([n, p]) => { if (l >= n) T(`sk_${c.id}_${n}`, `${p} of ${c.name}`, `${c.name} level ${n}`); });
-    for (let n = 200; n <= l; n += 100) T(`sk_${c.id}_${n}`, `Legend of ${c.name} ${roman(n / 100 - 1)}`, `${c.name} level ${n}`);
-  }
-  let b2 = 0;
-  SKILLS.filter(c => c.cat === 'Languages').forEach(c => {
-    const s = S.skills[c.id]; if (!s) return; const mn = Math.min(...['L', 'S', 'R', 'W'].map(k => s.cefr[k] || 0));
-    if (mn >= 4) { b2++; T('lang_b2_' + c.id, `Speaker of ${c.name}`, `B2 in all four ${c.name} skills`); }
-    if (mn >= 5) T('lang_c1_' + c.id, `Fluent in ${c.name}`, `C1 in all four ${c.name} skills`);
-  });
-  if (b2 >= 3) T('poly3', 'Polyglot', 'B2+ in three languages');
-  if (b2 >= 5) T('poly5', 'Hyperpolyglot', 'B2+ in five languages');
-  const ch = (S.skills.bible || {}).cnt || 0;
-  for (let n = 1; n * 1189 <= ch; n++) T('bible' + n, n === 1 ? 'Through the Word' : `Through the Word ×${n}`, 'Read all 1,189 chapters of the Bible');
-  const pr = (S.skills.prayer || {}).done || 0;
-  if (pr >= 40) T('pray40', 'Forty Days of Prayer', 'Complete 40 prayer quests');
-  if (pr >= 365) T('pray365', 'A Year on Your Knees', 'Complete 365 prayer quests');
-  if (S.stats.donated >= 1) T('paid', 'Paid the Price', 'Make your first penalty donation');
-  if (S.stats.penCleared >= 1) T('redeemed', 'Redeemed', 'Clear a penalty set');
-  if (S.stats.penCleared >= 10) T('redeemed10', 'Forged in Penance', 'Clear 10 penalty sets');
-  if (S.customSkills.length >= 1) T('pioneer', 'Pathfinder', 'Create your own skill');
-  if (S.body.length >= 10) T('selfaware', 'Self-Aware', 'Log body stats 10 times');
-  if (new Set(S.food.map(f => f.date)).size >= 30) T('fuel', 'Fuel Accountant', 'Log food on 30 days');
-  return out;
+const CUSTOM_TIERS = [[3, 'Novice'], [5, 'Apprentice'], [10, 'Journeyman'], [20, 'Adept'], [35, 'Expert'], [50, 'Master'], [75, 'Grandmaster']];
+const stp = (at, id, name, desc) => ({ at, id, name, desc });
+function ladder(cur, steps, more) {
+  const all = steps.slice();
+  if (more) for (let k = 0; k < 1000; k++) { const s = more(k); all.push(s); if (s.at > cur) break; }
+  return { earned: all.filter(s => cur >= s.at), next: all.find(s => cur < s.at) || null };
 }
+const customRole = c => (c.role || c.name || '').trim();
+function customRank(id) {
+  const c = SK[id], L = skLevel(id).L, role = customRole(c);
+  if (L >= 100) return `Legendary ${role} ${roman(Math.floor((L - 100) / 50) + 1)}`;
+  const t = CUSTOM_TIERS.filter(([at]) => L >= at).pop();
+  return t ? `${t[1]} ${role}` : `Unranked ${role}`;
+}
+function titleTracks() {
+  const T = [], num0 = v => Math.round(v).toLocaleString();
+  const add = (group, cur, steps, more, fmt = num0, opts = {}) => T.push(Object.assign({ group, cur, fmt }, ladder(cur, steps, more), opts));
+  const lv = v => 'Lv ' + v, active = id => !!(S.skills[id] && (S.skills[id].active || S.skills[id].xp > 0));
+  // consistency
+  add('Consistency', S.streak.best, [[3, 'Kindled'], [7, 'Week Unbroken'], [14, 'Fortnight Will'], [30, 'Iron Month'], [60, 'Relentless'], [100, 'Centurion'], [180, 'Half-Year Ascetic'], [365, 'Unbroken Year']].map(([n, nm]) => stp(n, 'streak' + n, nm, `${n}-day streak`)),
+    k => stp((k + 2) * 365, 'streaky' + (k + 2), `Unbroken · ${k + 2} Years`, `${(k + 2) * 365}-day streak`), v => v + ' d', { note: `Best streak counts · current ${S.streak.cur}` });
+  add('Consistency', S.stats.perfect, [[7, 'Flawless Week'], [30, 'Flawless Month'], [100, 'Hundred Perfect Days'], [365, 'Perfect Year']].map(([n, nm]) => stp(n, 'perf' + n, nm, `${n} perfect days`)), null, v => v + ' days');
+  add('Consistency', S.stats.qdone, [10, 50, 100, 250, 500, 1000, 2500, 5000].map(n => stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`)),
+    k => { const n = (k + 1) * 10000; return stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`); });
+  add('Consistency', overall().L, [[5, 'Awakened'], [10, 'Apprentice'], [20, 'Adept'], [35, 'Vanguard'], [50, 'Paragon'], [75, 'Ascendant'], [100, 'Sovereign']].map(([n, nm]) => stp(n, 'lvl' + n, nm, `Reach level ${n}`)),
+    k => { const n = 150 + k * 50; return stp(n, 'lvl' + n, 'Sovereign ' + roman(k + 2), `Reach level ${n}`); }, lv);
+  // training & body
+  add('Training & body', S.workouts.length, [[1, 'First Sweat'], [10, 'Regular'], [50, 'Gym Rat'], [100, 'Hundred Sessions'], [250, 'Iron Habit'], [500, 'Machine'], [1000, 'Thousand Sessions']].map(([n, nm]) => stp(n, 'wk' + n, nm, `Log ${n.toLocaleString()} workout${n > 1 ? 's' : ''}`)), null, v => v + ' sessions');
+  add('Training & body', Math.round(S.workouts.reduce((a, w) => a + (w.kcal || 0), 0)), [stp(10000, 'kc10k', 'Furnace', 'Burn 10,000 kcal')],
+    k => { const n = (k + 1) * 100000; return stp(n, 'kc' + n, k ? `Inferno ×${k + 1}` : 'Inferno', `Burn ${n.toLocaleString()} kcal`); }, v => num0(v) + ' kcal');
+  add('Training & body', S.body.length, [stp(10, 'selfaware', 'Self-Aware', 'Log body stats 10 times')], null, v => v + ' logs');
+  add('Training & body', new Set(S.food.map(f => f.date)).size, [stp(30, 'fuel', 'Fuel Accountant', 'Log food on 30 days')], null, v => v + ' days');
+  // faith & reading
+  add('Faith & reading', (S.skills.bible || {}).cnt || 0, [], k => stp((k + 1) * 1189, 'bible' + (k + 1), k ? `Through the Word ×${k + 1}` : 'Through the Word', 'Read all 1,189 chapters of the Bible'), v => num0(v) + ' ch.', { hidden: !active('bible') });
+  add('Faith & reading', (S.skills.prayer || {}).done || 0, [stp(40, 'pray40', 'Forty Days of Prayer', 'Complete 40 prayer quests'), stp(365, 'pray365', 'A Year on Your Knees', 'Complete 365 prayer quests')], null, v => v + ' prayers', { hidden: !active('prayer') });
+  const fb = S.books.filter(b => b.finished).length;
+  add('Faith & reading', fb, [[1, 'Reader'], [5, 'Bookworm'], [10, 'Well-Read'], [25, 'Scholar'], [50, 'Bibliophile'], [100, 'Living Library']].map(([n, nm]) => stp(n, 'book' + n, nm, `Finish ${n} book${n > 1 ? 's' : ''}`)),
+    k => { const n = 200 + k * 100; return stp(n, 'book' + n, `Library of ${n}`, `Finish ${n} books`); }, v => v + ' books');
+  // skills
+  for (const c of SKL) {
+    if (!c.unit && c.id !== 'discipline') continue;
+    const L = skLevel(c.id).L;
+    if (c.custom) {
+      const role = customRole(c);
+      add('Your skills', L, CUSTOM_TIERS.map(([n, t]) => stp(n, `ck_${c.id}_${n}`, `${t} ${role}`, `${c.name} level ${n}`)),
+        k => { const n = 100 + k * 50; return stp(n, `ck_${c.id}_${n}`, `Legendary ${role} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: !active(c.id) });
+    } else {
+      add('Skills', L, [[10, 'Adept'], [25, 'Expert'], [50, 'Master'], [100, 'Grandmaster']].map(([n, p]) => stp(n, `sk_${c.id}_${n}`, `${p} of ${c.name}`, `${c.name} level ${n}`)),
+        k => { const n = 200 + k * 100; return stp(n, `sk_${c.id}_${n}`, `Legend of ${c.name} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: !active(c.id) && c.id !== 'discipline' });
+    }
+  }
+  // languages
+  let b2 = 0, anyLang = false;
+  SKILLS.filter(c => c.cat === 'Languages' && c.stats.some(x => x.t === 'cefr')).forEach(c => {
+    const s = S.skills[c.id] || { cefr: {} }, mn = Math.min(...['L', 'S', 'R', 'W'].map(k => s.cefr[k] || 0)), used = active(c.id) || Object.values(s.cefr || {}).some(Boolean);
+    if (mn >= 4) b2++; if (used) anyLang = true;
+    add('Languages', mn, [stp(4, 'lang_b2_' + c.id, `Speaker of ${c.name}`, `B2 in all four ${c.name} skills`), stp(5, 'lang_c1_' + c.id, `Fluent in ${c.name}`, `C1 in all four ${c.name} skills`)], null, v => CEFR[v], { hidden: !used, note: 'Your lowest of listening, speaking, reading and writing' });
+  });
+  add('Languages', b2, [stp(3, 'poly3', 'Polyglot', 'B2+ in three languages'), stp(5, 'poly5', 'Hyperpolyglot', 'B2+ in five languages')], null, v => v + ' languages', { hidden: !anyLang });
+  const hg = ((S.skills.hanja || {}).sc || {}).grade || 0, hopts = SK.hanja.stats[0].opts.map(o => o.split(' · ')[0]);
+  add('Languages', hg, [[4, 'hanja5', 'Character Apprentice', '5급'], [6, 'hanja3', 'Hanja Scholar', '3급'], [8, 'hanja1', 'Master of Characters', '1급'], [9, 'hanjaT', 'Grand Master of Characters', '특급']].map(([g, id, nm, l]) => stp(g, id, `${nm} (${l})`, `Reach Hanja grade ${l}`)), null, v => hopts[v], { hidden: !active('hanja') && !hg });
+  // penance
+  add('Penance', S.stats.donated, [stp(1, 'paid', 'Paid the Price', 'Make your first penalty donation')], null, v => v + ' paid');
+  add('Penance', S.stats.penCleared, [stp(1, 'redeemed', 'Redeemed', 'Clear a penalty set'), stp(10, 'redeemed10', 'Forged in Penance', 'Clear 10 penalty sets')], null, v => v + ' cleared');
+  // discovery (hidden easter egg)
+  add('Discovery', S.customSkills.length, [stp(1, 'pioneer', 'Pathfinder', 'Create your own skill')], null, num0, { hidden: true });
+  return T;
+}
+function autoTitles() { return titleTracks().flatMap(t => t.earned); }
 function checkTitles(silent) {
   for (const t of autoTitles()) if (!S.titles.auto[t.id]) { S.titles.auto[t.id] = todayKey(); if (!silent) toast('Title earned: ' + t.name, 'ti'); }
 }
@@ -380,6 +459,7 @@ function statValue(id, st) {
   switch (st.t) {
     case 'r': return RATING_PCT[s.r[st.k] || 1];
     case 'cefr': return CEFR_PCT[s.cefr[st.k] || 0];
+    case 'scale': return st.pct[s.sc[st.k] || 0];
     case 'h': return Math.round(100 * (1 - Math.exp(-(s.min / 60) / st.scale)));
     case 'ch': { const h = (s.sm[st.k] || 0) / 60, sc = SK[id].scale || 100; return Math.round(100 * (1 - Math.pow(2, -h / sc))); }
     case 'c': return skillConsistency(id);
@@ -395,10 +475,35 @@ function calorieTarget(k = todayKey()) {
   const adj = p.goal === 'cut' ? -500 : p.goal === 'bulk' ? 300 : 0;
   return { base: Math.round(bmr * 1.25 + adj), burned, total: Math.round(bmr * 1.25 + adj + burned) };
 }
+function dietStatus(k) {
+  const t = calorieTarget(k).total, items = S.food.filter(f => f.date === k);
+  const eaten = Math.round(items.reduce((a, f) => a + f.kcal, 0));
+  const [a, b] = DIET_BAND[S.profile.goal] || DIET_BAND.maintain, lo = Math.round(t * a), hi = Math.round(t * b);
+  return { t, eaten, lo, hi, logged: items.length > 0, ok: items.length > 0 && eaten >= lo && eaten <= hi };
+}
+function syncDiet(k, quiet) {
+  const d = S.days[k]; if (!d) return;
+  const q = d.q.find(x => x.key === 'diet'); if (!q) return;
+  const ok = dietStatus(k).ok; if (ok === q.done) return;
+  q.done = ok; const sign = ok ? 1 : -1;
+  S.stats.qdone = Math.max(0, S.stats.qdone + sign);
+  addXp(null, sign * q.xp, quiet); addXp('discipline', sign * 2, true);
+  if (!quiet) toast(ok ? 'Diet requirements met' : 'Diet quest no longer met', ok ? 'ti' : 'bad');
+}
+const fmtK = n => Math.round(n).toLocaleString();
+function dietSub(k) {
+  const s = dietStatus(k);
+  return s.logged ? `${fmtK(s.eaten)} kcal · aim ${fmtK(s.lo)}–${fmtK(s.hi)} · auto` : `Log food to verify · aim ${fmtK(s.lo)}–${fmtK(s.hi)} kcal`;
+}
+function dietLine(k) {
+  const s = dietStatus(k);
+  const msg = !s.logged ? 'Log food to verify' : s.ok ? 'On track ✓' : s.eaten < s.lo ? `${fmtK(s.lo - s.eaten)} kcal to go` : `${fmtK(s.eaten - s.hi)} kcal over`;
+  return `<div class="diet-line ${s.ok ? 'ok' : s.logged && s.eaten > s.hi ? 'over' : ''}"><span class="sp">Diet quest · aim ${fmtK(s.lo)}–${fmtK(s.hi)} kcal (${esc({ cut: 'lose fat', maintain: 'maintain', bulk: 'build muscle' }[S.profile.goal] || 'maintain')})</span><b>${msg}</b></div>`;
+}
 function nutritionAdherence() {
   const days = [...new Set(S.food.map(f => f.date))].sort().filter(k => k !== todayKey()).slice(-14);
   if (!days.length) return null;
-  const ok = days.filter(k => { const t = calorieTarget(k).total, e = S.food.filter(f => f.date === k).reduce((a, f) => a + f.kcal, 0); return Math.abs(e - t) <= t * 0.1; }).length;
+  const ok = days.filter(k => dietStatus(k).ok).length;
   return Math.round(ok / days.length * 100);
 }
 function healthAxes() {
@@ -424,7 +529,7 @@ function radar(axes, size = 250) {
   [25, 50, 75, 100].forEach(l => g += `<polygon points="${P(l)}" fill="none" stroke="${l === 50 ? '#4a505a' : '#20252d'}" ${l === 50 ? 'stroke-dasharray="3 3"' : ''}/>`);
   axes.forEach((_, i) => { const [x, y] = pt(i, 100); g += `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#20252d"/>`; });
   const poly = axes.map((a, i) => pt(i, a.v == null ? 0 : Math.max(4, a.v)).map(x => x.toFixed(1)).join(',')).join(' ');
-  g += `<polygon points="${poly}" fill="rgba(127,209,193,.16)" stroke="var(--ac)" stroke-width="1.6" stroke-linejoin="round"/>`;
+  g += `<polygon points="${poly}" fill="var(--acA)" stroke="var(--ac)" stroke-width="1.6" stroke-linejoin="round"/>`;
   axes.forEach((a, i) => { if (a.v != null) { const [x, y] = pt(i, Math.max(4, a.v)); g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.4" fill="var(--ac)"/>`; } });
   axes.forEach((a, i) => {
     const [x, y] = pt(i, 120), anc = Math.abs(x - cx) < 8 ? 'middle' : x > cx ? 'start' : 'end';
@@ -448,7 +553,7 @@ function bodyChart(range) {
   const path = (s, color) => s ? `<polyline fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" points="${s.v.map(p => `${X(p[0]).toFixed(1)},${s.Y(p[1]).toFixed(1)}`).join(' ')}"/>` + s.v.map(p => `<circle cx="${X(p[0]).toFixed(1)}" cy="${s.Y(p[1]).toFixed(1)}" r="2" fill="${color}"/>`).join('') : '';
   g += path(ws, 'var(--ac)') + path(bs, 'var(--gold)');
   const axis = (s, x, anc, color) => s ? [s.hi, (s.hi + s.lo) / 2, s.lo].map((v, i) => `<text x="${x}" y="${T + i * (H - T - B) / 2 + 4}" font-size="9.5" text-anchor="${anc}" fill="${color}" font-family="ui-monospace,monospace">${v.toFixed(1)}</text>`).join('') : '';
-  g += axis(ws, L - 4, 'end', '#7fd1c1') + axis(bs, W - R + 4, 'start', '#d9b56c');
+  g += axis(ws, L - 4, 'end', 'var(--ac)') + axis(bs, W - R + 4, 'start', '#d9b56c');
   g += `<text x="${L}" y="${H - 5}" font-size="9.5" fill="#5d636d">${fmtDate(pts[0].date)}</text><text x="${W - R}" y="${H - 5}" font-size="9.5" fill="#5d636d" text-anchor="end">${fmtDate(pts[pts.length - 1].date)}</text>`;
   return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg><div class="legend"><span><i style="background:var(--ac)"></i>Weight (${imperial() ? 'lb' : 'kg'})</span><span><i style="background:var(--gold)"></i>Body fat (%)</span></div>`;
 }
@@ -501,6 +606,7 @@ function renderNav() {
   $('#nav').innerHTML = tabs.map(([id, n, ic]) => `<button class="${ui.tab === id ? 'on' : ''}" data-a="tab" data-id="${id}">${ic}<span>${n}</span></button>`).join('');
 }
 function render() {
+  ui.season = applySeason();
   if (!S.setup) return renderSetup();
   renderTop(); renderNav();
   $('#view').innerHTML = ({ today: viewToday, cal: viewCal, log: viewLog, body: viewBody, me: viewMe })[ui.tab]();
@@ -510,9 +616,10 @@ function render() {
 
 /* ---------- views: setup ---------- */
 function renderSetup() {
+  applySeason();
   $('#top').innerHTML = ''; $('#nav').innerHTML = '';
   const cats = [...new Set(SKILLS.filter(s => s.unit).map(s => s.cat))];
-  $('#view').innerHTML = `<div class="hero">${emblem(0, 56)}<h1>Deificatio</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
+  $('#view').innerHTML = `<div class="hero"><img src="icons/icon-192.png" class="hero-icon" alt=""><h1>Deificatio</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
   <form id="setupForm" onsubmit="return false">
   <div class="card"><h3>Profile</h3>
     <label>Name</label><input name="name" placeholder="Your name" autocomplete="given-name">
@@ -553,6 +660,7 @@ function finishSetup() {
   }
   skState('discipline');
   S.setup = true; S.lastEval = addDays(today, -1);
+  window.scrollTo(0, 0);
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { }
   boot();
 }
@@ -577,13 +685,13 @@ function viewToday() {
     const lv = x.skill && SK[x.skill] ? `Lv ${skLevel(x.skill).L}` : '';
     const hasProg = x.progress > 0 && !x.done;
     const prog = hasProg && x.target ? `<div class="prog"><i style="width:${Math.min(100, x.progress / x.target * 100)}%"></i></div>` : '';
-    const sub = [hasProg ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit), lv, locked ? 'locked' : ''].filter(Boolean).join(' · ');
-    return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${locked ? 'locked' : ''}"><button class="chk" data-a="tq" data-id="${esc(x.key)}" aria-label="Toggle ${esc(x.title)}">${x.done ? ICON.check : ''}</button>
+    const sub = x.key === 'diet' ? dietSub(k) : [hasProg ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit), lv, locked ? 'locked' : ''].filter(Boolean).join(' · ');
+    return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''}"><button class="chk" data-a="tq" data-id="${esc(x.key)}" aria-label="Toggle ${esc(x.title)}">${x.done ? ICON.check : ''}</button>
       <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${prog}</div><div class="qx">+${x.xp}</div></div>`;
   };
-  if (pi && pi.all) return `${pi.ps.map(p => pauseBanner(p, k)).join('')}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : 'Everything is paused. Enjoy the break.'}</div>
+  if (pi && pi.all) return `${seasonHero(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : 'Everything is paused. Enjoy the break.'}</div>
   <div class="row" style="justify-content:center"><button class="btn-s" data-a="tab" data-id="log">Log a workout anyway</button></div>`;
-  return `${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}
+  return `${seasonHero(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}
   <div class="card ring"><div style="flex:none">${ringSvg(pct)}</div><div class="sp"><div class="mu2 small">Day ${dayN}</div><h3>${fmtDate(k)}</h3>
     <div class="mu small"><span class="num">${done}/${q.length}</span> quests · <span class="gold num">+${xpToday} XP</span></div>${badges ? `<div class="badges">${badges}</div>` : ''}</div></div>
   ${q.length ? lists.map(l => `<div class="qlist"><div class="qhead"><h2 class="${l === 'Penalty' ? 'bad' : ''}">${esc(l)}</h2><span class="mu2 small num">${q.filter(x => x.list === l && x.done).length}/${q.filter(x => x.list === l).length}</span></div>
@@ -667,7 +775,7 @@ function vacModal() {
   <label>Label (optional)</label><input id="vNote" placeholder="e.g. Seoul trip">
   <div class="grid2"><div><label>First day</label><input id="vStart" type="date" min="${tk}" value="${addDays(tk, 1)}"></div><div><label>Last day</label><input id="vEnd" type="date" min="${tk}" value="${addDays(tk, 7)}"></div></div>
   <label class="check"><input type="checkbox" id="vAll"> Pause everything</label>
-  <label>Pause these lists</label><div class="chips" id="vLists">${[...S.lists, 'Wind Down'].map(l => `<button class="chip" data-a="chipT" data-k="${esc(l)}">${esc(l)}</button>`).join('')}</div>
+  <label>Pause these lists</label><div class="chips" id="vLists">${[...S.lists, 'Nutrition', 'Wind Down'].map(l => `<button class="chip" data-a="chipT" data-k="${esc(l)}">${esc(l)}</button>`).join('')}</div>
   ${active.length ? `<label>…or individual skills</label><div class="chips" id="vSkills">${active.map(s => `<button class="chip" data-a="chipT" data-k="${s.id}">${esc(s.name)}</button>`).join('')}</div>` : ''}
   <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="vacSave">Schedule pause</button></div>`);
 }
@@ -727,7 +835,7 @@ function viewFood() {
   return `<div class="card"><div class="row"><div class="sp"><div class="mu small">Eaten / target</div><div class="num big">${Math.round(sum.kcal)} <span class="mu" style="font-size:14px">/ ${ct.total} kcal</span></div></div>
     <div class="small" style="text-align:right"><div class="${left < 0 ? 'bad' : 'acc'} num">${left < 0 ? -left + ' over' : left + ' left'}</div><div class="mu2">base ${ct.base} + ${ct.burned} burned</div></div></div>
     <div class="bar"><i style="width:${pct * 100}%;${sum.kcal > ct.total * 1.1 ? 'background:var(--bad)' : ''}"></i></div>
-    <div class="grid3 macros"><div><span class="mu small">Protein</span><div class="num">${sum.p.toFixed(0)} g</div></div><div><span class="mu small">Carbs</span><div class="num">${sum.c.toFixed(0)} g</div></div><div><span class="mu small">Fat</span><div class="num">${sum.f.toFixed(0)} g</div></div></div></div>
+    <div class="grid3 macros"><div><span class="mu small">Protein</span><div class="num">${sum.p.toFixed(0)} g</div></div><div><span class="mu small">Carbs</span><div class="num">${sum.c.toFixed(0)} g</div></div><div><span class="mu small">Fat</span><div class="num">${sum.f.toFixed(0)} g</div></div></div>${dietLine(k)}</div>
   <div class="card"><h3>Add food</h3><input id="foodQ" type="search" placeholder="Search, e.g. chicken breast roasted" data-i="foodq" autocomplete="off">
     <div id="foodRes"></div>
     <div class="row" style="margin-top:8px"><span class="mu2 small sp">USDA SR28 · ${window.FOOD_DB ? FOOD_DB.foods.length.toLocaleString() : '…'} foods · raw & cooked · per 100 g</span><button class="btn-s" data-a="customFood">+ Custom</button></div></div>
@@ -820,7 +928,7 @@ function skillCard(id) {
         ${s.custom ? `<button class="btn-s" data-a="csEdit" data-id="${id}">Edit skill</button>` : ''}<button class="btn-s" data-a="skToggle" data-id="${id}">${st.active ? 'Remove from quests' : 'Add to quests'}</button></div>`;
     }
   }
-  return `<div class="card skill-card"><div class="row" data-a="skOpen" data-id="${id}" role="button"><div class="sp"><div>${esc(s.name)} <span class="mu small num">Lv ${l.L}</span>${s.custom ? ' <span class="pill">Custom</span>' : ''}</div>
+  return `<div class="card skill-card"><div class="row" data-a="skOpen" data-id="${id}" role="button"><div class="sp"><div>${esc(s.name)} <span class="mu small num">Lv ${l.L}</span>${s.custom ? ' <span class="pill">Custom</span>' : ''}</div>${s.custom ? `<div class="gold small">${esc(customRank(id))}</div>` : ''}
     <div class="bar" style="max-width:200px"><i style="width:${l.into / l.need * 100}%"></i></div></div><span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
 }
 function meSkills() {
@@ -836,6 +944,7 @@ function statEditor(id, x) {
   const st = skState(id);
   if (x.t === 'r') return `<label>${esc(x.n)}</label><select data-c="rate" data-id="${id}" data-k="${x.k}">${RATING_LABEL.slice(1).map((n, i) => `<option value="${i + 1}" ${(st.r[x.k] || 1) === i + 1 ? 'selected' : ''}>${i + 1} · ${n}</option>`).join('')}</select>`;
   if (x.t === 'cefr') return `<label>${esc(x.n)}</label><select data-c="cefr" data-id="${id}" data-k="${x.k}">${CEFR.map((n, i) => `<option value="${i}" ${(st.cefr[x.k] || 0) === i ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
+  if (x.t === 'scale') return `<label>${esc(x.n)}</label><select data-c="scale" data-id="${id}" data-k="${x.k}">${x.opts.map((n, i) => `<option value="${i}" ${(st.sc[x.k] || 0) === i ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
   if (x.t === 'm') return `<div class="mu small" style="margin-top:8px">${esc(x.n)}: set in Body → Fitness tests</div>`;
   if (x.t === 'ch') return `<div class="row small" style="margin-top:6px"><span class="sp mu">${esc(x.n)}</span><span class="num">${((st.sm[x.k] || 0) / 60).toFixed(1)} h</span></div>`;
   return '';
@@ -847,6 +956,8 @@ function csModal(c) {
   openModal(`<h3>${c ? 'Edit skill' : 'Create a skill'}</h3><p class="mu small">Your own skill, with its own hexagon. Each stat is one part of the skill; its side grows with the hours you log on that part.</p>
   <form id="csForm" onsubmit="return false">
   <label>Name</label><input name="name" value="${esc(c ? c.name : '')}" placeholder="e.g. Game Programming">
+  <label>Title name for ranks</label><input name="role" value="${esc(c ? c.role || '' : '')}" placeholder="e.g. Game Designer (defaults to the skill name)">
+  <div class="mu2 small" style="margin-top:4px">Ranks: Novice → Apprentice → Journeyman → Adept → Expert → Master → Grandmaster → Legendary I, II…</div>
   <div class="grid2"><div><label>Quest list</label><select name="list">${S.lists.map(l => `<option ${(c ? c.list : 'Craft') === l ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
   <div><label>Measured in</label><select name="unit">${CUSTOM_UNITS.map(([v, n]) => `<option value="${v}" ${(c ? c.unit : 'min') === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
   <div class="grid2"><div><label>Starting daily target</label><input name="base" type="number" step="any" value="${c ? c.base : 30}"></div><div><label>Maximum target</label><input name="max" type="number" step="any" value="${c ? c.max : 180}"></div></div>
@@ -868,7 +979,7 @@ function saveCustomSkill(id) {
   if (stats.length < 3 || stats.length > 8) { toast('Use 3 to 8 stats'); return; }
   if (!base || base <= 0) { toast('Set a starting target'); return; }
   const unit = f.get('unit');
-  const def = { id: id || 'c_' + uid().slice(0, 8), name, list: f.get('list'), unit, base, max: Math.max(base, max || base * 4), phys: !!f.get('phys'), act: f.get('act') || null, scale: Math.max(1, num(f.get('scale')) || 100), stats };
+  const def = { id: id || 'c_' + uid().slice(0, 8), name, role: (f.get('role') || '').trim(), list: f.get('list'), unit, base, max: Math.max(base, max || base * 4), phys: !!f.get('phys'), act: f.get('act') || null, scale: Math.max(1, num(f.get('scale')) || 100), stats };
   const i = S.customSkills.findIndex(c => c.id === def.id);
   if (i >= 0) S.customSkills[i] = def; else S.customSkills.push(def);
   rebuildSK();
@@ -878,7 +989,13 @@ function saveCustomSkill(id) {
 }
 function meTitles() {
   const auto = autoTitles(), cats = Object.keys(TITLE_CATALOG);
-  return `<h2>Earned</h2><div class="card">${auto.length ? auto.map(t => `<span class="title-badge auto" title="${esc(t.desc)}">${esc(t.name)}</span>`).join('') : '<div class="mu small">Titles unlock as you go: streaks, levels, books, skills, languages…</div>'}</div>
+  const locked = titleTracks().filter(t => t.next && !t.hidden), groups = [...new Set(locked.map(t => t.group))];
+  return `<h2>Earned · ${auto.length}</h2><div class="card">${auto.length ? auto.map(t => `<span class="title-badge auto" title="${esc(t.desc)}">${esc(t.name)}</span>`).join('') : '<div class="mu small">Titles unlock as you go. See what\'s next below.</div>'}</div>
+  <h2>Next up</h2><div class="card next-up">${groups.map(g => `<div class="tg">${esc(g)}</div>` + locked.filter(t => t.group === g).map(t => {
+    const pct = clamp(t.cur / t.next.at * 100, 0, 100), to = t.fmt(t.next.at), suf = (to.match(/\s[^\d\s][^\d]*$/) || [''])[0];
+    let from = t.fmt(t.cur); if (suf && from.endsWith(suf)) from = from.slice(0, -suf.length);
+    return `<div class="lk"><div class="row"><div class="sp"><div class="lk-n">${esc(t.next.name)}</div><div class="mu small">${esc(t.next.desc)}</div></div><span class="num small mu">${esc(from)} / ${esc(to)}</span></div><div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>${t.note ? `<div class="mu2 small" style="margin-top:4px">${esc(t.note)}</div>` : ''}</div>`;
+  }).join('')).join('')}</div>
   <h2>Claimed</h2><div class="card">${S.titles.claimed.length ? S.titles.claimed.map(t => `<span class="title-badge">${esc(t.name)} <span class="mu2 small">${esc(t.cat)}</span><button class="btn-g x" style="padding:0 2px" data-a="tDel" data-id="${t.id}" aria-label="Remove">✕</button></span>`).join('') : '<div class="mu small">Claim degrees, jobs, places and milestones below.</div>'}</div>
   <div class="card"><h3>Claim a title</h3>
     <label>Category</label><select id="tCat" data-c="tCat">${cats.map(c => `<option>${c}</option>`).join('')}<option>Custom</option></select>
@@ -907,6 +1024,7 @@ function meSettings() {
     <div class="grid2"><div><label>Height (${imperial() ? 'total in' : 'cm'})</label><input name="height" type="number" value="${imperial() ? Math.round(p.heightCm / 2.54) : p.heightCm}"></div><div><label>Units</label><select name="units"><option value="imperial" ${imperial() ? 'selected' : ''}>Imperial</option><option value="metric" ${!imperial() ? 'selected' : ''}>Metric</option></select></div></div>
     <div class="grid2"><div><label>Wake (day reset)</label><input name="wake" type="time" value="${p.wake}"></div><div><label>Sleep deadline</label><input name="sleep" type="time" value="${p.sleep}"></div></div>
     <label>Goal</label><select name="goal">${[['cut', 'Lose fat'], ['maintain', 'Maintain'], ['bulk', 'Build muscle']].map(([v, n]) => `<option value="${v}" ${p.goal === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <label class="check"><input type="checkbox" name="dietQuest" ${p.dietQuest !== false ? 'checked' : ''}> Daily "Met diet requirements" quest</label>
     <button class="btn-p btn-big" data-a="setSave">Save profile</button></form>
     <div class="mu2 small" style="margin-top:8px">${ft}′${inch}″ · started ${p.start ? fmtDate(p.start) : '—'}</div></div>
   <div class="card"><h3>Quest lists</h3><div class="chips" style="margin:8px 0">${S.lists.map(l => `<span class="chip">${esc(l)}</span>`).join('')}</div>
@@ -919,6 +1037,9 @@ function meSettings() {
 
 /* ---------- actions ---------- */
 const A = {
+  seasonList: () => seasonListModal(),
+  seasonPick: el => { ui.previewHu = +el.dataset.id; closeModal(true); ui.tab = 'today'; render(); window.scrollTo(0, 0); },
+  seasonReset: () => { ui.previewHu = null; render(); },
   tab: el => { ui.tab = el.dataset.id; render(); window.scrollTo(0, 0); },
   tq: el => toggleQuest(el.dataset.id),
   regen: () => { regenToday(); afterChange(); toast('Quests refreshed'); },
@@ -1010,7 +1131,7 @@ const A = {
     const h = num(f.get('height')), wasImp = imperial();
     p.name = f.get('name').trim(); p.sex = f.get('sex'); p.birthYear = +f.get('birthYear') || p.birthYear;
     if (h) p.heightCm = wasImp ? Math.round(h * 2.54) : h;
-    p.units = f.get('units'); p.goal = f.get('goal');
+    p.units = f.get('units'); p.goal = f.get('goal'); p.dietQuest = !!f.get('dietQuest');
     const oldWake = p.wake; p.wake = f.get('wake') || p.wake; p.sleep = f.get('sleep') || p.sleep;
     if (oldWake !== p.wake) { save(); boot(); } else { regenToday(); afterChange(); }
     toast('Saved');
@@ -1042,6 +1163,7 @@ document.addEventListener('change', e => {
   if (k === 'tCat') $('#tPick').innerHTML = titlePicker(t.value);
   if (k === 'rate') { skState(t.dataset.id).r[t.dataset.k] = +t.value; afterChange(); }
   if (k === 'cefr') { skState(t.dataset.id).cefr[t.dataset.k] = +t.value; afterChange(); }
+  if (k === 'scale') { skState(t.dataset.id).sc[t.dataset.k] = +t.value; afterChange(); }
   if (k === 'setupUnits') { const imp = t.value === 'imperial'; $('#hw').innerHTML = imp ? '<div><label>Height (ft)</label><input name="ft" type="number" value="5"></div><div><label>Height (in)</label><input name="in" type="number" value="10"></div>' : '<div><label>Height (cm)</label><input name="cm" type="number" value="178"></div><div></div>'; $('#wlab').textContent = imp ? 'Weight (lb)' : 'Weight (kg)'; }
 });
 
