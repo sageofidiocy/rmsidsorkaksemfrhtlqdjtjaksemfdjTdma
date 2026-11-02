@@ -9,7 +9,7 @@
    Layers use the picture's own 768 x 1376 coordinates and are shown with object-fit: cover exactly like the picture. */
 (function () {
   const W = 768, H = 1376, LIST = ['cyber', 'cottage', 'village', 'academia'];
-  let seed = 1, defs = '', N = 0;
+  let seed = 1, defs = '', N = 0, REFL = [];
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647, R = (a, b) => a + rnd() * (b - a), RI = (a, b) => Math.floor(R(a, b + 1));
   const f = n => Math.round(n * 10) / 10, pick = a => a[Math.floor(rnd() * a.length)];
   const op = o => o != null && o !== 1 ? ` opacity="${f(o * 100) / 100}"` : '';
@@ -25,14 +25,20 @@
   const shade = (c, t) => t >= 0 ? mix(c, '#ffffff', t) : mix(c, '#000000', -t);
   const lg = (stops, x2 = 0, y2 = 1) => { const id = 'tg' + (N++); defs += `<linearGradient id="${id}" x1="0" y1="0" x2="${x2}" y2="${y2}">${stops.map(([o, c, a]) => `<stop offset="${o}" stop-color="${c}"${a != null ? ` stop-opacity="${a}"` : ''}/>`).join('')}</linearGradient>`; return `url(#${id})`; };
   const rg = (stops) => { const id = 'tg' + (N++); defs += `<radialGradient id="${id}">${stops.map(([o, c, a]) => `<stop offset="${o}" stop-color="${c}"${a != null ? ` stop-opacity="${a}"` : ''}/>`).join('')}</radialGradient>`; return `url(#${id})`; };
-  const blur = r => { const id = 'tb' + String(r).replace('.', '_'); if (!defs.includes(`id="${id}"`)) defs += `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${r}"/></filter>`; return `filter="url(#${id})"`; };
+  // blur filters get an explicit region in canvas units, big enough for the whole blur (b = [x, y, w, h] of what's blurred).
+  // (A region relative to the element's own box clipped the glow of small things into hard-edged rectangles.)
+  const blur = (r, b) => { b = b || [-W * .1, -H * .1, W * 1.2, H * 1.2]; const m = r * 3 + 2, x = f(b[0] - m), y = f(b[1] - m), w = f(b[2] + 2 * m), h = f(b[3] + 2 * m);
+    const id = `tb${r}_${x}_${y}_${w}_${h}`.replace(/\./g, 'p').replace(/-/g, 'n');
+    if (!defs.includes(`id="${id}"`)) defs += `<filter id="${id}" filterUnits="userSpaceOnUse" x="${x}" y="${y}" width="${w}" height="${h}"><feGaussianBlur stdDeviation="${r}"/></filter>`; return `filter="url(#${id})"`; };
   const glow = (x, y, r, c, a) => C(x, y, r, rg([[0, c, a], [.45, c, a * .35], [1, c, 0]]));
   const full = (fill, o) => RC(-10, -10, W + 20, H + 20, fill, o);
 
   /* ---------- the pictures ---------- */
   // sky: where the sky ends; gnd: where the ground / street starts (for mist, dew, splashes); base: the picture's own light
   const GEO = {
-    cyber_ko: { sky: 560, gnd: 1190, base: 'night', avg: '#483e77' }, cyber_ja: { sky: 470, gnd: 1170, base: 'night', avg: '#493466', pos: .68 },
+    // street: the wet road surface (between the curbs) where the signs' reflections can show
+    cyber_ko: { sky: 560, gnd: 1190, base: 'night', avg: '#483e77', street: [[270, 1193], [540, 1193], [797, 1376], [-27, 1376]] },
+    cyber_ja: { sky: 470, gnd: 1170, base: 'night', avg: '#493466', pos: .68, street: [[390, 1140], [480, 1140], [775, 1376], [-23, 1376]] },
     cottage_ko_warm: { sky: 470, gnd: 820, avg: '#c2c7ae' }, cottage_ko_cold: { sky: 470, gnd: 820, avg: '#cfd0d1' },
     cottage_ja_warm: { sky: 420, gnd: 860, avg: '#b1bba1' }, cottage_ja_cold: { sky: 420, gnd: 860, avg: '#c4c8c7' },
     village_ko_warm: { sky: 330, gnd: 760, avg: '#c5cabd' }, village_ko_cold: { sky: 330, gnd: 760, avg: '#d3d6d6' },
@@ -146,7 +152,11 @@
       for (let i = 0; i < n; i++) { const x = R(-40, W + 40), y = R(-60, H), l = R(l0, l1), d = `M${f(x)} ${f(y)} l${f(sl * l / 40)} ${f(l)} `; if (i % 3) far += d; else near += d; }
       L.norm += S(far, col, kind === 'drizzle' ? 1 : 1.3, a * .7) + S(near, col, kind === 'heavy' ? 2.4 : 1.9, a);
       L.norm += full(lg([[0, cy ? '#2a2050' : '#8a94a2', kind === 'heavy' ? .3 : .16], [1, cy ? '#2a2050' : '#8a94a2', kind === 'heavy' ? .2 : .06]]));
-      if (cy) for (let i = 0; i < 9; i++) { const x = R(40, W - 40), c = pick(['#ff4fd8', '#3ef0ff', '#a37bff']); L.screen += `<g ${blur(5)}>${RC(x, g.gnd, R(10, 22), H - g.gnd, c, .32)}</g>`; }
+      if (cy) { // each sign's reflection runs down the wet road straight below it, in the sign's own color, only on the road
+        const id = 'st' + (N++), top = Math.min(...g.street.map(p => p[1])); defs += `<clipPath id="${id}"><path d="${poly(g.street)}"/></clipPath>`;
+        let s = ''; REFL.forEach(r => { const w = r.w * .5, gr = lg([[0, r.col, 0], [.12, r.col, .34], [.55, r.col, .16], [1, r.col, .05]]);
+          s += `<g ${blur(5, [r.x - w, top, 2 * w, H - top])}>${RC(r.x - w / 2, top, w, H - top, gr)}</g>` + RC(r.x - w * .12, top, w * .24, H - top, lg([[0, r.col, 0], [.15, r.col, .3], [1, r.col, 0]])); });
+        L.screen += `<g clip-path="url(#${id})">${s}</g>`; }
       else { let r = ''; for (let i = 0; i < 26; i++) { const y = R(g.gnd, H), w = R(10, 22) * (.6 + (y - g.gnd) / (H - g.gnd)); r += `<ellipse cx="${f(R(0, W))}" cy="${f(y)}" rx="${f(w)}" ry="${f(w * .28)}" fill="none" stroke="#ffffff" stroke-width="1.2" opacity=".45"/>`; } L.norm += r; }
     },
     splash(L, g, cy, n) { let s = ''; for (let i = 0; i < n; i++) { const x = R(0, W), y = R(g.gnd, H), k = .6 + (y - g.gnd) / (H - g.gnd); s += `M${f(x - 6 * k)} ${f(y)} l${f(-3 * k)} ${f(-8 * k)} M${f(x)} ${f(y)} l0 ${f(-11 * k)} M${f(x + 6 * k)} ${f(y)} l${f(3 * k)} ${f(-8 * k)} `; } L.norm += S(s, cy ? '#d8d0ff' : '#ffffff', 1.4, .55); },
@@ -211,30 +221,48 @@
     return `<g opacity="${o}" ${blur(1.5)}>${g}${E(x + 70 * s, y - 20 * s, 40 * s, 16 * s, '#ffffff', .6)}</g>`; }
 
   /* ---------- the neon alley's signs ----------
-     Each blank panel: p = [TL, TR, BL] corners (skewed panels get a matrix), or q = its outline + o = [cx, cy, degrees] for
-     the tilted one. c = the frame's palette slot, tc = the letters' slot (the tubes are often a different color from the
-     frame). The board's face is darkened so the letters glow on it like real neon: a wide soft glow, a tight glow, then a
-     hot pale core with a thin colored edge. Small signs further up the alley get the same treatment. */
+     Every panel was measured on the painting itself (Deificatio_dev_tools/measure_signs.py): each side of a panel is found
+     from many scanlines across it and fitted as a line, so the shapes sit exactly on the painted panels.
+       o  = the lit outline (outer edge of the light tube; Japanese panels have no tube, so the lit face itself)
+       f  = the face the letters glow on (Korean: inside the painted tube; Japanese: the lit face pulled in evenly)
+       x  = things painted in FRONT of the panel (wires, a roof edge, a box): no frame color or letters are drawn over them;
+            xs = they're solid (a roof, a box), so the face isn't darkened over them either (a thin dark wire just stays dark)
+       tq = the quad the letters are laid out in when f isn't a plain quad (the tilted sign, the arched one)
+     c = the frame's palette slot, tc = the letters' slot. The letters are mapped through the panel's perspective
+     (each glyph gets the local slant of the panel at its own position), clipped to the face. */
   const SIGNS = {
     cyber_ko: [
-      { p: [[38, 820], [112, 864], [38, 904]], c: 0, tc: 1, t: 'food', fs: 25 }, { p: [[223, 857], [258, 857], [223, 943]], c: 2, tc: 0, t: '노래방', v: 1 },
-      { p: [[235, 971], [304, 971], [235, 1005]], c: 1, tc: 0, t: '편의점' }, { p: [[404, 845], [424, 845], [404, 892]], c: 0, tc: 1, t: '술집', v: 1 },
-      { p: [[478, 762], [500, 762], [478, 829]], c: 0, tc: 2, t: '분식', v: 1 }, { p: [[510, 819], [547, 819], [510, 925]], c: 1, tc: 0, t: 'shop', v: 1 },
-      { p: [[574, 752], [628, 752], [574, 902]], c: 2, tc: 1, t: 'term', v: 1 }, { p: [[635, 920], [698, 880], [636, 972]], c: 2, tc: 0, t: 'PC방', fs: 19 },
-      { p: [[508, 950], [602, 950], [508, 991]], c: 0, tc: 1, t: 'item' },
-      // further up the alley
-      { p: [[381, 661], [389, 661], [381, 677]], c: 1, tc: 1, t: '약' }, { p: [[489, 704], [496, 704], [489, 719]], c: 0, tc: 0, t: '빵' },
-      { p: [[442, 809], [455, 809], [442, 823]], c: 0, tc: 1, t: '밥' }, { p: [[476, 835], [504, 835], [476, 852]], c: 1, tc: 2, t: '치킨' }],
+      {o:[[36.6,816.4],[115.3,872.4],[114.0,944.7],[34.5,906.1]],f:[[39.4,822.2],[112.0,873.9],[110.8,939.8],[37.4,904.2]],c:0,tc:1,t:'food',fs:25},  // food
+      {o:[[221.9,854.7],[260.4,854.7],[260.2,946.8],[220.4,946.5]],f:[[225.1,857.7],[257.4,857.8],[257.1,945.3],[223.7,945.1]],c:2,tc:0,t:'노래방',v:1},  // norae
+      {o:[[231.6,969.8],[307.2,969.8],[306.9,1007.2],[231.3,1007.1]],f:[[234.4,973.0],[303.8,973.0],[303.6,1004.0],[234.1,1003.9]],c:1,tc:0,t:'편의점'},  // pyeon
+      {o:[[403.0,843.2],[425.1,842.6],[425.0,894.8],[403.5,894.4]],f:[[404.9,845.1],[422.6,844.5],[422.6,892.8],[405.4,892.5]],x:[[[405.2,878.0],[405.0,882.5],[405.8,883.5],[405.0,884.2],[405.0,893.5],[412.5,893.8],[413.8,892.5],[413.8,891.2],[411.5,889.0],[408.2,887.8],[406.8,885.8],[406.8,883.0],[408.8,879.2],[407.2,878.8],[406.5,878.0]]],c:0,tc:1,t:'술집',v:1,xs:1},  // suljip
+      {o:[[475.7,756.9],[503.2,759.8],[504.5,830.4],[475.6,830.2]],f:[[478.8,760.0],[499.1,762.2],[500.3,825.9],[478.6,825.7]],x:[[[477.0,796.2],[477.2,802.8],[477.8,802.5],[478.5,801.0],[481.2,802.8],[483.5,803.0],[484.2,803.8],[485.5,804.0],[488.2,805.8],[489.8,805.8],[491.2,806.8],[492.8,806.8],[494.2,807.8],[496.5,808.0],[497.2,808.8],[500.5,809.0],[502.2,810.8],[503.8,809.5],[503.5,809.0],[502.2,808.8],[501.5,808.0],[499.0,808.0],[497.5,807.0],[496.0,807.0],[494.5,806.0],[492.2,805.8],[489.5,804.0],[487.2,803.8],[484.5,802.0],[482.2,801.8],[481.5,801.0],[478.2,799.8],[478.0,798.5],[478.5,798.0],[479.2,798.8],[481.8,798.8],[483.2,799.8],[486.8,799.8],[488.2,800.8],[491.5,801.0],[492.2,801.8],[496.8,801.8],[498.2,802.8],[500.5,803.0],[501.2,804.8],[503.8,803.5],[503.5,801.0],[498.0,801.0],[496.5,800.0],[493.0,800.0],[491.5,799.0],[488.2,798.8],[487.5,798.0],[484.0,798.0],[482.5,797.0],[480.0,797.0],[478.5,796.0]]],c:0,tc:2,t:'분식',v:1},  // bunsik
+      {o:[[508.1,815.7],[548.2,815.7],[549.8,929.4],[509.3,929.3]],f:[[511.8,819.0],[545.0,819.0],[546.5,925.8],[512.9,925.8]],c:1,tc:0,t:'shop',v:1},  // shop
+      {o:[[570.6,747.7],[627.9,747.7],[631.6,900.6],[573.6,901.1]],f:[[576.4,753.2],[622.7,753.3],[626.1,895.2],[579.2,895.6]],c:2,tc:1,t:'term',v:1},  // term
+      {o:[[634.0,919.6],[699.0,873.2],[700.8,942.2],[634.9,973.8]],f:[[639.6,922.8],[693.6,884.4],[695.0,938.7],[640.3,965.0]],c:2,tc:0,t:'PC방',fs:19},  // pc
+      {o:[[505.7,950.7],[605.8,950.7],[605.8,993.3],[505.8,993.4]],f:[[510.0,954.2],[601.7,954.3],[601.8,989.5],[510.0,989.6]],c:0,tc:1,t:'item'},  // item
+      {o:[[380.6,661.9],[388.2,661.9],[388.3,678.2],[380.6,678.0]],f:[[382.0,663.0],[386.9,663.0],[387.1,677.0],[382.0,676.9]],c:1,tc:1,t:'약'},  // yak
+      {o:[[490.3,704.5],[488.9,705.9],[489.5,707.6],[489.5,718.5],[490.3,719.2],[494.5,719.2],[495.2,718.5],[495.2,707.3],[492.5,704.5]],f:[[491.0,705.5],[490.0,706.5],[490.0,718.2],[490.5,718.8],[494.2,718.8],[494.8,718.2],[494.8,710.5],[493.8,709.2],[493.8,706.5]],c:0,tc:0,t:'빵',tq:[[490.0,705.5],[494.8,705.5],[494.8,718.8],[490.0,718.8]]},  // ppang
+      {o:[[441.9,809.9],[454.4,809.7],[454.7,823.3],[441.8,823.3]],f:[[443.3,811.1],[452.9,811.0],[453.1,821.2],[443.2,821.3]],c:0,tc:1,t:'밥'},  // bap
+      {o:[[476.0,836.4],[505.0,835.0],[505.1,851.6],[476.5,852.1]],f:[[478.1,838.0],[503.2,836.7],[503.3,850.0],[478.5,850.4]],c:1,tc:2,t:'치킨'},  // chikin
+    ],
     cyber_ja: [
-      { p: [[645, 471], [716, 471], [645, 601]], c: 0, tc: 1, t: 'term', v: 1 }, { p: [[645, 633], [716, 633], [645, 767]], c: 1, tc: 0, t: '居酒屋', v: 1 },
-      { p: [[645, 797], [716, 797], [645, 852]], c: 2, tc: 1, t: 'kana' }, { p: [[549, 634], [596, 634], [549, 720]], c: 0, tc: 1, t: 'food', v: 1 },
-      { p: [[549, 735], [596, 735], [549, 824]], c: 1, tc: 2, t: 'カラオケ', v: 1 }, { p: [[549, 843], [596, 843], [549, 928]], c: 2, tc: 0, t: 'item', v: 1 },
-      { p: [[213, 923], [257, 955], [213, 968]], c: 1, tc: 0, t: '薬局', fs: 17 },
-      { p: [[612, 894], [655, 863], [630, 940]], q: [[612, 894], [640, 868], [660, 869], [673, 909], [630, 940]], c: 0, tc: 1, t: 'one', fs: 30 },
-      // further down the street: a スナック stack, a sushi sign, a café
-      { p: [[474, 973], [487, 973], [474, 992]], c: 0, tc: 1, t: 'ス' }, { p: [[474, 996], [487, 996], [474, 1015]], c: 1, tc: 0, t: 'ナ' },
-      { p: [[474, 1020], [487, 1020], [474, 1039]], c: 1, tc: 0, t: 'ッ' }, { p: [[474, 1043], [487, 1043], [474, 1053]], c: 2, tc: 1, t: 'ク' },
-      { p: [[502, 990], [521, 990], [502, 1022]], c: 0, tc: 1, t: '寿司', v: 1 }, { p: [[377, 1016], [401, 1024], [378, 1041]], c: 0, tc: 1, t: '喫茶' }],
+      {o:[[641.7,467.9],[719.1,467.9],[719.1,605.8],[641.7,606.0]],f:[[647.2,473.4],[713.6,473.4],[713.6,600.3],[647.2,600.5]],c:0,tc:1,t:'term',v:1},  // term
+      {o:[[641.3,629.9],[719.3,630.0],[719.3,771.0],[641.3,771.2]],f:[[646.8,635.5],[713.8,635.5],[713.8,765.5],[646.8,765.7]],c:1,tc:0,t:'居酒屋',v:1},  // izakaya
+      {o:[[641.5,794.4],[719.1,794.4],[719.1,855.3],[641.4,855.4]],f:[[646.5,799.4],[714.1,799.4],[714.1,850.3],[646.4,850.4]],c:2,tc:1,t:'kana'},  // kana
+      {o:[[547.8,633.6],[597.2,633.7],[597.2,721.1],[547.7,721.0]],f:[[552.3,638.1],[592.7,638.1],[592.7,716.5],[552.2,716.5]],c:0,tc:1,t:'food',v:1},  // food
+      {o:[[547.5,736.6],[597.6,736.7],[597.3,826.4],[547.6,826.4]],f:[[552.0,741.1],[593.1,741.2],[592.8,821.9],[552.1,821.9]],c:1,tc:2,t:'カラオケ',v:1},  // karaoke
+      {o:[[547.6,841.5],[597.4,841.3],[597.2,930.3],[547.6,930.3]],f:[[552.1,846.0],[592.9,845.9],[592.7,925.8],[552.1,925.8]],c:2,tc:0,t:'item',v:1},  // item
+      {o:[[212.9,921.8],[256.7,955.9],[256.4,996.9],[213.0,970.8]],f:[[216.9,930.0],[252.7,957.9],[252.5,989.8],[217.0,968.6]],c:1,tc:0,t:'薬局',fs:17},  // yakkyoku
+      {o:[[611.3,895.1],[640.3,867.8],[661.2,867.7],[675.0,912.5],[627.6,943.4]],f:[[616.5,896.4],[642.1,872.3],[657.9,872.3],[669.7,910.6],[630.0,936.4]],c:0,tc:1,t:'one',fs:30,tq:[[616.5,896.4],[656.2,870.6],[669.7,910.6],[630.0,936.4]]},  // one
+      {o:[[474.3,973.3],[486.4,973.3],[486.7,992.4],[474.7,992.4]],f:[[476.3,975.2],[484.6,975.2],[484.7,990.5],[476.6,990.5]],c:0,tc:1,t:'ス'},  // su
+      {o:[[474.2,995.8],[486.7,995.5],[486.9,1015.2],[473.9,1015.5]],f:[[476.1,997.7],[484.8,997.5],[484.9,1013.3],[475.8,1013.5]],c:1,tc:0,t:'ナ'},  // na
+      {o:[[474.3,1019.1],[486.9,1019.3],[487.2,1038.2],[474.5,1038.1]],f:[[476.2,1021.0],[485.0,1021.2],[485.3,1036.3],[476.4,1036.2]],c:1,tc:0,t:'ッ'},  // tsu
+      {o:[[473.7,1043.3],[487.2,1043.3],[487.2,1053.1],[473.6,1053.2]],f:[[475.4,1045.0],[485.5,1045.0],[485.5,1051.4],[475.3,1051.4]],c:2,tc:1,t:'ク'},  // ku
+      {o:[[502.5,989.8],[521.2,989.7],[521.1,1020.7],[502.3,1022.5]],f:[[504.9,992.3],[518.7,992.2],[518.6,1018.4],[504.9,1019.7]],x:[[[511.4,1009.4],[523.2,1009.4],[523.2,1030.5],[511.4,1030.5]]],c:0,tc:1,t:'寿司',v:1,xs:1},  // sushi
+      {o:[[501.5,982.3],[501.5,986.5],[502.3,987.2],[520.5,987.2],[521.2,986.5],[521.2,981.3],[520.5,980.5],[508.3,980.5],[507.1,981.5],[502.3,981.5]],c:0},  // sushiHead
+      {o:[[378.1,1016.7],[400.4,1024.7],[400.4,1042.8],[377.8,1036.9]],f:[[380.6,1020.2],[397.9,1026.4],[397.9,1039.5],[380.4,1034.9]],c:0,tc:1,t:'喫茶'},  // kissa
+    ],
   };
   const SIGN_WORDS = {
     ko: { spring: { food: '딸기', shop: '꽃집', item: '벚꽃' }, summer: { food: '빙수', shop: '냉면', item: '수박' }, autumn: { food: '군밤', shop: '전어', item: '단풍' }, winter: { food: '호떡', shop: '어묵', item: '군고구마' } },
@@ -243,43 +271,64 @@
   const NEON = { spring: ['#ff6fae', '#86d846', '#ffcf40'], summer: ['#2ef2ff', '#1fd696', '#ff5ad8'], autumn: ['#ffb02e', '#ff5a3d', '#ffcc48'], winter: ['#7ab8ff', '#c08aff', '#46d8c0'] };
   const lumOf = c => { const v = rgb(c).map(x => { x /= 255; return x <= .03928 ? x / 12.92 : Math.pow((x + .055) / 1.055, 2.4); }); return .2126 * v[0] + .7152 * v[1] + .0722 * v[2]; };
   const FONT = { ko: "'Noto Sans KR','Noto Sans CJK KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif", ja: "'Noto Sans JP','Noto Sans CJK JP','Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif" };
+  // square -> quad (TL, TR, BR, BL), projective (Heckbert), so letters follow a panel seen in perspective
+  function homog(q) {
+    const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q, dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+    let g = 0, h = 0; const den = dx1 * dy2 - dx2 * dy1;
+    if (Math.abs(dx3) > 1e-9 || Math.abs(dy3) > 1e-9) { g = (dx3 * dy2 - dx2 * dy3) / den; h = (dx1 * dy3 - dx3 * dy1) / den; }
+    const a = x1 - x0 + g * x1, b = x3 - x0 + h * x3, d = y1 - y0 + g * y1, e = y3 - y0 + h * y3;
+    return (u, v) => { const z = g * u + h * v + 1; return [(a * u + b * v + x0) / z, (d * u + e * v + y0) / z]; };
+  }
+  const f3 = n => Math.round(n * 1000) / 1000, dist = (p, q) => Math.hypot(q[0] - p[0], q[1] - p[1]);
+  const boxOf = pts => { const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x = Math.min(...xs), y = Math.min(...ys); return [x, y, Math.max(...xs) - x, Math.max(...ys) - y]; };
+  const adv = ch => /[\u0000-ɏ]/.test(ch) ? .62 : 1; // Latin letters are narrower than hangul / kanji / kana
   function signs(L, pic, cal, ji, season) {
     const pal = NEON[season], words = SIGN_WORDS[cal][season], J = window.SEASONS, font = FONT[cal];
     const termHj = cal === 'ja' ? J.JA.TERMS[ji][0] : J.JEOLGI[ji][0], termKo = J.JEOLGI[ji][1], kana = cal === 'ja' ? J.JA.TERMS[ji][1] : '';
-    SIGNS[pic].forEach(sg => {
-      let quad, m, w, h;
-      {
-        const [[x0, y0], [x1, y1], [x3, y3]] = sg.p; w = Math.hypot(x1 - x0, y1 - y0); h = Math.hypot(x3 - x0, y3 - y0);
-        m = `matrix(${f((x1 - x0) / w * 1000) / 1000} ${f((y1 - y0) / w * 1000) / 1000} ${f((x3 - x0) / h * 1000) / 1000} ${f((y3 - y0) / h * 1000) / 1000} ${x0} ${y0})`;
-        quad = [[x0, y0], [x1, y1], [x1 + x3 - x0, y1 + y3 - y0], [x3, y3]];
-      }
-      const col = pal[sg.c], tc = pal[sg.tc ?? (sg.c + 1) % 3], small = Math.min(w, h) < 20, frame = sg.q || quad;
-      const hotF = lumOf(col) > .5, hotT = lumOf(tc) > .5; // light greens, yellows and cyans glare: dim their frames and keep their letters deeper
-      const mx = quad.reduce((a, q) => a + q[0], 0) / quad.length, my = quad.reduce((a, q) => a + q[1], 0) / quad.length, k = small ? .74 : .86;
-      const face = quad.map(([x, y]) => [mx + (x - mx) * k, my + (y - my) * k]);
-      L.color += `<g ${blur(8)}>${P(poly(frame), col, .8)}${S(poly(frame), col, 26, .45)}</g>` + P(poly(frame), col);   // the frame, recolored for the season
-      L.mult += P(poly(face), '#160c26', .9) + (hotF ? `<path d="${poly(frame)} ${poly(face)}" fill="#7a7a86" fill-rule="evenodd" opacity=".75"/>` : '');   // a dark face for the tubes to glow on
-      const txt = (s, x, y, fs, st) => `<text x="${f(x)}" y="${f(y)}" font-size="${f(fs)}" font-family="${font}" font-weight="${cal === 'ko' ? 700 : 800}" fill="${st.fill}" stroke="${st.stroke}" stroke-width="${f(fs * st.sw)}" stroke-linejoin="round" paint-order="stroke" text-anchor="middle" dominant-baseline="central"${st.ls ? ` letter-spacing="${f(st.ls)}"` : ''}>${s}</text>`;
-      // letters stay inside the dark face, clear of the lit frame: lay them out in the inner box
-      const px = w * (1 - k) / 2 + (small ? .6 : 2.5), py = h * (1 - k) / 2 + (small ? .6 : 2.5), iw = w - 2 * px, ih = h - 2 * py, cx = w / 2;
-      const lay = st => {
+    let halos = '', frames = ''; const hb = [];
+    SIGNS[pic].forEach((sg, si) => {
+      const col = pal[sg.c], hotF = lumOf(col) > .5, ob = boxOf(sg.o);
+      // the mask that keeps things painted in front of the panel uncovered (only as big as the panel, so it stays cheap)
+      const occ = sg.x ? (() => { const id = 'sx' + (N++), [x, y, w, h] = [ob[0] - 3, ob[1] - 3, ob[2] + 6, ob[3] + 6];
+        defs += `<mask id="${id}" maskUnits="userSpaceOnUse" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}">${RC(x, y, w, h, '#fff')}<path d="${sg.x.map(poly).join(' ')}" fill="#000" fill-rule="evenodd"/></mask>`; return ` mask="url(#${id})"`; })() : '';
+      // the frame, recolored for the season: a soft spill of light on the wall, then the exact lit outline (no blur, no gap)
+      halos += P(poly(sg.o), col) + S(poly(sg.o), col, 14, .6); hb.push(...sg.o);
+      frames += sg.x ? `<g${occ}>${P(poly(sg.o), col)}</g>` : P(poly(sg.o), col);
+      if (!sg.f) return; // a lit strip with no face (the sushi bar's header)
+      REFL.push({ x: ob[0] + ob[2] / 2, w: ob[2], col });
+      const tc = pal[sg.tc ?? (sg.c + 1) % 3], hotT = lumOf(tc) > .5, q = sg.tq || sg.f, M = homog(q);
+      const w = (dist(q[0], q[1]) + dist(q[3], q[2])) / 2, h = (dist(q[0], q[3]) + dist(q[1], q[2])) / 2, small = Math.min(w, h) < 16;
+      // a dark face for the tubes to glow on (dimmer frames for the glary colors)
+      L.mult += `<g${sg.xs ? occ : ''}>${P(poly(sg.f), '#160c26', .9)}${hotF ? `<path d="${poly(sg.o)} ${poly(sg.f)}" fill="#7a7a86" fill-rule="evenodd" opacity=".75"/>` : ''}</g>`;
+      const cid = 'sc' + (N++); defs += `<clipPath id="${cid}"><path d="${poly(sg.f)}"/></clipPath>`;
+      const at = (x, y) => { const p = M(x / w, y / h), ex = M((x + .5) / w, y / h), ey = M(x / w, (y + .5) / h);
+        return `matrix(${f3((ex[0] - p[0]) * 2)} ${f3((ex[1] - p[1]) * 2)} ${f3((ey[0] - p[0]) * 2)} ${f3((ey[1] - p[1]) * 2)} ${f(p[0])} ${f(p[1])})`; };
+      // one <text> per glyph, each placed through the panel's perspective at its own position
+      const txt = (s, x, y, fs, sw, ls = 0) => { const cs = [...s], tot = cs.reduce((a, ch) => a + adv(ch) * fs, 0) + ls * (cs.length - 1); let xx = x - tot / 2, o = '';
+        cs.forEach(ch => { const aw = adv(ch) * fs; o += `<text transform="${at(xx + aw / 2, y)}" font-size="${f(fs)}" stroke-width="${f(fs * sw)}">${ch}</text>`; xx += aw + ls; }); return o; };
+      const pad = small ? .35 : 1.2 + Math.min(w, h) * .03, iw = w - 2 * pad, ih = h - 2 * pad, cx = w / 2;
+      const lay = sw => {
         let g = '';
         if (sg.t === 'term') {
           if (cal === 'ko') { // hangul big, a clear gap, then the hanja small (no rule line: it fused with the last jamo)
-            const fs = Math.min(iw * .82, ih / 3.5), fh = fs * .42, top = py + (ih - fs * 3.45) / 2;
-            g += txt(termKo[0], cx, top + fs * .55, fs, st) + txt(termKo[1], cx, top + fs * 1.7, fs, st) + txt(termHj[0], cx, top + fs * 2.45 + fh * .6, fh, st) + txt(termHj[1], cx, top + fs * 2.45 + fh * 1.78, fh, st); }
-          else { const fs = Math.min(iw * .86, ih / 2.14); g += txt(termHj[0], cx, h / 2 - fs * .53, fs, st) + txt(termHj[1], cx, h / 2 + fs * .53, fs, st); }
+            const fs = Math.min(iw * .82, ih / 3.5), fh = fs * .42, top = pad + (ih - fs * 3.45) / 2;
+            g += txt(termKo[0], cx, top + fs * .55, fs, sw) + txt(termKo[1], cx, top + fs * 1.7, fs, sw) + txt(termHj[0], cx, top + fs * 2.45 + fh * .6, fh, sw) + txt(termHj[1], cx, top + fs * 2.45 + fh * 1.78, fh, sw); }
+          else { const fs = Math.min(iw * .86, ih / 2.14); g += txt(termHj[0], cx, h / 2 - fs * .53, fs, sw) + txt(termHj[1], cx, h / 2 + fs * .53, fs, sw); }
         } else {
           const str = sg.t === 'kana' ? kana : words[sg.t] || sg.t, chars = [...str];
-          if (sg.v) { const gap = cal === 'ko' ? 1.16 : 1.06, fs = Math.min(iw * .84, ih / (chars.length * gap)), y = h / 2 - (chars.length - 1) * fs * gap / 2; chars.forEach((ch, i) => g += txt(ch, cx, y + i * fs * gap, fs, st)); }
-          else { const fs = Math.min(sg.fs || 99, ih * .8, iw / (chars.length * (cal === 'ko' ? 1.1 : 1.04))); const ls = cal === 'ko' ? fs * .06 : 0; g += txt(str, cx + ls / 2, h / 2, fs, Object.assign({ ls }, st)); }
+          if (sg.v) { const gap = cal === 'ko' ? 1.16 : 1.06, fs = Math.min(iw * .84, ih / (chars.length * gap)), y = h / 2 - (chars.length - 1) * fs * gap / 2; chars.forEach((ch, i) => g += txt(ch, cx, y + i * fs * gap, fs, sw)); }
+          else { const units = chars.reduce((a, ch) => a + adv(ch), 0), fs = Math.min(sg.fs || 99, ih * .8, iw / (units * (cal === 'ko' ? 1.1 : 1.04) + (chars.length > 1 && cal === 'ko' ? .06 * (chars.length - 1) : 0))); g += txt(str, cx, h / 2, fs, sw, cal === 'ko' ? fs * .06 : 0); }
         }
         return g;
       };
-      // a tight glow (not a haze), then a bright core with a thin colored edge
-      L.screen += P(poly(face), tc, .05) + `<g transform="${m}"><g ${blur(small ? .9 : 2)} opacity="${hotT ? .32 : .55}">${lay({ fill: tc, stroke: tc, sw: .12 })}</g><g ${blur(small ? .35 : .7)} opacity="${hotT ? .5 : .8}">${lay({ fill: tc, stroke: tc, sw: .05 })}</g></g>`;
-      L.text += `<g transform="${m}">${lay({ fill: hotT ? mix(tc, '#ffffff', .12) : mix(tc, '#ffffff', .5), stroke: hotT ? shade(tc, -.25) : tc, sw: small ? .025 : .035 })}</g>`;
+      const tAttr = (fill, stroke) => `font-family="${font}" font-weight="${cal === 'ko' ? 700 : 800}" fill="${fill}" stroke="${stroke}" stroke-linejoin="round" paint-order="stroke" text-anchor="middle" dominant-baseline="central"`;
+      const fb = boxOf(sg.f);
+      // a tight glow (not a haze), then a bright core with a thin colored edge; all of it stays on the face, behind anything in front
+      L.screen += `<g clip-path="url(#${cid})"${occ}>${P(poly(sg.f), tc, .05)}<g ${blur(small ? .9 : 2, fb)} opacity="${hotT ? .32 : .55}" ${tAttr(tc, tc)}>${lay(.12)}</g><g ${blur(small ? .35 : .7, fb)} opacity="${hotT ? .5 : .8}" ${tAttr(tc, tc)}>${lay(.05)}</g></g>`;
+      L.text += `<g clip-path="url(#${cid})"${occ} ${tAttr(hotT ? mix(tc, '#ffffff', .12) : mix(tc, '#ffffff', .5), hotT ? shade(tc, -.25) : tc)}>${lay(small ? .025 : .035)}</g>`;
     });
+    const b = boxOf(hb); // all the spills blurred together (one filter), then every exact frame on top (a neighbor's spill never tints a panel)
+    L.color += `<g ${blur(9, [b[0] - 7, b[1] - 7, b[2] + 14, b[3] + 14])} opacity=".5">${halos}</g>` + frames;
   }
 
   /* ---------- assemble ---------- */
@@ -288,7 +337,7 @@
   function render(theme, cal, ji) {
     cal = cal === 'ja' ? 'ja' : 'ko'; ji = ((+ji || 0) % 24 + 24) % 24; if (!LIST.includes(theme)) theme = 'cyber';
     const pic = picture(theme, cal, ji), g = GEO[pic], T = TERMS[ji], season = seasonOfTerm(ji), cy = theme === 'cyber', coldArt = /_cold$/.test(pic);
-    seed = 7 + ji * 7919 + LIST.indexOf(theme) * 104729 + (cal === 'ja' ? 31337 : 0); defs = ''; N = 0;
+    seed = 7 + ji * 7919 + LIST.indexOf(theme) * 104729 + (cal === 'ja' ? 31337 : 0); defs = ''; N = 0; REFL = [];
     const L = { mult: '', sat: '', soft: '', color: '', screen: '', text: '', norm: '' };
     light(L, T.tod, g, cy); if (T.grade) grade(L, T.grade, g, cy, coldArt);
     if (cy) signs(L, pic, cal, ji, season);

@@ -1,6 +1,6 @@
 /* Offline cache: serves from cache instantly, refreshes files in the background.
    After you upload new files, the update shows on the next app launch. */
-const VERSION = 'deificatio-v10.4', ART = 'deificatio-art-1'; // ART: theme pictures, kept across app updates
+const VERSION = 'deificatio-v10.5', ART = 'deificatio-art-1'; // ART: theme pictures, kept across app updates
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'data/catalog.js', 'data/seasons.js', 'scenes.js', 'themes.js', 'data/foods.js', 'manifest.webmanifest',
   ...['cyber', 'cottage', 'village', 'academia'].flatMap(t => [`themes/t_${t}_ko.jpg`, `themes/t_${t}_ja.jpg`]),
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
