@@ -2,35 +2,76 @@
    MET values approximate the 2024 Adult Compendium of Physical Activities.
    Calories = MET x bodyweight(kg) x hours. */
 (function () {
-  const A = (id, name, group, met, skill) => ({ id, name, group, met, skill });
+  // f = the Workout subfolder the activity is listed under (same ids as the skill folders below)
+  const A = (id, name, f, met, skill) => ({ id, name, f, met, skill });
   const ACTIVITIES = [
-    A('bjj_drill', 'Brazilian Jiu-Jitsu — Drills', 'Combat', [4.0, 5.3, 6.5], 'bjj'),
-    A('bjj_spar', 'Brazilian Jiu-Jitsu — Sparring (rolling)', 'Combat', [7.0, 8.0, 10.3], 'bjj'),
-    A('mt_drill', 'Muay Thai — Drills / pads', 'Combat', [5.3, 7.3, 9.0], 'muaythai'),
-    A('mt_spar', 'Muay Thai — Sparring', 'Combat', [7.8, 10.3, 12.0], 'muaythai'),
-    A('box_drill', 'Boxing — Drills / bag', 'Combat', [4.5, 5.5, 7.0], 'boxing'),
-    A('box_spar', 'Boxing — Sparring', 'Combat', [6.5, 7.8, 12.8], 'boxing'),
-    A('mma', 'MMA — Training', 'Combat', [5.3, 8.0, 10.3], 'mma'),
-    A('boulder', 'Bouldering', 'Climbing', [4.5, 5.8, 7.5], 'climbing'),
-    A('rope', 'Rock climbing (rope)', 'Climbing', [5.0, 7.3, 8.0], 'climbing'),
-    A('run', 'Running (distance)', 'Running', [8.3, 9.8, 11.8], 'longrun'),
-    A('sprint', 'Sprint intervals', 'Running', [9.0, 12.0, 15.0], 'sprint'),
-    A('walk', 'Walking', 'Running', [2.8, 3.5, 5.0], null),
-    A('hike', 'Hiking', 'Running', [5.3, 6.0, 7.8], 'hiking'),
-    A('lift', 'Weight lifting', 'Strength', [3.5, 5.0, 6.0], 'weights'),
-    A('calis', 'Calisthenics (push-ups, pull-ups, squats)', 'Strength', [2.8, 3.8, 8.0], null),
-    A('hiit', 'HIIT / circuit', 'Strength', [6.0, 8.0, 10.0], null),
-    A('jumprope', 'Jump rope', 'Strength', [8.8, 11.8, 12.3], null),
-    A('yoga', 'Yoga / mobility', 'Strength', [2.5, 3.0, 4.0], 'mobility'),
-    A('swim', 'Swimming laps', 'Water', [5.8, 8.3, 9.8], 'swimming'),
-    A('waterpolo', 'Water polo', 'Water', [7.0, 10.0, 12.0], 'waterpolo'),
-    A('basketball', 'Basketball', 'Sports', [6.0, 6.5, 8.0], 'basketball'),
-    A('soccer', 'Soccer', 'Sports', [7.0, 7.0, 10.0], 'soccer'),
-    A('tennis', 'Tennis', 'Sports', [5.0, 7.3, 8.0], 'tennis'),
-    A('cycling', 'Cycling', 'Sports', [4.0, 6.8, 10.0], 'cycling'),
-    A('rowing', 'Rowing machine', 'Sports', [4.8, 7.0, 8.5], null),
-    A('ski_down', 'Skiing — downhill', 'Sports', [4.3, 5.3, 8.0], 'skiing'),
-    A('ski_xc', 'Skiing — cross-country', 'Sports', [6.8, 9.0, 12.5], 'skiing'),
+    A('bjj_drill', 'Brazilian Jiu-Jitsu — Drills', 'combat', [4.0, 5.3, 6.5], 'bjj'),
+    A('bjj_spar', 'Brazilian Jiu-Jitsu — Sparring (rolling)', 'combat', [7.0, 8.0, 10.3], 'bjj'),
+    A('mt_drill', 'Muay Thai — Drills / pads', 'combat', [5.3, 7.3, 9.0], 'muaythai'),
+    A('mt_spar', 'Muay Thai — Sparring', 'combat', [7.8, 10.3, 12.0], 'muaythai'),
+    A('box_drill', 'Boxing — Drills / bag', 'combat', [4.5, 5.5, 7.0], 'boxing'),
+    A('box_spar', 'Boxing — Sparring', 'combat', [6.5, 7.8, 12.8], 'boxing'),
+    A('mma', 'MMA — Training', 'combat', [5.3, 8.0, 10.3], 'mma'),
+    A('wrestling', 'Wrestling', 'combat', [4.5, 6.0, 8.0], 'wrestling'),
+    A('judo', 'Judo', 'combat', [4.0, 5.3, 10.3], 'judo'),
+    A('karate', 'Karate', 'combat', [4.0, 5.3, 10.3], 'karate'),
+    A('tkd', 'Taekwondo', 'combat', [4.0, 5.3, 10.3], 'taekwondo'),
+    A('kickbox', 'Kickboxing', 'combat', [5.3, 7.3, 10.3], 'kickboxing'),
+    A('krav', 'Krav Maga', 'combat', [5.3, 7.3, 10.3], 'kravmaga'),
+    A('kungfu', 'Kung Fu', 'combat', [4.0, 5.3, 10.3], 'kungfu'),
+    A('hapkido', 'Hapkido', 'combat', [4.0, 5.3, 8.0], 'hapkido'),
+    A('aikido', 'Aikido', 'combat', [3.0, 4.0, 6.0], 'aikido'),
+    A('kendo', 'Kendo', 'combat', [4.0, 5.3, 8.0], 'kendo'),
+    A('sambo', 'Sambo', 'combat', [5.3, 7.0, 10.3], 'sambo'),
+    A('capoeira', 'Capoeira', 'combat', [4.0, 5.3, 8.0], 'capoeira'),
+    A('fencing', 'Fencing', 'combat', [4.0, 6.0, 8.0], 'fencing'),
+    A('run', 'Running (distance)', 'running', [8.3, 9.8, 11.8], 'longrun'),
+    A('sprint', 'Sprint intervals', 'running', [9.0, 12.0, 15.0], 'sprint'),
+    A('trail', 'Trail running', 'running', [8.0, 9.5, 12.0], 'trailrun'),
+    A('walk', 'Walking', 'running', [2.8, 3.5, 5.0], null),
+    A('boulder', 'Bouldering', 'climbing', [4.5, 5.8, 7.5], 'climbing'),
+    A('rope', 'Rock climbing (rope)', 'climbing', [5.0, 7.3, 8.0], 'climbing'),
+    A('mountaineer', 'Mountaineering', 'climbing', [5.0, 7.0, 9.5], 'mountaineering'),
+    A('lift', 'Weight lifting', 'strength', [3.5, 5.0, 6.0], 'weights'),
+    A('powerlift', 'Powerlifting', 'strength', [3.5, 5.0, 6.0], 'powerlifting'),
+    A('olylift', 'Olympic weightlifting', 'strength', [4.0, 5.5, 6.5], 'olylifting'),
+    A('kettlebell', 'Kettlebells', 'strength', [5.0, 7.0, 9.8], 'kettlebells'),
+    A('calis', 'Calisthenics (push-ups, pull-ups, squats)', 'strength', [2.8, 3.8, 8.0], 'calisthenics'),
+    A('hiit', 'HIIT / circuit', 'strength', [6.0, 8.0, 10.0], null),
+    A('jumprope', 'Jump rope', 'strength', [8.8, 11.8, 12.3], 'jumprope'),
+    A('rowing', 'Rowing machine', 'strength', [4.8, 7.0, 8.5], null),
+    A('elliptical', 'Elliptical', 'strength', [4.0, 5.0, 6.5], null),
+    A('yoga', 'Yoga / mobility', 'strength', [2.5, 3.0, 4.0], 'mobility'),
+    A('pilates', 'Pilates', 'strength', [2.8, 3.0, 4.0], 'pilates'),
+    A('swim', 'Swimming laps', 'water', [5.8, 8.3, 9.8], 'swimming'),
+    A('waterpolo', 'Water polo', 'water', [7.0, 10.0, 12.0], 'waterpolo'),
+    A('surf', 'Surfing', 'water', [3.0, 4.0, 5.0], 'surfing'),
+    A('diving', 'Diving (scuba / free)', 'water', [5.0, 7.0, 8.0], 'diving'),
+    A('kayak', 'Kayaking / canoeing', 'water', [3.5, 5.0, 8.0], 'kayaking'),
+    A('row_water', 'Rowing (on the water)', 'water', [4.8, 7.0, 12.0], 'rowing'),
+    A('basketball', 'Basketball', 'ball', [6.0, 6.5, 8.0], 'basketball'),
+    A('soccer', 'Soccer', 'ball', [7.0, 7.0, 10.0], 'soccer'),
+    A('tennis', 'Tennis', 'ball', [5.0, 7.3, 8.0], 'tennis'),
+    A('volleyball', 'Volleyball', 'ball', [3.0, 4.0, 8.0], 'volleyball'),
+    A('baseball', 'Baseball / softball', 'ball', [4.0, 5.0, 6.0], 'baseball'),
+    A('football', 'American football', 'ball', [6.0, 8.0, 9.0], 'football'),
+    A('golf', 'Golf (walking)', 'ball', [3.5, 4.3, 5.3], 'golf'),
+    A('tabletennis', 'Table tennis', 'ball', [3.0, 4.0, 5.5], 'tabletennis'),
+    A('badminton', 'Badminton', 'ball', [4.5, 5.5, 7.0], 'badminton'),
+    A('pickleball', 'Pickleball', 'ball', [3.5, 4.5, 6.0], 'pickleball'),
+    A('hockey', 'Ice hockey', 'ball', [6.0, 8.0, 10.0], 'hockey'),
+    A('rugby', 'Rugby', 'ball', [6.3, 8.3, 10.0], 'rugby'),
+    A('hike', 'Hiking', 'outdoor', [5.3, 6.0, 7.8], 'hiking'),
+    A('cycling', 'Cycling', 'outdoor', [4.0, 6.8, 10.0], 'cycling'),
+    A('ski_down', 'Skiing — downhill', 'outdoor', [4.3, 5.3, 8.0], 'skiing'),
+    A('ski_xc', 'Skiing — cross-country', 'outdoor', [6.8, 9.0, 12.5], 'skiing'),
+    A('snowboard', 'Snowboarding', 'outdoor', [4.3, 5.3, 8.0], 'snowboarding'),
+    A('skate_ice', 'Ice skating', 'outdoor', [5.5, 7.0, 9.0], 'iceskating'),
+    A('skateboard', 'Skateboarding', 'outdoor', [4.0, 5.0, 6.0], 'skateboarding'),
+    A('archery', 'Archery', 'outdoor', [3.0, 3.5, 4.3], 'archery'),
+    A('riding', 'Horseback riding', 'outdoor', [3.8, 5.5, 7.3], 'riding'),
+    A('dance', 'Dance', 'dance', [3.0, 5.0, 7.3], null),
+    A('dance_v', 'Dance — vigorous (hip-hop, swing, salsa)', 'dance', [5.5, 7.3, 8.5], null),
   ];
 
   // stat helpers. t: r=self rating 1-10, cefr, h=practice hours, c=consistency, m=measured metric (norm), a=auto
@@ -86,6 +127,133 @@
     S('hiking', 'Hiking', 'Sports', 'Training', 'min', 60, 300, [r('endur', 'Endurance'), r('nav', 'Navigation'), H(150), C], true),
   ];
 
+  /* ---- more defaults (v9). Every id is permanent: titles are stored as sk_<id>_<level> ---- */
+  const slug = n => n.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  // a ratings-based skill: axes are self-rated 1-10, plus practice hours and consistency
+  const RS = (id, name, f, cat, list, unit, base, max, axes, hrs, phys, extra) => Object.assign(S(id, name, cat, list, unit, base, max, axes.map(n => r(slug(n), n)).concat([H(hrs), C]), phys), { f }, extra || {});
+  const L2 = (id, name) => Object.assign(lang(id, name), { f: 'lang' }), I2 = (id, name) => Object.assign(inst(id, name), { f: 'music' });
+  const fight = (id, name, axes) => RS(id, name, 'combat', 'Combat', 'Training', 'min', 45, 120, axes, 300, true);
+  const sport = (id, name, f, axes, base = 45, max = 120, hrs = 200) => RS(id, name, f, 'Sports', 'Training', 'min', base, max, axes, hrs, true);
+  const gym = (id, name, axes, base = 30, max = 90, hrs = 150) => RS(id, name, 'strength', 'Exercise', 'Training', 'min', base, max, axes, hrs, true);
+  const study = (id, name, axes, hrs = 250) => RS(id, name, 'study', 'Study', 'Study', 'min', 20, 120, axes, hrs);
+  const art = (id, name, axes, hrs = 250) => RS(id, name, 'craft', 'Craft', 'Craft', 'min', 30, 180, axes, hrs);
+  const dance = (id, name, axes, act) => RS(id, name, 'dance', 'Dance', 'Training', 'min', 30, 120, axes, 200, true, { act });
+  SKILLS.push(
+    RS('scripture', 'Scripture Memorization', 'faith', 'Faith', 'Faith', 'min', 10, 45, ['Verses memorized', 'Recall', 'Understanding'], 100),
+    RS('churchhist', 'Church History', 'faith', 'Faith', 'Study', 'min', 20, 90, ['Early church', 'Reformation', 'Modern church'], 150),
+    study('history', 'History', ['Ancient', 'Medieval', 'Modern', 'Historiography']),
+    study('math', 'Mathematics', ['Algebra', 'Geometry', 'Calculus', 'Statistics', 'Proofs'], 300),
+    study('physics', 'Physics', ['Mechanics', 'Electromagnetism', 'Thermodynamics', 'Modern physics'], 300),
+    study('chemistry', 'Chemistry', ['General', 'Organic', 'Lab work']),
+    study('biology', 'Biology', ['Cell biology', 'Anatomy', 'Ecology', 'Genetics']),
+    study('economics', 'Economics', ['Microeconomics', 'Macroeconomics', 'Finance', 'Data']),
+    study('psychology', 'Psychology', ['Cognitive', 'Developmental', 'Social', 'Clinical']),
+    study('literature', 'Literature', ['Close reading', 'Classics', 'Poetry', 'Criticism']),
+    L2('italian', 'Italian'), L2('portuguese', 'Portuguese'), L2('russian', 'Russian'), L2('arabic', 'Arabic'), L2('hindi', 'Hindi'), L2('vietnamese', 'Vietnamese'),
+    L2('latin', 'Latin'), L2('greek', 'Koine Greek'), L2('hebrew', 'Biblical Hebrew'), L2('asl', 'Sign Language (ASL)'),
+    art('painting', 'Painting', ['Color', 'Composition', 'Brushwork', 'Values']),
+    art('photography', 'Photography', ['Composition', 'Light', 'Editing', 'Camera craft']),
+    art('design', 'Graphic Design', ['Typography', 'Layout', 'Color', 'Branding']),
+    art('modeling3d', '3D Modeling', ['Modeling', 'Texturing', 'Lighting', 'Rigging']),
+    art('animation', 'Animation', ['Timing', 'Posing', 'Drawing', 'Software']),
+    art('gamedev', 'Game Development', ['Programming', 'Design', 'Art', 'Shipping'], 400),
+    art('calligraphy', 'Calligraphy', ['Brush control', 'Structure', 'Rhythm', 'Scripts']),
+    art('woodworking', 'Woodworking', ['Joinery', 'Tools', 'Finishing', 'Design']),
+    art('sewing', 'Sewing & Knitting', ['Technique', 'Patterns', 'Finishing']),
+    art('pottery', 'Pottery', ['Throwing', 'Hand-building', 'Glazing']),
+    I2('singing', 'Singing'), I2('violin', 'Violin'), I2('cello', 'Cello'), I2('drums', 'Drums'), I2('bass', 'Bass Guitar'), I2('ukulele', 'Ukulele'), I2('flute', 'Flute'), I2('saxophone', 'Saxophone'),
+    RS('programming', 'Programming', 'work', 'Work', 'Work', 'min', 30, 180, ['Fundamentals', 'Algorithms', 'Systems', 'Tooling', 'Projects'], 400),
+    RS('speaking', 'Public Speaking', 'work', 'Work', 'Work', 'min', 15, 60, ['Delivery', 'Structure', 'Confidence', 'Storytelling'], 100),
+    RS('typing', 'Typing', 'work', 'Work', 'Work', 'min', 10, 30, ['Speed', 'Accuracy', 'Touch typing'], 40),
+    RS('leadership', 'Leadership', 'work', 'Work', 'Work', 'min', 20, 60, ['Vision', 'Delegation', 'Feedback', 'Decisions'], 300),
+    RS('negotiation', 'Sales & Negotiation', 'work', 'Work', 'Work', 'min', 20, 60, ['Preparation', 'Persuasion', 'Listening', 'Closing'], 200),
+    RS('spreadsheets', 'Spreadsheets', 'work', 'Work', 'Work', 'min', 20, 60, ['Formulas', 'Data cleanup', 'Charts', 'Automation'], 100),
+    RS('cooking', 'Cooking', 'life', 'Life', 'Daily', 'min', 20, 90, ['Knife skills', 'Techniques', 'Flavor', 'Meal planning'], 200),
+    RS('baking', 'Baking', 'life', 'Life', 'Daily', 'min', 30, 120, ['Bread', 'Pastry', 'Precision', 'Decorating'], 150),
+    RS('finance', 'Personal Finance', 'life', 'Life', 'Daily', 'min', 15, 60, ['Budgeting', 'Saving', 'Investing', 'Taxes'], 80),
+    RS('gardening', 'Gardening', 'life', 'Life', 'Chores', 'min', 20, 90, ['Soil', 'Plants', 'Pests', 'Harvest'], 150),
+    RS('diy', 'Home Repair', 'life', 'Life', 'Chores', 'min', 30, 120, ['Tools', 'Plumbing', 'Electrical', 'Carpentry'], 150),
+    RS('firstaid', 'First Aid', 'life', 'Life', 'Study', 'min', 10, 30, ['CPR', 'Wounds', 'Emergencies'], 40),
+    RS('driving', 'Driving', 'life', 'Life', 'Daily', 'min', 20, 60, ['Control', 'Awareness', 'Parking', 'Highway'], 100),
+    RS('chess', 'Chess', 'mind', 'Mind', 'Study', 'min', 20, 120, ['Tactics', 'Strategy', 'Openings', 'Endgames'], 300),
+    RS('go', 'Go (Baduk)', 'mind', 'Mind', 'Study', 'min', 20, 120, ['Reading', 'Shape', 'Openings', 'Endgame'], 300),
+    RS('rubik', "Rubik's Cube", 'mind', 'Mind', 'Study', 'min', 10, 60, ['Algorithms', 'Look-ahead', 'Speed'], 60),
+    RS('memory', 'Memory Training', 'mind', 'Mind', 'Study', 'min', 10, 45, ['Numbers', 'Names', 'Memory palace'], 60),
+    RS('speedreading', 'Speed Reading', 'mind', 'Mind', 'Study', 'min', 10, 45, ['Speed', 'Comprehension', 'Retention'], 50),
+    fight('wrestling', 'Wrestling', ['Takedowns', 'Top control', 'Escapes', 'Conditioning']),
+    fight('judo', 'Judo', ['Throws', 'Grips', 'Newaza', 'Breakfalls']),
+    fight('karate', 'Karate', ['Kihon', 'Kata', 'Kumite', 'Conditioning']),
+    fight('taekwondo', 'Taekwondo', ['Kicks', 'Poomsae', 'Sparring', 'Flexibility']),
+    fight('kickboxing', 'Kickboxing', ['Punches', 'Kicks', 'Defense', 'Conditioning']),
+    fight('kravmaga', 'Krav Maga', ['Striking', 'Defenses', 'Ground', 'Awareness']),
+    fight('kungfu', 'Kung Fu', ['Forms', 'Stances', 'Sparring', 'Flexibility']),
+    fight('hapkido', 'Hapkido', ['Joint locks', 'Throws', 'Kicks', 'Breakfalls']),
+    fight('aikido', 'Aikido', ['Ukemi', 'Techniques', 'Weapons', 'Flow']),
+    fight('kendo', 'Kendo', ['Strikes', 'Footwork', 'Kata', 'Spirit']),
+    fight('sambo', 'Sambo', ['Throws', 'Leg locks', 'Ground', 'Conditioning']),
+    fight('capoeira', 'Capoeira', ['Movement', 'Kicks', 'Music', 'Acrobatics']),
+    fight('fencing', 'Fencing', ['Footwork', 'Blade work', 'Tactics', 'Speed']),
+    RS('trailrun', 'Trail Running', 'running', 'Running', 'Training', 'km', 3, 30, ['Endurance', 'Climbing', 'Descending', 'Footing'], 150, true),
+    RS('mountaineering', 'Mountaineering', 'climbing', 'Climbing', 'Training', 'min', 60, 300, ['Endurance', 'Rope work', 'Navigation', 'Altitude'], 200, true),
+    gym('calisthenics', 'Calisthenics', ['Pushing', 'Pulling', 'Core', 'Skills']),
+    gym('powerlifting', 'Powerlifting', ['Squat', 'Bench', 'Deadlift', 'Form'], 45, 120, 300),
+    gym('olylifting', 'Olympic Weightlifting', ['Snatch', 'Clean & jerk', 'Mobility', 'Speed'], 45, 120, 300),
+    gym('kettlebells', 'Kettlebells', ['Swings', 'Get-ups', 'Snatches', 'Endurance'], 15, 60, 100),
+    gym('pilates', 'Pilates', ['Core', 'Control', 'Flexibility'], 20, 60, 100),
+    gym('jumprope', 'Jump Rope', ['Endurance', 'Tricks', 'Rhythm'], 10, 30, 60),
+    RS('handstand', 'Handstands', 'strength', 'Exercise', 'Training', 'min', 10, 30, ['Balance', 'Strength', 'Shape'], 80, true, { act: 'calis' }),
+    sport('surfing', 'Surfing', 'water', ['Paddling', 'Pop-up', 'Wave reading', 'Turns'], 60, 180),
+    sport('diving', 'Diving', 'water', ['Breath-hold', 'Buoyancy', 'Safety', 'Navigation'], 30, 120, 150),
+    sport('kayaking', 'Kayaking & Canoeing', 'water', ['Strokes', 'Endurance', 'Rescue', 'Navigation'], 45, 180, 150),
+    sport('rowing', 'Rowing', 'water', ['Technique', 'Power', 'Endurance'], 30, 120),
+    sport('volleyball', 'Volleyball', 'ball', ['Serve', 'Passing', 'Setting', 'Spiking']),
+    sport('baseball', 'Baseball / Softball', 'ball', ['Hitting', 'Fielding', 'Throwing', 'Base running']),
+    sport('football', 'American Football', 'ball', ['Speed', 'Catching', 'Blocking', 'Playbook']),
+    sport('golf', 'Golf', 'ball', ['Driving', 'Irons', 'Short game', 'Putting'], 45, 240),
+    sport('tabletennis', 'Table Tennis', 'ball', ['Forehand', 'Backhand', 'Serve', 'Spin'], 30, 120),
+    sport('badminton', 'Badminton', 'ball', ['Clears', 'Smashes', 'Net play', 'Footwork']),
+    sport('pickleball', 'Pickleball', 'ball', ['Dinks', 'Drives', 'Serve', 'Strategy']),
+    sport('hockey', 'Ice Hockey', 'ball', ['Skating', 'Stickhandling', 'Shooting', 'Defense'], 60, 150),
+    sport('rugby', 'Rugby', 'ball', ['Tackling', 'Passing', 'Running', 'Rucking'], 60, 150),
+    sport('snowboarding', 'Snowboarding', 'outdoor', ['Carving', 'Terrain', 'Park', 'Speed control'], 60, 240, 150),
+    sport('iceskating', 'Ice Skating', 'outdoor', ['Edges', 'Speed', 'Spins', 'Balance'], 30, 120, 150),
+    sport('skateboarding', 'Skateboarding', 'outdoor', ['Balance', 'Tricks', 'Transitions', 'Style'], 30, 120, 150),
+    sport('archery', 'Archery', 'outdoor', ['Form', 'Accuracy', 'Consistency'], 30, 120, 150),
+    sport('riding', 'Horseback Riding', 'outdoor', ['Seat', 'Control', 'Jumping', 'Horse care'], 45, 120, 200),
+    dance('ballroom', 'Ballroom', ['Frame', 'Footwork', 'Musicality', 'Partnering'], 'dance'),
+    dance('salsa', 'Salsa', ['Footwork', 'Turns', 'Musicality', 'Partnering'], 'dance_v'),
+    dance('hiphop', 'Hip-Hop Dance', ['Grooves', 'Choreography', 'Freestyle', 'Musicality'], 'dance_v'),
+    dance('ballet', 'Ballet', ['Technique', 'Turnout', 'Jumps', 'Artistry'], 'dance'),
+    dance('swing', 'Swing Dance', ['Footwork', 'Connection', 'Musicality', 'Aerials'], 'dance_v'),
+  );
+  /* Folders for the Skills library (two levels). Workout is the big one; its subfolders also group "Log a workout". */
+  const F = (id, name, parent = null) => ({ id, name, parent });
+  const FOLDERS = [F('faith', 'Faith'), F('study', 'Study'), F('lang', 'Languages'), F('craft', 'Craft & Arts'), F('music', 'Instruments'), F('work', 'Work'), F('life', 'Life Skills'), F('mind', 'Mind & Games'),
+    F('workout', 'Workout'), F('combat', 'Combat', 'workout'), F('running', 'Running', 'workout'), F('climbing', 'Climbing', 'workout'), F('strength', 'Strength & Mobility', 'workout'), F('water', 'Water', 'workout'),
+    F('ball', 'Ball & Racket', 'workout'), F('outdoor', 'Outdoor & Winter', 'workout'), F('dance', 'Dance', 'workout'), F('custom', 'Custom')];
+  const CAT_FOLDER = { Faith: 'faith', Study: 'study', Languages: 'lang', Craft: 'craft', Instruments: 'music', Work: 'work', Combat: 'combat', Climbing: 'climbing', Running: 'running', Exercise: 'strength' };
+  const ID_FOLDER = { skiing: 'outdoor', swimming: 'water', waterpolo: 'water', basketball: 'ball', soccer: 'ball', tennis: 'ball', cycling: 'outdoor', hiking: 'outdoor' };
+  SKILLS.forEach(s => { if (!s.f) s.f = ID_FOLDER[s.id] || CAT_FOLDER[s.cat] || 'custom'; });
+
+  /* Belt ladders (common adult systems; they vary by school, so the app lets you edit them).
+     m = how many marks a belt can carry, ml = what they're called: stripe / degree / dan / kyu; d0 = first dan number on that belt. */
+  const B = (n, c, m = 0, ml = 'stripe', c2 = null, d0 = 1) => ({ n, c, c2, m, ml, d0 });
+  const WH = '#f2f0ea', BK = '#161616', RD = '#c4302b', YE = '#e9c629', OR = '#e7832b', GR = '#2f8f46', BL = '#2c5fbf', PU = '#6c3fa8', BR = '#6b4424';
+  const blackDan = n => B('Black', BK, n, 'dan');
+  const BELTS = {
+    bjj: { belts: [B('White', WH, 4), B('Blue', BL, 4), B('Purple', PU, 4), B('Brown', BR, 4), B('Black', BK, 6, 'degree'), B('Red & Black', RD, 0, 'stripe', BK), B('Red & White', RD, 0, 'stripe', WH), B('Red', RD)] },
+    judo: { belts: [B('White', WH), B('Yellow', YE), B('Orange', OR), B('Green', GR), B('Blue', BL), B('Brown', BR), B('Black', BK, 4, 'dan'), B('Red & White', RD, 2, 'dan', WH, 6), B('Red', RD, 1, 'dan', null, 9)] },
+    karate: { belts: [B('White', WH), B('Yellow', YE), B('Orange', OR), B('Green', GR), B('Blue', BL), B('Purple', PU), B('Brown', BR), blackDan(9)] },
+    taekwondo: { belts: [B('White', WH), B('Yellow', YE), B('Green', GR), B('Blue', BL), B('Red', RD), blackDan(8)] },
+    kickboxing: { belts: [B('White', WH), B('Yellow', YE), B('Orange', OR), B('Green', GR), B('Blue', BL), B('Brown', BR), blackDan(9)] },
+    kravmaga: { belts: [B('White', WH), B('Yellow', YE), B('Orange', OR), B('Green', GR), B('Blue', BL), B('Brown', BR), blackDan(9)] },
+    kungfu: { word: 'Sash', belts: [B('White', WH), B('Yellow', YE), B('Orange', OR), B('Green', GR), B('Blue', BL), B('Purple', PU), B('Red', RD), B('Brown', BR), B('Black', BK, 9, 'degree')] },
+    hapkido: { belts: [B('White', WH), B('Yellow', YE), B('Orange', OR), B('Green', GR), B('Purple', PU), B('Blue', BL), B('Brown', BR), B('Red', RD), blackDan(9)] },
+    aikido: { belts: [B('White', WH, 5, 'kyu'), B('Black', BK, 7, 'dan')] },
+  };
+  // martial arts with a belt system get a "Belt" side on their hexagon (before practice hours & consistency)
+  Object.keys(BELTS).forEach(id => { const s = SKILLS.find(x => x.id === id); if (s && !s.stats.some(x => x.t === 'belt')) s.stats.splice(s.stats.length - 2, 0, { k: 'belt', n: 'Belt', t: 'belt' }); });
+
   // Approximate adult reference norms at age 25 (mean, sd) with drift per decade. lower=true means lower is better.
   const NORMS = {
     bodyfat: { n: 'Body fat', u: '%', lower: true, M: [19, 6, 1.5], F: [27, 6, 1.5], floor: { M: 8, F: 16 } },
@@ -115,7 +283,7 @@
     Degrees: ['High School Diploma', "Associate's Degree", "Bachelor's Degree", "Master's Degree", 'Doctorate', 'Professional Certification', 'Language Certificate (TOPIK / DELE / JLPT / HSK …)'],
     Jobs: ['First Job', 'Lifeguard', 'Customer Service', 'Intern', 'Club President', 'Team Captain', 'Freelancer', 'Game Designer', 'Game Programmer', 'Shipped a Game', 'AAA Studio Hire', 'Promotion', 'Founder', 'Studio Lead'],
     Places: ['North America', 'South America', 'Europe', 'Asia', 'Africa', 'Oceania', 'Antarctica', 'South Korea', 'Japan', 'China', 'Germany', 'France', 'Spain', 'Mexico', 'Italy', 'United Kingdom', 'Thailand', 'Brazil', 'Israel', 'Vatican City', 'Seoul', 'Tokyo', 'Great Wall of China', 'Mount Fuji Summit', 'Eiffel Tower', 'Jerusalem', "St. Peter's Basilica", 'Camino de Santiago (walked)', 'Machu Picchu', 'Grand Canyon', 'The Alps (skied)', 'Arctic Circle', 'Everest Base Camp', '10 Countries', '25 Countries', '50 Countries', 'All 50 US States'],
-    Milestones: ['Graduated College', 'Moved Out', 'Moved Abroad', 'Half Marathon', 'Marathon', 'First Amateur Fight', 'First Muay Thai Fight', 'BJJ Blue Belt', 'BJJ Purple Belt', 'BJJ Brown Belt', 'BJJ Black Belt', 'Climbed V5', 'Climbed V8', 'Black Diamond Run', 'Published Writing', 'First Performance (music)', 'Baptism', 'Confirmation', 'Got Married', 'Became a Parent', 'Bought a Home', 'Debt-Free'],
+    Milestones: ['Graduated College', 'Moved Out', 'Moved Abroad', 'Half Marathon', 'Marathon', 'First Amateur Fight', 'First Muay Thai Fight', 'Climbed V5', 'Climbed V8', 'Black Diamond Run', 'Published Writing', 'First Performance (music)', 'Baptism', 'Confirmation', 'Got Married', 'Became a Parent', 'Bought a Home', 'Debt-Free'],
   };
 
   /* Task quests: everyday things that don't need a hexagon. unit 'times' = check-offs (sessions per day),
@@ -125,7 +293,7 @@
   const T = (id, name, unit, sessions, base, max, diff, list, days, ach, extra) => Object.assign({ id, name, unit, sessions, base, max, diff, list, days, ach }, extra || {});
   const ALL = [0, 1, 2, 3, 4, 5, 6];
   const TASKS = [
-    T('bed', 'Make the bed', 'times', 1, 0, 0, 1, 'Morning', ALL, ['Sheet Happens', 'Tucked In', 'Hospital Corners', 'Pillow Architect', 'Admiral of the Mattress', 'The Bed Is Made. Forever.']),
+    T('bed', 'Make the bed', 'times', 1, 0, 0, 1, 'Morning', ALL, ['Fitted Sheet Survivor', 'Tucked In', 'Hospital Corners', 'Pillow Architect', 'Admiral of the Mattress', 'The Bed Is Made. Forever.']),
     T('teeth', 'Brush teeth', 'times', 2, 0, 0, 1, 'Daily', ALL, ['Minty Fresh', 'Plaque Patrol', 'Enamel Guardian', "Dentist's Favorite", 'Smile of the Year', 'Thousand-Watt Smile']),
     T('floss', 'Floss', 'times', 1, 0, 0, 1, 'Wind Down', ALL, ['String Theory', 'Gumline Ranger', 'Floss Boss', 'Your Dentist Is Speechless', 'Year of the Floss', 'Floss Legend']),
     T('shower', 'Shower', 'times', 1, 0, 0, 1, 'Daily', ALL, ['Freshly Rinsed', 'Squeaky Clean', 'Soap Opera Star', 'Loofah Legend', 'Certified Not Smelly', 'Human Waterfall']),
@@ -167,5 +335,5 @@
     ],
   };
 
-  window.CATALOG = { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES };
+  window.CATALOG = { ACTIVITIES, SKILLS, FOLDERS, BELTS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES };
 })();

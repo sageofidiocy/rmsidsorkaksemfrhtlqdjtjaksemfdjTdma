@@ -1,7 +1,7 @@
 /* Deificatio — offline quest / training / skill tracker. All data lives in localStorage on this device. */
 'use strict';
-const { ACTIVITIES, SKILLS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES } = window.CATALOG;
-const ACT = Object.fromEntries(ACTIVITIES.map(a => [a.id, a]));
+const { ACTIVITIES, SKILLS, FOLDERS, BELTS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES } = window.CATALOG;
+let ACT = {}, ACTS = []; // built-in + the user's own workout types (rebuildACT)
 const TASK_DEF = Object.fromEntries(TASKS.map(t => [t.id, t]));
 const STORE = 'ascent.v1';
 const LIST_ORDER = ['Penalty', 'Faith', 'Morning', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Chores', 'Nutrition'];
@@ -32,7 +32,9 @@ const ICON = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/></svg>',
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
-  log: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 4v16M18 4v16M3 9v6M21 9v6M6 12h12"/></svg>',
+  log: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 3.5C14 3.6 9.2 7.6 8 14.6l-.6 2.6 2.6-.6c7-1.2 10.9-6.1 10.5-13.1z"/><path d="M20.5 3.5L9.8 14.2M3.5 20.5l3.9-3.3M14.6 7.2l.4 2.6M11.9 10.2l.3 2.4"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l.9 12.2h9.2L17.5 7M10.2 10.5v5.5M13.8 10.5v5.5"/></svg>',
+  folder: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3.5 6.5h6l2 2h9v10h-17z"/></svg>',
   body: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 17l5-6 4 3 6-8 3 3"/><path d="M3 21h18"/></svg>',
   me: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z"/></svg>',
   flame: '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2c1 4 5 5.5 5 11a5 5 0 01-10 0c0-2.5 1.2-3.8 2-5 .3 1.6 1 2.6 2 3-.5-3.5.2-6.5 1-9z"/></svg>',
@@ -60,7 +62,13 @@ function fresh() {
     fx: null,       // { sound, haptic, cele } (null = all on)
     streak: { cur: 0, best: 0 }, pendingPen: null, owed: [], xp: 0,
     workouts: [], food: [], customFoods: [], favs: [], fasts: [], body: [], tests: {}, books: [],
-    szView: null,
+    folders: [],    // the user's own skill folders { id, name, parent }
+    hideSk: [], hideTk: [], // built-in skills / tasks the user deleted (hidden, restorable)
+    customActs: [], // the user's own workout types { id, name, f, met[3], like, skill, dist, del }
+    belts: {},      // martial-art belts { skillId: { ladder (null = standard), hist: [{ id, i, m, date }] } }
+    szView: null, szViewJa: null, // season display options (Korean set / Japanese set)
+    cal: 'ko',
+    theme: null,    // { id: 'seasonal'|'custom'|…, custom: { mode 'color'|'photo', bg, accent, cards 'auto'|'dark'|'light', dim, tint } }      // which 72 micro-seasons: 'ko' (Korean names of the Chinese original) or 'ja' (Japan's 本朝七十二候)
     titles: { auto: {}, claimed: [] },
     stats: { qdone: 0, perfect: 0, penalties: 0, donated: 0, penCleared: 0 },
   };
@@ -77,6 +85,11 @@ let SK = {}, SKL = [];
 function rebuildSK() {
   SKL = SKILLS.concat((S.customSkills || []).map(c => Object.assign({ cat: 'Custom', custom: true }, c)));
   SK = Object.fromEntries(SKL.map(s => [s.id, s]));
+  rebuildACT();
+}
+function rebuildACT() {
+  ACTS = ACTIVITIES.concat((S.customActs || []).map(a => Object.assign({ custom: true }, a)));
+  ACT = Object.fromEntries(ACTS.map(a => [a.id, a]));
 }
 rebuildSK();
 function skState(id) {
@@ -88,6 +101,20 @@ function skState(id) {
   return s;
 }
 const isSkill = c => c && c.unit && !c.moved;
+/* deleted built-ins are only hidden (their XP and titles stay; Settings → Deleted defaults restores them) */
+const hiddenSk = id => (S.hideSk || []).includes(id), hiddenTk = id => (S.hideTk || []).includes(id);
+const isLib = c => isSkill(c) && !hiddenSk(c.id);
+/* skill folders: built-in tree (catalog) + the user's own */
+const allFolders = () => FOLDERS.concat(S.folders || []);
+const folderById = id => allFolders().find(f => f.id === id);
+const folderOf = s => s.f && folderById(s.f) ? s.f : 'custom';
+const subFolders = pid => allFolders().filter(f => (f.parent || null) === pid);
+const workoutFolders = () => subFolders('workout');
+function folderPath(id) { const f = folderById(id); if (!f) return ''; const p = f.parent ? folderById(f.parent) : null; return p ? p.name + ' › ' + f.name : f.name; }
+function folderOptions(sel, o = {}) { // <option>s for every folder, children indented under their parent
+  const out = [], walk = (pid, d) => subFolders(pid).forEach(f => { if (o.skip && o.skip === f.id) return; out.push(`<option value="${f.id}" ${f.id === sel ? 'selected' : ''}>${'\u2003'.repeat(d)}${esc(f.name)}</option>`); walk(f.id, d + 1); });
+  walk(null, 0); return out.join('');
+}
 /* ---------- task quests ---------- */
 const TASK_XP = { 1: 4, 2: 7, 3: 12 };
 const EXP_MULT = { new: .5, some: 1, habit: 1.5 };
@@ -106,10 +133,11 @@ function adoptTask(id, over = {}) { // copy a default task into the user's tasks
   S.tasks[id] = t; if (t.list && !S.lists.includes(t.list)) S.lists.push(t.list);
   return t;
 }
-const activeTasks = () => Object.values(S.tasks || {}).filter(t => t.active);
+const activeTasks = () => Object.values(S.tasks || {}).filter(t => t.active && !hiddenTk(t.id));
 /* v6 -> v7: hygiene quests and Prayer become task quests */
 function migrate() {
   if (!S.tasks) S.tasks = {}; if (!S.side) S.side = []; if (!S.rewards) S.rewards = [];
+  ['folders', 'hideSk', 'hideTk', 'customActs'].forEach(k => { if (!Array.isArray(S[k])) S[k] = []; }); if (!S.belts || typeof S.belts !== 'object') S.belts = {};
   if ((S.v || 0) >= 3) return;
   S.v = 3;
   if (!S.setup) return;
@@ -149,38 +177,149 @@ function seasonOf(k) {
 }
 const huNumber = idx => ((idx - 6 + 72) % 72) + 1; // traditionally counted from 立春
 const termNumber = ji => ((ji - 2 + 24) % 24) + 1;
-let bgIdx = null, curSeason = null;
+let bgIdx = null, curSeason = null, lookKey = null;
 function applySeason() {
   if (!window.SEASONS || !window.SCENES) return null;
   const si = ui.previewHu != null ? seasonOf(huStarts(new Date().getFullYear()).find(h => h.idx === ui.previewHu).start) : seasonOf(todayKey());
-  if (curSeason !== si.season) {
-    const th = THEMES[si.season]; for (const k in th) document.documentElement.style.setProperty('--' + k, th[k]);
-    const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = th.bg;
-    curSeason = si.season; document.documentElement.dataset.season = si.season;
-  }
-  if (bgIdx !== si.idx) { // drawn once into an <img> (cheap to composite under the blurred cards)
-    bgSvg = SCENES.render(si.h[3], si.season, si.idx); bgIdx = si.idx;
-    try { if (bgUrl) URL.revokeObjectURL(bgUrl); bgUrl = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' })); $('#bg').innerHTML = `<img src="${bgUrl}" alt="">`; }
-    catch (e) { $('#bg').innerHTML = bgSvg; }
-  }
+  applyLook(si);
   return si;
 }
-let bgSvg = '', bgUrl = null;
+let bgSvg = '', bgUrl = null, themeLook = null, themeUrls = [];
+const themePrefetched = {};
+function themePrefetch(id) { // fetch both halves of the year's pictures now, so the service worker has them for offline use
+  const k = id + calSet(); if (themePrefetched[k] || !navigator.onLine) return; themePrefetched[k] = 1;
+  THEMEFX.images(id, calSet()).forEach(u => fetch(u).catch(() => { themePrefetched[k] = 0; }));
+}
+/* ---------- themes ----------
+   seasonal = the 72 micro-season scenes (Korean or Japanese set); custom = a solid color or your own photo with an
+   accent color; cyber / cottage / village / academia = painted pictures (themes/) that change with the 24 solar terms
+   through the layers themes.js draws on top (light, weather, signs). The Korean or Japanese picture follows S.cal. */
+const THEME_LIST = [
+  ['seasonal', 'Seasonal', 'The 72 micro-season scenes'], ['custom', 'Custom', 'Your color or photo'],
+  ['cyber', 'Cyberpunk', 'Neon alley, changes every solar term'], ['cottage', 'Cottagecore', 'Solarpunk cottage, changes every solar term'],
+  ['village', 'Mountain village', 'Hanok or gasshō village, changes every solar term'], ['academia', 'Academia', 'Light → dark academia, changes every solar term']];
+const termTheme = id => window.THEMEFX && THEMEFX.LIST.includes(id);
+const themeId = () => { const id = (S.theme && S.theme.id) || 'seasonal'; return THEME_LIST.some(t => t[0] === id && !t[3]) ? id : 'seasonal'; };
+const custOpts = () => Object.assign({ mode: 'color', bg: '#22304a', accent: '#e8a85c', cards: 'auto', dim: 20, tint: null }, (S.theme && S.theme.custom) || {});
+/* color helpers for building a UI palette from any color */
+const hexRgb = h => { h = String(h || '#000').replace('#', ''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); const v = parseInt(h, 16) || 0; return [v >> 16 & 255, v >> 8 & 255, v & 255]; };
+const rgbHex = a => '#' + a.map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
+const mixHex = (a, b, t) => { const x = hexRgb(a), y = hexRgb(b); return rgbHex(x.map((v, i) => v + (y[i] - v) * t)); };
+const rgbaHex = (h, a) => { const [r, g, b] = hexRgb(h); return `rgba(${r},${g},${b},${a})`; };
+const lumHex = h => { const c = hexRgb(h).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+const UI_DARK_TEXT = { tx: '#e7e9ec', mu: '#8b929d', mu2: '#5d636d' };
+function uiPalette(tint, ac, light) { // tint = the background's color; ac = accent
+  if (!light) {
+    let a = ac; while (lumHex(a) < .16) a = mixHex(a, '#ffffff', .2);
+    const b = mixHex(tint, '#05070a', .8), s1 = mixHex(tint, '#0b0e12', .72), s2 = mixHex(tint, '#11151b', .6);
+    return Object.assign({ bg: b, s1: rgbaHex(s1, .74), s1s: s1, s2, line: mixHex(s2, '#ffffff', .07), line2: mixHex(s2, '#ffffff', .14), ac: a, ac2: mixHex(a, '#000000', .28), acA: rgbaHex(a, .14), bar: rgbaHex(b, .78), gold: '#e2c27a' }, UI_DARK_TEXT);
+  }
+  let a = ac; while (lumHex(a) > .3) a = mixHex(a, '#000000', .15);
+  const b = mixHex(tint, '#f7f2e8', .84), s1 = mixHex(tint, '#fbf8f1', .9), s2 = mixHex(tint, '#ece5d8', .82);
+  return { bg: b, s1: rgbaHex(s1, .86), s1s: s1, s2, line: mixHex(s2, '#000000', .09), line2: mixHex(s2, '#000000', .17), ac: a, ac2: mixHex(a, '#ffffff', .25), acA: rgbaHex(a, .12), bar: rgbaHex(s1, .9), gold: '#8a6418', tx: '#2a2622', mu: '#6a625a', mu2: '#978e84' };
+}
+function setVars(v, light) {
+  const r = document.documentElement; for (const k in v) r.style.setProperty('--' + k, v[k]);
+  r.dataset.ui = light ? 'light' : 'dark';
+  const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = v.bg;
+}
+function setBg(html) { $('#bg').innerHTML = html; }
+function applyLook(si) {
+  const id = themeId(); document.documentElement.dataset.season = si.season; document.documentElement.dataset.theme = id;
+  if (id === 'custom') {
+    const o = custOpts(), photo = o.mode === 'photo' && custPhoto.url, light = o.cards === 'light' || (o.cards === 'auto' && !photo && lumHex(o.bg) > .45);
+    const key = ['custom', o.mode, o.bg, o.accent, o.cards, o.dim, photo ? custPhoto.url : ''].join('|');
+    if (lookKey === key) return;
+    lookKey = key; bgIdx = null; curSeason = null; bgSvg = '';
+    setVars(uiPalette(photo ? (o.tint || '#2a3140') : o.bg, o.accent, light), light);
+    setBg(photo ? `<img src="${custPhoto.url}" alt=""><div class="bg-dim" style="opacity:${clamp(o.dim, 0, 70) / 100}"></div>` : `<div class="bg-solid" style="background:${esc(o.bg)}"></div>`);
+    return;
+  }
+  if (termTheme(id)) {
+    const key = ['term', id, calSet(), si.ji].join('|'); if (lookKey === key) return;
+    lookKey = key; bgIdx = null; curSeason = null; bgSvg = '';
+    const r = THEMEFX.render(id, calSet(), si.ji); themeLook = r;
+    setVars(uiPalette(r.ui.tint, r.ui.accent, r.ui.light), r.ui.light);
+    themeUrls.forEach(u => URL.revokeObjectURL(u)); themeUrls = r.layers.map(l => URL.createObjectURL(new Blob([l.svg], { type: 'image/svg+xml' })));
+    const pos = `object-position:${Math.round(r.pos * 100)}% 50%`;
+    setBg(`<img src="${r.img}" alt="" style="${pos}">` + r.layers.map((l, i) => `<img src="${themeUrls[i]}" alt="" style="${pos};mix-blend-mode:${l.blend}">`).join(''));
+    themePrefetch(id);
+    return;
+  }
+  themeLook = null;
+  if (lookKey && !lookKey.startsWith('seasonal')) { bgIdx = null; curSeason = null; }
+  lookKey = 'seasonal';
+  if (curSeason !== si.season) { setVars(Object.assign({}, THEMES[si.season], UI_DARK_TEXT), false); curSeason = si.season; }
+  const bgKey = si.idx + ':' + calSet();
+  if (bgIdx !== bgKey) { // drawn once into an <img> (cheap to composite under the blurred cards)
+    bgSvg = SCENES.render(si.h[3], si.season, si.idx, calSet()); bgIdx = bgKey;
+    try { if (bgUrl) URL.revokeObjectURL(bgUrl); bgUrl = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' })); setBg(`<img src="${bgUrl}" alt="">`); }
+    catch (e) { setBg(bgSvg); }
+  }
+}
+/* the custom photo lives in IndexedDB (too big for localStorage); a data-URL copy rides along in backups */
+const IDB = {
+  db: null,
+  open() { return this.db ? Promise.resolve(this.db) : new Promise((res, rej) => { const r = indexedDB.open('deificatio', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => { this.db = r.result; res(this.db); }; r.onerror = () => rej(r.error); }); },
+  async run(mode, fn) { const db = await this.open(); return new Promise((res, rej) => { const q = fn(db.transaction('files', mode).objectStore('files')); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); },
+  get(k) { return this.run('readonly', s => s.get(k)); }, set(k, v) { return this.run('readwrite', s => s.put(v, k)); }, del(k) { return this.run('readwrite', s => s.delete(k)); },
+};
+const custPhoto = { url: null, data: null };
+const blobToData = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+async function loadCustomPhoto() {
+  try { const b = await IDB.get('bgPhoto'); if (custPhoto.url) URL.revokeObjectURL(custPhoto.url); custPhoto.url = b ? URL.createObjectURL(b) : null; custPhoto.data = b ? await blobToData(b) : null; }
+  catch (e) { custPhoto.url = null; custPhoto.data = null; }
+  lookKey = null;
+}
+async function pickPhoto(file) { // shrink to about screen size, keep as JPEG, remember its average color for the UI tint
+  if (!file) return;
+  try {
+    const url = URL.createObjectURL(file), img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    const s = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * s), h = Math.round(img.naturalHeight * s);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+    const sm = document.createElement('canvas'); sm.width = sm.height = 8; const sg = sm.getContext('2d'); sg.drawImage(cv, 0, 0, 8, 8);
+    const px = sg.getImageData(0, 0, 8, 8).data; let r = 0, g = 0, b = 0; for (let i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+    const blob = await new Promise(res => cv.toBlob(res, 'image/jpeg', .86));
+    await IDB.set('bgPhoto', blob);
+    custSet(o => { o.mode = 'photo'; o.tint = rgbHex([r / 64, g / 64, b / 64]); });
+    await loadCustomPhoto(); ui.season = applySeason(); themeRefresh(); toast('Photo set as your background', 'ti');
+  } catch (e) { toast('Could not use that image', 'bad'); }
+}
+function custSet(fn) { const o = custOpts(); fn(o); S.theme = Object.assign({ id: 'custom' }, S.theme || {}, { custom: o }); save(); }
 /* save the current scene as a phone wallpaper (PNG at the screen's real resolution) */
 function saveWallpaper() {
+  if (themeLook) return saveThemeWallpaper(themeLook);
   const dpr = Math.min(3, window.devicePixelRatio || 1), w = Math.round(Math.min(screen.width, screen.height) * dpr), h = Math.round(Math.max(screen.width, screen.height) * dpr);
-  const img = new Image(), url = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' }));
+  const o = custOpts(), cust = themeId() === 'custom', photo = cust && o.mode === 'photo' && custPhoto.url;
+  const img = new Image(), url = photo ? null : bgSvg ? URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' })) : null;
   img.onload = () => {
     const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d');
-    const s = Math.max(w / SCENES.W, h / SCENES.H); g.drawImage(img, (w - SCENES.W * s) / 2, (h - SCENES.H * s) / 2, SCENES.W * s, SCENES.H * s); URL.revokeObjectURL(url);
-    cv.toBlob(b => {
-      const si = ui.season, name = `deificatio-wallpaper-${huNumber(si.idx)}.png`, file = new File([b], name, { type: 'image/png' });
-      const dl = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); toast('Wallpaper saved to Downloads'); };
-      if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'Deificatio wallpaper' }).catch(e => { if (!e || e.name !== 'AbortError') dl(); }); else dl();
-    }, 'image/png');
+    const iw = img.naturalWidth || SCENES.W, ih = img.naturalHeight || SCENES.H, s = Math.max(w / iw, h / ih); g.drawImage(img, (w - iw * s) / 2, (h - ih * s) / 2, iw * s, ih * s); if (url) URL.revokeObjectURL(url);
+    if (photo && o.dim) { g.fillStyle = `rgba(0,0,0,${clamp(o.dim, 0, 70) / 100})`; g.fillRect(0, 0, w, h); }
+    wallpaperOut(cv);
   };
   img.onerror = () => toast('Could not draw the wallpaper', 'bad');
-  img.src = url;
+  if (cust && !photo) { const c = document.createElement('canvas'); c.width = c.height = 4; const x = c.getContext('2d'); x.fillStyle = o.bg; x.fillRect(0, 0, 4, 4); img.src = c.toDataURL(); }
+  else img.src = photo || url;
+}
+function wallpaperOut(cv) {
+  cv.toBlob(b => {
+    const si = ui.season, name = `deificatio-wallpaper-${huNumber(si.idx)}.png`, file = new File([b], name, { type: 'image/png' });
+    const dl = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); toast('Wallpaper saved to Downloads'); };
+    if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'Deificatio wallpaper' }).catch(e => { if (!e || e.name !== 'AbortError') dl(); }); else dl();
+  }, 'image/png');
+}
+async function saveThemeWallpaper(r) {
+  const dpr = Math.min(3, window.devicePixelRatio || 1), w = Math.round(Math.min(screen.width, screen.height) * dpr), h = Math.round(Math.max(screen.width, screen.height) * dpr);
+  const load = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  try {
+    const urls = r.layers.map(l => URL.createObjectURL(new Blob([l.svg], { type: 'image/svg+xml' })));
+    const imgs = await Promise.all([load(r.img), ...urls.map(load)]); urls.forEach(u => URL.revokeObjectURL(u));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d');
+    const s = Math.max(w / THEMEFX.W, h / THEMEFX.H), dw = THEMEFX.W * s, dh = THEMEFX.H * s, x = (w - dw) * r.pos, y = (h - dh) / 2;
+    imgs.forEach((im, i) => { g.globalCompositeOperation = i ? (r.layers[i - 1].blend === 'normal' ? 'source-over' : r.layers[i - 1].blend) : 'source-over'; g.drawImage(im, x, y, dw, dh); });
+    g.globalCompositeOperation = 'source-over'; wallpaperOut(cv);
+  } catch (e) { toast('Could not draw the wallpaper', 'bad'); }
 }
 const fmtShort = k => dparse(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 /* ---------- season display options ----------
@@ -189,38 +328,59 @@ const fmtShort = k => dparse(k).toLocaleDateString(undefined, { month: 'short', 
    One level (micro or minor) and one language (hj / ko / en / rom) form the large main text. */
 const SZ_LV = ['season', 'term', 'hu'];
 const SZ_LV_NAME = { season: 'Major season', term: 'Minor season', hu: 'Micro-season' };
-const SZ_MAINS = [['hj', '漢字'], ['ko', '한글'], ['en', 'English'], ['rom', 'Romanized']];
-const SZ_GLOSS = { hj: null, ko: 'kom', en: 'rom', rom: 'en' }; // the main language's other part, shown under the main text
-const SZ_DEF = { season: { hj: 1, ko: 0, kom: 1, rom: 0, en: 0 }, term: { hj: 1, ko: 1, kom: 0, rom: 0, en: 1 }, hu: { hj: 1, ko: 1, kom: 0, rom: 0, en: 1 } };
-const SZ_KO = { hj: 1, ko: 1, kom: 1 };
+/* Two naming sets. Korean: hj hanja, ko reading 음, kom meaning 뜻, rom romanized, en English.
+   Japanese: hj kanji, ja kana reading (+ jm, a modern-Japanese meaning shown with the reading for the classical kō), rom romaji, en English. */
+const SZ_CFG = {
+  ko: { key: 'szView', mains: [['hj', '漢字'], ['ko', '한글'], ['en', 'English'], ['rom', 'Romanized']], gloss: { hj: null, ko: 'kom', en: 'rom', rom: 'en' },
+    def: { season: { hj: 1, ko: 0, kom: 1, rom: 0, en: 0 }, term: { hj: 1, ko: 1, kom: 0, rom: 0, en: 1 }, hu: { hj: 1, ko: 1, kom: 0, rom: 0, en: 1 } },
+    lang: { hj: 'ko', ko: 'ko', kom: 'ko' }, order: lv => lv === 'season' ? ['hj', 'kom', 'ko', 'rom', 'en'] : ['hj', 'ko', 'kom', 'rom', 'en'], // 冬 겨울 동 (훈음 order)
+    rows: [['Hanja 漢字', [['hj', 'Characters']]], ['Korean 한국어', [['ko', 'Sound 음'], ['kom', 'Meaning 뜻']]], ['English', [['rom', 'Sound (romanized)'], ['en', 'Meaning']]]],
+    terms: '二十四節氣', term: '節氣', note: "The main language's second part (Korean 뜻, or the romanized/English pair) sits right under the main text." },
+  ja: { key: 'szViewJa', mains: [['hj', '漢字'], ['ja', 'かな'], ['en', 'English'], ['rom', 'Romaji']], gloss: { hj: 'ja', ja: 'jm', en: 'rom', rom: 'en' },
+    def: { season: { hj: 1, ja: 1, rom: 0, en: 0 }, term: { hj: 1, ja: 1, rom: 0, en: 1 }, hu: { hj: 1, ja: 1, rom: 0, en: 1 } },
+    lang: { hj: 'ja', ja: 'ja', jm: 'ja' }, order: () => ['hj', 'ja', 'rom', 'en'],
+    rows: [['Kanji 漢字', [['hj', 'Characters']]], ['Japanese 日本語', [['ja', 'Reading 読み']]], ['English', [['rom', 'Sound (romaji)'], ['en', 'Meaning']]]],
+    terms: '二十四節気', term: '節気', note: 'The kō are classical, so wherever the Japanese reading sits under the main text, a modern-Japanese meaning (意味) comes with it.' },
+};
+const calSet = () => S.cal === 'ja' ? 'ja' : 'ko';
+const SZC = () => SZ_CFG[calSet()];
 function szOpts() {
-  const o = S.szView || {}, sh = o.show || {};
-  return { level: o.level === 'term' ? 'term' : 'hu', main: Object.prototype.hasOwnProperty.call(SZ_GLOSS, o.main) ? o.main : 'hj',
-    show: Object.fromEntries(SZ_LV.map(l => [l, Object.assign({}, SZ_DEF[l], sh[l] || {})])) };
+  const C = SZC(), o = S[C.key] || {}, sh = o.show || {};
+  return { level: o.level === 'hu' ? 'hu' : 'term', main: Object.prototype.hasOwnProperty.call(C.gloss, o.main) ? o.main : 'en',
+    show: Object.fromEntries(SZ_LV.map(l => [l, Object.assign({}, C.def[l], sh[l] || {})])) };
 }
-function szSet(fn) { const o = szOpts(); fn(o); S.szView = o; save(); }
-function szText(lv, x) { // x: { season } | { j } | { h }
+function szSet(fn) { const o = szOpts(); fn(o); S[SZC().key] = o; save(); }
+function szText(lv, x) { // x: a seasonOf() result, or { season } | { j, ji } | { h, idx }
+  if (calSet() === 'ja') {
+    const J = SEASONS.JA;
+    if (lv === 'season') { const n = J.NAMES[x.season]; return { hj: n[0], ja: n[1], rom: n[2], en: n[3] }; }
+    if (lv === 'term') { const t = J.TERMS[x.ji]; return { hj: t[0], ja: t[1], rom: t[2], en: SEASONS.JEOLGI[x.ji][2] }; }
+    const k = J.KO[x.idx]; return { hj: k[0], ja: k[1], jm: k[2], rom: k[3], en: k[4] };
+  }
   if (lv === 'season') { const n = SEASONS.NAMES[x.season]; return { hj: n[0], kom: n[1], en: n[2], ko: n[3], rom: n[4] }; }
   if (lv === 'term') { const j = x.j; return { hj: j[0], ko: j[1], en: j[2], kom: j[7], rom: j[8] }; }
   const h = x.h; return { hj: h[0], ko: h[1], en: h[2], kom: h[4], rom: h[5] };
 }
-const szOrder = lv => lv === 'season' ? ['hj', 'kom', 'ko', 'rom', 'en'] : ['hj', 'ko', 'kom', 'rom', 'en']; // 冬 겨울 동 (훈음 order)
+const szOrder = lv => SZC().order(lv);
 const szVisible = (o, lv) => szOrder(lv).filter(p => o.show[lv][p] || (lv === o.level && p === o.main));
-const szSpan = (p, t, tag = 'span') => `<${tag} class="p-${p}"${SZ_KO[p] ? ' lang="ko"' : ''}>${esc(t)}</${tag}>`;
+const szLang = p => SZC().lang[p];
+const szSpan = (p, t, tag = 'span') => `<${tag} class="p-${p}"${szLang(p) ? ` lang="${szLang(p)}"` : ''}>${esc(t)}</${tag}>`;
 const SZ_DOT = '<i class="dot"> · </i>';
 function seasonHero(si, preview) {
   if (!si) return '';
-  const o = szOpts(), L = o.level, mi = SZ_LV.indexOf(L), gl = SZ_GLOSS[o.main], T = lv => szText(lv, si);
+  const C = SZC(), o = szOpts(), L = o.level, mi = SZ_LV.indexOf(L), gl = C.gloss[o.main], T = lv => szText(lv, si);
   const top = SZ_LV.slice(0, mi).map(lv => { const t = T(lv); return szVisible(o, lv).map(p => szSpan(p, t[p])).join('<i class="ps"></i>'); }).filter(Boolean);
-  const mt = T(L), latin = o.main === 'en' || o.main === 'rom';
-  const gloss = gl && o.show[L][gl] ? szSpan(gl, mt[gl]) : '';
+  const mt = T(L), latin = o.main === 'en' || o.main === 'rom', kana = o.main === 'ja';
+  // Japanese: the kana reading sits under the kanji, and the classical kō bring their modern meaning (jm) with it
+  const glossOn = gl && (gl === 'jm' ? !!mt.jm : o.show[L][gl] && mt[gl]);
+  const gloss = glossOn ? szSpan(gl, mt[gl]) + (gl === 'ja' && mt.jm ? `<div class="sz-x" lang="ja">${esc(mt.jm)}</div>` : '') : '';
   const bottom = szVisible(o, L).filter(p => p !== o.main && p !== gl).map(p => szSpan(p, mt[p])).join(SZ_DOT);
   const sub = SZ_LV.slice(mi + 1).map(lv => { const t = T(lv); return szVisible(o, lv).map(p => szSpan(p, t[p])).join(SZ_DOT); }).filter(Boolean);
   const date = L === 'hu' ? `${fmtShort(si.start)} – ${fmtShort(si.end)} · 七十二候 ${huNumber(si.idx)}/72`
-    : `${fmtShort(si.tStart)} – ${fmtShort(si.tEnd)} · 二十四節氣 ${termNumber(si.ji)}/24 · 候 ${huNumber(si.idx)}/72`;
+    : `${fmtShort(si.tStart)} – ${fmtShort(si.tEnd)} · ${C.terms} ${termNumber(si.ji)}/24 · 候 ${huNumber(si.idx)}/72`;
   return `<div class="season${preview ? ' prev' : ''}"${preview ? '' : ' data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"'}>
     ${top.length ? `<div class="sz-top">${top.map(g => `<span class="g">${g}</span>`).join('<span class="sep"> · </span>')}</div>` : ''}
-    <div class="sz-h${latin ? ' lat' : ''}"${latin ? '' : ' lang="ko"'}>${esc(mt[o.main])}</div>
+    <div class="sz-h${latin ? ' lat' : ''}${kana ? ' kana' : ''}"${latin ? '' : ` lang="${C.lang[o.main] || 'ko'}"`}>${esc(mt[o.main])}</div>
     ${gloss ? `<div class="sz-g">${gloss}</div>` : ''}${bottom ? `<div class="sz-k">${bottom}</div>` : ''}
     ${sub.map(s => `<div class="sz-s">${s}</div>`).join('')}
     <div class="sz-d">${date}</div>
@@ -235,8 +395,7 @@ function fitSeason(root = document) {
   });
 }
 function szCard() {
-  const o = szOpts(), si = ui.season || seasonOf(todayKey()), ex = SZ_LV.map(lv => szText(lv, si));
-  const rows = [['Hanja 漢字', [['hj', 'Characters']]], ['Korean 한국어', [['ko', 'Sound 음'], ['kom', 'Meaning 뜻']]], ['English', [['rom', 'Sound (romanized)'], ['en', 'Meaning']]]];
+  const C = SZC(), o = szOpts(), si = ui.season || seasonOf(todayKey()), ex = SZ_LV.map(lv => szText(lv, si)), rows = C.rows;
   const cell = (lv, p) => {
     const lock = lv === o.level && p === o.main;
     return lock ? `<div class="cb lock" title="Main text: always shown"><span class="lockbox" role="img" aria-label="${esc(SZ_LV_NAME[lv])}: main text, always shown">${ICON.check}</span><small>main</small></div>`
@@ -244,28 +403,92 @@ function szCard() {
   };
   return `<div class="card" id="szCard"><h3>Season display</h3>
     <p class="mu small" style="margin-top:2px">Choose what the season header on Home shows. Changes apply right away.</p>
+    <label>Season names</label>
+    <div class="seg tight cal-seg">${[['ko', '한국', 'Korean 七十二候'], ['ja', '日本', 'Japanese 七十二候']].map(([v, a, n]) => `<button class="${calSet() === v ? 'on' : ''}" data-a="calSet" data-id="${v}"><b lang="${v}">${a}</b> ${n}</button>`).join('')}</div>
     <div class="sz-prev">${seasonHero(si, true)}</div>
     <label>Large main text</label>
-    <div class="seg tight">${[['hu', 'Micro-season 候'], ['term', 'Minor season 節氣']].map(([v, n]) => `<button class="${o.level === v ? 'on' : ''}" data-a="szLevel" data-id="${v}">${n}</button>`).join('')}</div>
-    <div class="seg tight">${SZ_MAINS.map(([v, n]) => `<button class="${o.main === v ? 'on' : ''}" data-a="szMain" data-id="${v}"${v === 'hj' || v === 'ko' ? ' lang="ko"' : ''}>${n}</button>`).join('')}</div>
+    <div class="seg tight">${[['hu', 'Micro-season 候'], ['term', 'Minor season ' + C.term]].map(([v, n]) => `<button class="${o.level === v ? 'on' : ''}" data-a="szLevel" data-id="${v}">${n}</button>`).join('')}</div>
+    <div class="seg tight">${C.mains.map(([v, n]) => `<button class="${o.main === v ? 'on' : ''}" data-a="szMain" data-id="${v}"${C.lang[v] ? ` lang="${C.lang[v]}"` : ''}>${n}</button>`).join('')}</div>
     <div class="szg">
-      <div></div>${SZ_LV.map(lv => `<div class="ch">${{ season: 'Major', term: 'Minor', hu: 'Micro' }[lv]}<small lang="ko">${{ season: '四季', term: '節氣', hu: '候' }[lv]}</small></div>`).join('')}
-      ${rows.map(([g, parts]) => `<div class="gh" lang="ko">${g}</div>` + parts.map(([p, n]) => `<div class="lab"><div lang="ko">${n}</div><div class="smp"${SZ_KO[p] ? ' lang="ko"' : ''}>${esc(SZ_LV.map((lv, i) => ex[i][p]).join(' · '))}</div></div>${SZ_LV.map(lv => cell(lv, p)).join('')}`).join('')).join('')}
+      <div></div>${SZ_LV.map(lv => `<div class="ch">${{ season: 'Major', term: 'Minor', hu: 'Micro' }[lv]}<small lang="${calSet()}">${{ season: '四季', term: C.term, hu: '候' }[lv]}</small></div>`).join('')}
+      ${rows.map(([g, parts]) => `<div class="gh" lang="${calSet()}">${g}</div>` + parts.map(([p, n]) => `<div class="lab"><div lang="${calSet()}">${n}</div><div class="smp"${C.lang[p] ? ` lang="${C.lang[p]}"` : ''}>${esc(SZ_LV.map((lv, i) => ex[i][p]).join(' · '))}</div></div>${SZ_LV.map(lv => cell(lv, p)).join('')}`).join('')).join('')}
     </div>
-    <p class="mu2 small">The main text is always shown. Your other parts for that season go in the row beneath it; the main language's second part (Korean 뜻, or the romanized/English pair) sits right under the main text.</p>
+    <p class="mu2 small">The main text is always shown. Your other parts for that season go in the row beneath it. ${esc(C.note)}</p>
     <button class="btn-s" data-a="szReset">Reset to default</button></div>`;
+}
+function themeCard() {
+  const id = themeId(), o = custOpts(), cur = S.theme && S.theme.id;
+  const tile = ([tid, n, d, soon]) => `<button class="th-tile ${id === tid ? 'on' : ''}${soon ? ' soon' : ''}" data-a="themePick" data-id="${tid}" ${soon ? 'aria-disabled="true"' : ''}><span class="th-sw th-${tid}"${termTheme(tid) ? ` style="background-image:url(${THEMEFX.thumb(tid, calSet())})"` : ''}></span><b>${esc(n)}</b><small>${esc(soon ? 'Art coming soon' : d)}</small></button>`;
+  let ed = '';
+  if (id === 'custom') {
+    const tgt = o.mode === 'photo' ? 'accent' : (ui.wheelTgt === 'accent' ? 'accent' : 'bg');
+    ed = `<div class="th-ed">
+      <div class="seg tight">${[['color', 'Solid color'], ['photo', 'My photo']].map(([v, n]) => `<button class="${o.mode === v ? 'on' : ''}" data-a="custMode" data-id="${v}">${n}</button>`).join('')}</div>
+      ${o.mode === 'photo' ? `<div class="row" style="gap:10px;margin:4px 0 6px">${custPhoto.url ? `<img class="th-ph" src="${custPhoto.url}" alt="">` : '<div class="th-ph none">No photo yet</div>'}<div class="sp"><button class="btn-s btn-p" data-a="custPhotoPick">${custPhoto.url ? 'Change photo' : 'Choose photo'}</button><input type="file" id="custPhotoIn" accept="image/*" hidden>
+        <label style="margin-top:10px">Dim the photo · <span class="num" id="dimV">${o.dim}%</span></label><input type="range" min="0" max="70" step="5" value="${o.dim}" data-i="custDim" aria-label="Dim the photo"></div></div>`
+      : `<div class="seg tight">${[['bg', 'Background'], ['accent', 'Accent']].map(([v, n]) => `<button class="${tgt === v ? 'on' : ''}" data-a="wheelTgt" data-id="${v}"><i class="dotc" style="background:${esc(v === 'bg' ? o.bg : o.accent)}"></i>${n}</button>`).join('')}</div>`}
+      ${o.mode === 'photo' ? '<label>Accent color</label>' : ''}${wheelHtml('cust', tgt === 'bg' ? o.bg : o.accent)}
+      <label>Cards</label><div class="seg tight">${[['auto', 'Auto'], ['dark', 'Dark'], ['light', 'Light']].map(([v, n]) => `<button class="${o.cards === v ? 'on' : ''}" data-a="custCards" data-id="${v}">${n}</button>`).join('')}</div>
+      <p class="mu2 small">Auto picks light cards on a light color and dark cards on a photo. Your photo stays on this phone and is included in backups.</p></div>`;
+  }
+  if (termTheme(id)) ed = `<p class="mu2 small" style="margin-top:10px">Changes with each of the 24 solar terms: the light, the weather and what's in the air${id === 'cyber' ? ', and the shop signs' : ''}. The ${calSet() === 'ja' ? 'Japanese' : 'Korean'} picture follows your season names (Season display). Tap the season header on Home and pick another micro-season to preview other terms.</p>`;
+  return `<div class="card" id="themeCard"><h3>Theme</h3><p class="mu small" style="margin-top:2px">${cur === 'custom' || id === 'custom' ? 'Your own look.' : 'How the app looks behind your cards.'}</p>
+    <div class="th-grid">${THEME_LIST.map(tile).join('')}</div>${ed}</div>`;
+}
+function themeRefresh() { const c = $('#themeCard'); if (!c) return; c.outerHTML = themeCard(); initWheels($('#themeCard')); }
+/* ---------- color wheel: hue around, saturation outward, brightness slider ---------- */
+const hsvHex = (h, s, v) => { const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); }; return rgbHex([f(5) * 255, f(3) * 255, f(1) * 255]); };
+const hexHsv = hex => { const [r, g, b] = hexRgb(hex).map(x => x / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0;
+  if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [(h * 60 + 360) % 360, mx ? d / mx : 0, mx]; };
+const SWATCHES = ['#1b2433', '#2e1f3d', '#3a1f24', '#1f3a2e', '#f2e8d8', '#e8d0d6', '#d8e6f2', '#e8a85c', '#e86a6a', '#5cc8b8', '#8aa8f0', '#c58af0', '#f2d06b', '#f4f4f0'];
+function wheelHtml(id, hex) {
+  const [h, s, v] = hexHsv(hex);
+  return `<div class="cw" data-cw="${id}" data-h="${h}" data-s="${s}" data-v="${v}"><div class="cw-disk"><canvas width="360" height="360" aria-label="Color wheel"></canvas><i class="cw-pin"></i></div>
+    <div class="cw-side"><div class="cw-sw" style="background:${esc(hex)}"></div><input class="cw-hex num" value="${esc(hex)}" maxlength="7" data-c="cwHex" aria-label="Hex color">
+      <label>Brightness</label><input type="range" min="4" max="100" value="${Math.round(v * 100)}" data-i="cwV" aria-label="Brightness"></div>
+    <div class="cw-swatches">${SWATCHES.map(c => `<button class="cw-s" style="background:${c}" data-a="cwSwatch" data-id="${c}" aria-label="${c}"></button>`).join('')}</div></div>`;
+}
+function initWheels(root = document) {
+  root.querySelectorAll('.cw').forEach(w => {
+    const cv = w.querySelector('canvas'), g = cv.getContext('2d'), N = cv.width, R = N / 2, v = +w.dataset.v, im = g.createImageData(N, N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const dx = x - R, dy = y - R, d = Math.hypot(dx, dy) / R, i = (y * N + x) * 4; if (d > 1) { im.data[i + 3] = 0; continue; }
+      const [r, gg, b] = hexRgb(hsvHex((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360, d, Math.max(v, .12)));
+      im.data[i] = r; im.data[i + 1] = gg; im.data[i + 2] = b; im.data[i + 3] = d > .985 ? Math.round(255 * (1 - d) / .015) : 255;
+    }
+    g.putImageData(im, 0, 0); wheelPin(w);
+    if (w.dataset.bound) return; w.dataset.bound = 1;
+    const pick = e => { const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 2 - 1, y = (e.clientY - r.top) / r.height * 2 - 1;
+      w.dataset.h = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; w.dataset.s = Math.min(1, Math.hypot(x, y)); wheelChanged(w, false); };
+    cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); pick(e); e.preventDefault(); });
+    cv.addEventListener('pointermove', e => { if (cv.hasPointerCapture(e.pointerId)) pick(e); });
+    cv.addEventListener('pointerup', () => wheelChanged(w, true));
+  });
+}
+function wheelPin(w) { const p = w.querySelector('.cw-pin'), a = +w.dataset.h * Math.PI / 180, s = +w.dataset.s; p.style.left = (50 + Math.cos(a) * s * 50) + '%'; p.style.top = (50 + Math.sin(a) * s * 50) + '%'; p.style.background = hsvHex(+w.dataset.h, s, +w.dataset.v); }
+function wheelChanged(w, done) {
+  const hex = hsvHex(+w.dataset.h, +w.dataset.s, +w.dataset.v); wheelPin(w);
+  w.querySelector('.cw-sw').style.background = hex; const hi = w.querySelector('.cw-hex'); if (document.activeElement !== hi) hi.value = hex;
+  wheelSet(w.dataset.cw, hex, done);
+}
+function wheelSet(id, hex, done) { // live preview while dragging; saved when you let go
+  if (id !== 'cust') return;
+  const o = custOpts(), tgt = o.mode === 'photo' || ui.wheelTgt === 'accent' ? 'accent' : 'bg';
+  const sw = $(`#themeCard [data-a=wheelTgt][data-id=${tgt}] .dotc`); if (sw) sw.style.background = hex;
+  S.theme = Object.assign({ id: 'custom' }, S.theme || {}, { custom: Object.assign(o, { [tgt]: hex }) });
+  ui.season = applySeason(); if (done) save();
 }
 function szRefresh() { const c = $('#szCard'); if (!c) return; c.outerHTML = szCard(); fitSeason($('#szCard')); }
 function seasonListModal() {
-  const o = szOpts(), cur = seasonOf(todayKey()).idx, order = [...Array(24).keys()].map(i => (i + 2) % 24), pm = o.main, lat = pm === 'en' || pm === 'rom';
+  const C = SZC(), o = szOpts(), cur = seasonOf(todayKey()).idx, order = [...Array(24).keys()].map(i => (i + 2) % 24), pm = o.main, lat = pm === 'en' || pm === 'rom', lg = lat ? '' : ` lang="${C.lang[pm] || 'ko'}"`;
   const extras = (lv, t, tag) => szVisible(o, lv).filter(p => p !== pm).map(p => szSpan(p, t[p], tag)).join(tag === 'small' ? '' : ' ');
   openModal(`<div class="row"><h3 class="sp">七十二候 · The 72 micro-seasons</h3><button class="btn-s" data-a="szOpts">Display</button></div>
-  <p class="mu small">Each of the 24 solar terms (節氣) has three five-day pentads. Tap one to preview its scene and colors.</p>
-  ${order.map(ji => { const j = SEASONS.JEOLGI[ji], tt = szText('term', { j }); return `<div class="jg"><div class="jg-h"><b class="${lat ? 'lat' : ''}"${lat ? '' : ' lang="ko"'}>${esc(tt[pm])}</b> <span class="jg-x small">${extras('term', tt)}</span> <span class="mu2 small">~${j[3]}/${j[4]}</span></div>
-    <div class="jg-row">${j[6].map((h, hi) => { const idx = ji * 3 + hi, ht = szText('hu', { h }); return `<button class="hu ${idx === cur ? 'now' : ''}" data-a="seasonPick" data-id="${idx}"><span class="${lat ? 'lat' : ''}"${lat ? '' : ' lang="ko"'}>${esc(ht[pm])}</span>${extras('hu', ht, 'small')}</button>`; }).join('')}</div></div>`; }).join('')}
+  <p class="mu small">Each of the 24 solar terms (${C.term}) has three five-day pentads. Tap one to preview its scene and colors.</p>
+  ${order.map(ji => { const j = SEASONS.JEOLGI[ji], tt = szText('term', { j, ji }); return `<div class="jg"><div class="jg-h"><b class="${lat ? 'lat' : ''}"${lg}>${esc(tt[pm])}</b> <span class="jg-x small">${extras('term', tt)}</span> <span class="mu2 small">~${j[3]}/${j[4]}</span></div>
+    <div class="jg-row">${j[6].map((h, hi) => { const idx = ji * 3 + hi, ht = szText('hu', { h, idx }); return `<button class="hu ${idx === cur ? 'now' : ''}" data-a="seasonPick" data-id="${idx}"><span class="${lat ? 'lat' : ''}"${lg}>${esc(ht[pm])}</span>${extras('hu', ht, 'small')}</button>`; }).join('')}</div></div>`; }).join('')}
   <div class="actions"><button data-a="close">Close</button></div>`);
 }
-const ui = { previewHu: null, tab: 'home', boardSeg: 'tasks', sideOpen: null, logSeg: 'workout', profSeg: 'overview', calMonth: null, calSel: null, bodyRange: 90, intensity: 1, foodRes: [], openSkill: null, emDur: 3 };
+const ui = { previewHu: null, tab: 'home', boardSeg: 'tasks', sideOpen: null, logSeg: 'workout', profSeg: 'overview', calMonth: null, calSel: null, bodyRange: 90, intensity: 1, foodRes: [], openSkill: null, emDur: 3, libOpen: new Set(['custom']) };
 let curDay = null;
 
 /* ---------- levels & ranks ---------- */
@@ -279,13 +502,30 @@ function rankOf(L) {
   if (L >= 100) { const n = Math.floor((L - 100) / 50) + 1; return { name: 'Sovereign ' + roman(n), tier: 6 + n }; }
   let t = 0; RANKS.forEach((r, i) => { if (L >= r[0]) t = i; }); return { name: RANKS[t][1], tier: t };
 }
+/* one glyph per rank inside the gold hexagon: spark, flame, open book, shield, laurel, rising sun, crown (+ numeral, endless) */
+const RANK_GLYPH = [
+  '<path d="M24 13.5l2.4 8.1 8.1 2.4-8.1 2.4-2.4 8.1-2.4-8.1-8.1-2.4 8.1-2.4z" fill="var(--gold)" stroke="none"/>',
+  '<path d="M24 13.2c3.4 4.2 7 7.4 7 12.4a7 7 0 0 1-14 0c0-3.2 1.8-5.4 3.4-7.4.5 2.4 1.6 3.6 2.8 4.2-.6-3.2-.2-6.4.8-9.2z"/><path d="M24 34.2c-2 0-3.4-1.5-3.4-3.4 0-2 1.8-3.4 3.4-5.4 1.6 2 3.4 3.4 3.4 5.4 0 1.9-1.4 3.4-3.4 3.4z" fill="var(--gold)" stroke="none"/>',
+  '<path d="M24 18.2c-2.8-1.8-6.2-2.2-9.4-1.4v14c3.2-.8 6.6-.4 9.4 1.4 2.8-1.8 6.2-2.2 9.4-1.4v-14c-3.2-.8-6.6-.4-9.4 1.4zM24 18.2v14M17.6 21.2c1.6-.2 3.2 0 4.4.6M17.6 24.8c1.6-.2 3.2 0 4.4.6M26 21.8c1.2-.6 2.8-.8 4.4-.6M26 25.4c1.2-.6 2.8-.8 4.4-.6"/>',
+  '<path d="M24 13.6l8.4 3.2v7c0 4.8-3.6 8.2-8.4 10.2-4.8-2-8.4-5.4-8.4-10.2v-7z"/><path d="M19.6 21.6l4.4 3.8 4.4-3.8M19.6 26.2l4.4 3.8 4.4-3.8"/>',
+  '<path d="M21.6 33.8c-5.4-1.6-8-6.6-6.6-12.6M26.4 33.8c5.4-1.6 8-6.6 6.6-12.6"/><path d="M16.2 30l-2.8.4M14.8 26.2l-2.6-.9M14.9 22.4l-2.2-1.8M31.8 30l2.8.4M33.2 26.2l2.6-.9M33.1 22.4l2.2-1.8"/><path d="M24 15l1.3 2.7 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z" fill="var(--gold)" stroke="none"/>',
+  '<path d="M13.6 30.4h20.8M18 30.4a6 6 0 0 1 12 0"/><path d="M24 21.4v-3.2M17.6 24l-2.2-2.2M30.4 24l2.2-2.2M20.4 15.6l3.6-3 3.6 3"/>',
+  '<path d="M16.4 27.8l-1.4-10 5.2 4.2 3.8-7 3.8 7 5.2-4.2-1.4 10z"/><path d="M16.8 30.6h14.4"/><circle cx="24" cy="12.6" r="1.1" fill="var(--gold)" stroke="none"/>',
+];
 function emblem(tier, size = 46) {
   const hex = r => Array.from({ length: 6 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 3; return `${(24 + Math.cos(a) * r).toFixed(1)},${(24 + Math.sin(a) * r).toFixed(1)}`; }).join(' ');
-  let g = `<polygon points="${hex(21)}" fill="none" stroke="var(--gold)" stroke-width="1.4"/>`;
-  g += `<polygon points="${hex(11)}" fill="${tier >= 6 ? 'var(--gold)' : 'none'}" stroke="var(--gold)" stroke-width="1.2" opacity="${tier >= 6 ? .9 : .7}"/>`;
-  for (let i = 0; i < Math.min(tier, 6); i++) { const a = -Math.PI / 2 + i * Math.PI / 3; g += `<line x1="${(24 + Math.cos(a) * 12).toFixed(1)}" y1="${(24 + Math.sin(a) * 12).toFixed(1)}" x2="${(24 + Math.cos(a) * 20).toFixed(1)}" y2="${(24 + Math.sin(a) * 20).toFixed(1)}" stroke="var(--gold)" stroke-width="1.4"/>`; }
-  if (tier > 6) g += `<text x="24" y="27.5" text-anchor="middle" font-size="9" fill="#0b0d10" font-weight="700">${roman(tier - 6)}</text>`;
+  const sov = tier >= 6;
+  let g = `<polygon points="${hex(21)}" fill="${sov ? 'rgba(226,194,122,.16)' : 'none'}" stroke="var(--gold)" stroke-width="1.4"/>`;
+  if (sov) g += `<polygon points="${hex(18)}" fill="none" stroke="var(--gold)" stroke-width=".8" opacity=".75"/>`;
+  g += `<g fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${RANK_GLYPH[Math.min(tier, 6)]}</g>`;
+  if (sov) g += `<text x="24" y="38.6" text-anchor="middle" font-size="7.6" fill="var(--gold)" font-weight="700" font-family="Georgia,serif">${roman(Math.max(1, tier - 6))}</text>`;
   return `<svg class="emblem" style="width:${size}px;height:${size}px" viewBox="0 0 48 48">${g}</svg>`;
+}
+function rankStrip(L) { // every rank you can reach, in order; the current one highlighted
+  const cur = rankOf(L), list = RANKS.map(([lv, n], i) => ({ lv, n, tier: i })).concat([{ lv: 100, n: 'Sovereign', tier: 7, more: true }]);
+  return `<div class="ranks">${list.map(r => { const on = L >= r.lv, here = r.more ? cur.tier >= 7 : cur.tier === r.tier;
+    return `<div class="rk${on ? '' : ' locked'}${here ? ' cur' : ''}">${emblem(r.more && cur.tier >= 7 ? cur.tier : r.tier, 40)}<b>${esc(r.more && cur.tier >= 7 ? cur.name : r.n)}</b><span class="num">Lv ${r.lv}${r.more ? '+' : ''}</span></div>`; }).join('')}</div>
+    <div class="mu2 small" style="margin-top:6px">Sovereign keeps going: II at level 150, III at 200, then every 50 levels.</div>`;
 }
 
 /* ---------- time ---------- */
@@ -361,7 +601,7 @@ function generate(k) {
   for (const ev of S.events) {
     if (!occursOn(ev, k)) continue;
     if (rest && ev.list !== 'Faith') continue;
-    if (ev.skill && isSkill(SK[ev.skill])) {
+    if (ev.skill && isLib(SK[ev.skill])) {
       if (used.has(ev.skill)) continue; used.add(ev.skill);
       const sq = makeSkillQuest(ev.skill, k, ev.title, ev.list || SK[ev.skill].list);
       if (ev.target) { sq.target = ev.target; sq.xp = questXp(ev.skill, ev.target); }
@@ -370,7 +610,7 @@ function generate(k) {
   }
   for (const c of SKL) {
     const s = S.skills[c.id];
-    if (!s || !s.active || !isSkill(c) || used.has(c.id) || !s.days.includes(wd)) continue;
+    if (!s || !s.active || !isLib(c) || used.has(c.id) || !s.days.includes(wd)) continue;
     if (rest && c.list !== 'Faith') continue;
     used.add(c.id); q.push(makeSkillQuest(c.id, k));
   }
@@ -458,8 +698,8 @@ function addXp(skill, amt, quiet) {
 }
 function defaultActivity(id) {
   const c = SK[id]; if (!c) return null;
-  if (c.custom) return c.act && ACT[c.act] ? c.act : null;
-  const a = ACTIVITIES.find(a => a.skill === id); return a ? a.id : null;
+  if (c.custom || c.act) return c.act && ACT[c.act] ? c.act : null;
+  const a = ACTIVITIES.find(a => a.skill === id) || ACTS.find(a => !a.del && a.skill === id); return a ? a.id : null;
 }
 function workoutKcal(actId, min, int) { const a = ACT[actId]; return a ? Math.round(a.met[int] * latestWeightKg() * min / 60) : 0; }
 /* 24 h cap: no skill (or side quest) can log more than a full day of time in one day */
@@ -590,10 +830,10 @@ function titleTracks() {
     if (c.custom) {
       const role = customRole(c);
       add('Your skills', L, CUSTOM_TIERS.map(([n, t]) => stp(n, `ck_${c.id}_${n}`, `${t} ${role}`, `${c.name} level ${n}`)),
-        k => { const n = 100 + k * 50; return stp(n, `ck_${c.id}_${n}`, `Legendary ${role} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: !active(c.id) });
+        k => { const n = 100 + k * 50; return stp(n, `ck_${c.id}_${n}`, `Legendary ${role} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: !active(c.id) || hiddenSk(c.id) });
     } else {
       add('Skills', L, [[10, 'Adept'], [25, 'Expert'], [50, 'Master'], [100, 'Grandmaster']].map(([n, p]) => stp(n, `sk_${c.id}_${n}`, `${p} of ${c.name}`, `${c.name} level ${n}`)),
-        k => { const n = 200 + k * 100; return stp(n, `sk_${c.id}_${n}`, `Legend of ${c.name} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: !active(c.id) && c.id !== 'discipline' });
+        k => { const n = 200 + k * 100; return stp(n, `sk_${c.id}_${n}`, `Legend of ${c.name} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: (!active(c.id) && c.id !== 'discipline') || hiddenSk(c.id) });
     }
   }
   // languages
@@ -606,12 +846,17 @@ function titleTracks() {
   add('Languages', b2, [stp(3, 'poly3', 'Polyglot', 'B2+ in three languages'), stp(5, 'poly5', 'Hyperpolyglot', 'B2+ in five languages')], null, v => v + ' languages', { hidden: !anyLang });
   const hg = ((S.skills.hanja || {}).sc || {}).grade || 0, hopts = SK.hanja.stats[0].opts.map(o => o.split(' · ')[0]);
   add('Languages', hg, [[4, 'hanja5', 'Character Apprentice', '5급'], [6, 'hanja3', 'Hanja Scholar', '3급'], [8, 'hanja1', 'Master of Characters', '1급'], [9, 'hanjaT', 'Grand Master of Characters', '특급']].map(([g, id, nm, l]) => stp(g, id, `${nm} (${l})`, `Reach Hanja grade ${l}`)), null, v => hopts[v], { hidden: !active('hanja') && !hg });
+  // martial-art belts: one title per belt claimed (ids belt_<skill>_<index> are permanent)
+  for (const id of Object.keys(S.belts || {})) {
+    const d = beltDef(id), c = SK[id], cur = beltCur(id); if (!d || !c) continue;
+    add('Belts', cur ? cur.i + 1 : 0, d.belts.map((b, i) => stp(i + 1, `belt_${id}_${i}`, `${b.n} ${d.word} · ${c.name}`, `Claim the ${b.n.toLowerCase()} ${d.word.toLowerCase()} in ${c.name}`)), null, v => v ? d.belts[v - 1].n : 'none', { hidden: !cur });
+  }
   // task quests (achievements scale with how many days a week the task runs)
   for (const t of Object.values(S.tasks || {})) {
     if (t.id === 'pray') continue;
     const th = taskThresholds(t), names = taskAchNames(t), pre = (t.custom ? 'tc_' : 'tk_') + t.id + '_', unit = (t.days || []).length < 7 ? 'times' : 'days';
     const steps = th.map((n, i) => stp(n, pre + i, names[i], `${t.name}: complete it ${n.toLocaleString()} ${n === 1 ? 'time' : unit}`));
-    add(t.custom ? 'Your tasks' : 'Tasks', t.done || 0, steps, k => { const n = th[5] + (k + 1) * th[6]; return stp(n, pre + (6 + k), `${names[5]} ${roman(k + 2)}`, `${t.name}: complete it ${n.toLocaleString()} ${unit}`); }, v => v + '×', { hidden: !t.active && !t.done });
+    add(t.custom ? 'Your tasks' : 'Tasks', t.done || 0, steps, k => { const n = th[5] + (k + 1) * th[6]; return stp(n, pre + (6 + k), `${names[5]} ${roman(k + 2)}`, `${t.name}: complete it ${n.toLocaleString()} ${unit}`); }, v => v + '×', { hidden: (!t.active && !t.done) || hiddenTk(t.id) });
   }
   // side quests
   const sideN = (S.side || []).filter(q => q.status === 'done').length;
@@ -634,7 +879,7 @@ function taskThresholds(t) { // completions for each tier, scaled to how often t
 const taskAchNames = t => !t.custom && TASK_DEF[t.id] ? TASK_DEF[t.id].ach : CUSTOM_ACH.map(w => `${w}: ${t.name}`);
 function autoTitles() { return titleTracks().flatMap(t => t.earned); }
 function checkTitles(silent) {
-  for (const t of autoTitles()) if (!S.titles.auto[t.id]) { S.titles.auto[t.id] = todayKey(); if (!silent) toast((/^t[kc]_/.test(t.id) ? 'Achievement: ' : 'Title earned: ') + t.name, 'ti'); }
+  for (const t of autoTitles()) if (!S.titles.auto[t.id]) { S.titles.auto[t.id] = todayKey(); if (!silent) toast((/^t[kc]_/.test(t.id) ? 'Achievement: ' : /^belt_/.test(t.id) ? 'Belt title: ' : 'Title earned: ') + t.name, 'ti'); }
 }
 
 /* ---------- stats & norms ---------- */
@@ -671,6 +916,7 @@ function statValue(id, st) {
     case 'c': return skillConsistency(id);
     case 'm': return normPct(st.norm, (S.tests[st.norm] || {}).v ?? null);
     case 'a': return autoStat(st.k);
+    case 'belt': return beltPct(id);
   }
   return null;
 }
@@ -910,6 +1156,7 @@ function render() {
   renderTop(); renderNav();
   $('#view').innerHTML = ({ home: viewHome, today: viewToday, board: viewBoard, cal: viewCal, log: viewLog, me: viewMe })[ui.tab]();
   fitSeason($('#view'));
+  if (ui.tab === 'me' && ui.profSeg === 'settings') initWheels($('#view'));
   if (ui.tab === 'log' && ui.logSeg === 'workout') updateWkcal();
   if (S.owed.length) showDonation();
 }
@@ -930,7 +1177,11 @@ function viewHome() {
 function renderSetup() {
   applySeason();
   $('#top').innerHTML = ''; $('#nav').innerHTML = '';
-  const cats = [...new Set(SKILLS.filter(isSkill).map(s => s.cat))], tdef = ['teeth', 'shower', 'phone', 'pray'];
+  const tdef = ['teeth', 'shower', 'phone', 'pray'];
+  const tree = pid => subFolders(pid).filter(f => !/^u_/.test(f.id)).map(f => { const own = SKILLS.filter(s => isSkill(s) && s.f === f.id), kids = tree(f.id); if (!own.length && !kids) return '';
+    return `<details class="su"${f.id === 'faith' ? ' open' : ''}><summary><span class="sp">${esc(f.name)}</span>${ICON.chev}</summary>${kids}${own.map(s => `
+    <div class="skpick"><label><input type="checkbox" name="sk_${s.id}" ${s.id === 'bible' ? 'checked' : ''}> ${esc(s.name)}</label>
+    <select name="lv_${s.id}"><option value="1">Beginner</option><option value="2">Intermediate</option><option value="3">Advanced</option></select></div>`).join('')}</details>`; }).join('');
   $('#view').innerHTML = `<div class="hero"><img src="icons/icon-192.png" class="hero-icon" alt=""><h1>Deificatio</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
   <form id="setupForm" onsubmit="return false">
   <div class="card"><h3>Profile</h3>
@@ -942,13 +1193,15 @@ function renderSetup() {
     <div class="grid2"><div><label id="wlab">Weight (lb)</label><input name="weight" type="number" step="0.1" inputmode="decimal"></div><div><label>Body fat % (optional)</label><input name="bf" type="number" step="0.1" inputmode="decimal"></div></div>
     <label>Goal</label><select name="goal"><option value="cut">Lose fat (−500 kcal)</option><option value="maintain" selected>Maintain</option><option value="bulk">Build muscle (+300 kcal)</option></select>
   </div>
+  <div class="card"><h3>Seasons</h3><p class="mu small">The app follows the 72 micro-seasons (七十二候). Pick whose names and scenes you want. You can switch later in Profile → Settings.</p>
+    <div class="cal-pick">${[['ko', '한국 칠십이후', 'Korean', 'The original Chinese set read in Korean, with hangul, 뜻풀이 and romanization.', '東風解凍 · 동풍해동'], ['ja', '日本の七十二候', 'Japanese', "Japan's own version (本朝七十二候) with kana readings, modern meanings and romaji.", '東風解凍 · はるかぜこおりをとく']]
+      .map(([v, a, n, d, ex], i) => `<label class="cal-opt"><input type="radio" name="cal" value="${v}" data-c="calPick" ${i ? '' : 'checked'}><span><b lang="${v}">${a}</b> <span class="mu small">${n}</span><span class="mu2 small">${d}</span><span class="small" lang="${v}">${ex}</span></span></label>`).join('')}</div>
+  </div>
   <div class="card"><h3>Daily rhythm</h3><p class="mu small">Your day resets at wake time. "Phone away & asleep" locks 15 minutes after sleep time.</p>
     <div class="grid2"><div><label>Wake time</label><input name="wake" type="time" value="07:00"></div><div><label>Sleep time</label><input name="sleep" type="time" value="23:00"></div></div>
   </div>
-  <div class="card"><h3>Skills to train</h3><p class="mu small">Tick what goes on your quest list, then pick your current level. Weekdays can be changed later in Calendar → Weekly plan, and you can create your own skills in Profile → Skills.</p>
-  ${cats.map(cat => `<h2>${esc(cat)}</h2>` + SKILLS.filter(s => s.cat === cat && isSkill(s)).map(s => `
-    <div class="skpick"><label><input type="checkbox" name="sk_${s.id}" ${s.id === 'bible' ? 'checked' : ''}> ${esc(s.name)}</label>
-    <select name="lv_${s.id}"><option value="1">Beginner</option><option value="2">Intermediate</option><option value="3">Advanced</option></select></div>`).join('')).join('')}
+  <div class="card"><h3>Skills to train</h3><p class="mu small">Tick what goes on your quest list, then pick your current level. Open a folder to see its skills. Weekdays can be changed later in Calendar → Weekly plan, and you can create your own skills and folders in Board → Skills.</p>
+  <div class="lib su-tree">${tree(null)}</div>
   </div>
   <div class="card"><h3>Daily tasks</h3><p class="mu small">Everyday basics with an XP bar and achievements instead of a hexagon. You can change these any time in Board → Tasks.</p>
   ${TASKS.map(t => `<div class="skpick"><label><input type="checkbox" name="tk_${t.id}" ${tdef.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}</label><span class="mu2 small">${esc(taskDesc(t))}</span></div>`).join('')}
@@ -963,7 +1216,7 @@ function finishSetup() {
   p.name = (g('name') || '').trim(); p.sex = g('sex'); p.birthYear = +g('birthYear') || 2000; p.units = g('units');
   p.heightCm = p.units === 'imperial' ? Math.round(((+g('ft') || 0) * 12 + (+g('in') || 0)) * 2.54) : (+g('cm') || 175);
   const w = num(g('weight')); p.weightKg = w ? (p.units === 'imperial' ? w / 2.20462 : w) : 75;
-  p.goal = g('goal'); p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00';
+  p.goal = g('goal'); p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00'; S.cal = g('cal') === 'ja' ? 'ja' : 'ko';
   const today = todayKey(); p.start = today;
   const bf = num(g('bf')); if (w || bf != null) S.body.push({ id: uid(), date: today, w: w ? p.weightKg : null, bf });
   for (const t of TASKS) if (f.get('tk_' + t.id)) adoptTask(t.id);
@@ -991,8 +1244,8 @@ function pauseBanner(p, tk) {
 }
 function seasonMini(si) { // one-line season label for the Quests tab (the full header lives on Home)
   if (!si) return '';
-  const o = szOpts(), m = o.main, lat = m === 'en' || m === 'rom', t = szText('term', si), h = szText('hu', si);
-  return `<div class="sz-mini" data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"><b${lat ? '' : ' lang="ko"'} class="${lat ? 'lat' : ''}">${esc(h[m])}</b><span class="mu small">${esc(m === 'en' ? t.en : t[m] + (m === 'hj' || m === 'ko' ? ' · ' + h.en : ''))}</span></div>`;
+  const o = szOpts(), m = o.main, lat = m === 'en' || m === 'rom', t = szText('term', si), h = szText('hu', si), lg = SZC().lang[m] || 'ko';
+  return `<div class="sz-mini" data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"><b${lat ? '' : ` lang="${lg}"`} class="${lat ? 'lat' : ''}${m === 'ja' ? ' kana' : ''}">${esc(h[m])}</b><span class="mu small">${esc(m === 'en' ? t.en : t[m] + (m === 'hj' || m === 'ko' || m === 'ja' ? ' · ' + h.en : ''))}</span></div>`;
 }
 function viewToday() {
   const k = todayKey(), d = ensureDay(k), q = d.q, pi = pauseInfo(k);
@@ -1125,7 +1378,7 @@ function sideModal(q, type, tpl) {
     <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="sdSave">${q ? 'Save' : 'Start quest'}</button></div>`);
 }
 function scopeChips(sel, grp) { // reusable "what does this pause cover" picker (vacation + rest passes)
-  const act = SKL.filter(s => isSkill(s) && (S.skills[s.id] || {}).active), tks = activeTasks();
+  const act = SKL.filter(s => isLib(s) && (S.skills[s.id] || {}).active), tks = activeTasks();
   const chip = (g, k, n) => `<button class="chip ${(sel[g] || []).includes(k) ? 'on' : ''}" data-a="${grp}" data-g="${g}" data-k="${esc(k)}">${esc(n)}</button>`;
   return `<label>Lists</label><div class="chips">${[...S.lists, 'Nutrition', 'Wind Down'].filter((l, i, a) => a.indexOf(l) === i).map(l => chip('lists', l, l)).join('')}</div>
     ${act.length ? `<label>Skills</label><div class="chips">${act.map(s => chip('skills', s.id, s.name)).join('')}</div>` : ''}
@@ -1226,11 +1479,11 @@ function taskCard(t) {
     ${t.id === 'pray' ? '' : `<div class="gold small" style="margin-top:4px">Next: ${esc(nextTxt)} · <span class="num">${done}/${nx < 0 ? th[5] + (Math.floor((done - th[5]) / th[6]) + 1) * th[6] : th[nx]}</span></div>`}</div><span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
 }
 function boardTasks() {
-  const all = Object.values(S.tasks || {}), act = all.filter(t => t.active), off = all.filter(t => !t.active), lib = TASKS.filter(d => !S.tasks[d.id]);
+  const all = Object.values(S.tasks || {}).filter(t => !hiddenTk(t.id)), act = all.filter(t => t.active), off = all.filter(t => !t.active), lib = TASKS.filter(d => !S.tasks[d.id] && !hiddenTk(d.id));
   return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">Everyday basics: no hexagon, just an XP bar and achievements. Several sessions a day are fine (brush teeth 2×).</p><button class="btn-p btn-s" data-a="tkNew">+ New task</button></div>
   <h2>Active</h2>${act.length ? act.map(taskCard).join('') : '<div class="card mu small">No task quests yet. Adopt some below.</div>'}
   ${off.length ? `<h2>Paused</h2>${off.map(taskCard).join('')}` : ''}
-  ${lib.length ? `<h2>Library</h2><div class="card">${lib.map(d => `<div class="list-item"><div class="sp"><div>${esc(d.name)}</div><div class="mu small">${esc(taskDesc(d))} · ${esc(d.list)}</div></div><button class="chip" data-a="tkAdopt" data-id="${d.id}">Adopt</button></div>`).join('')}</div>` : ''}`;
+  ${lib.length ? `<h2>Library</h2><div class="card">${lib.map(d => `<div class="list-item"><div class="sp"><div>${esc(d.name)}</div><div class="mu small">${esc(taskDesc(d))} · ${esc(d.list)}</div></div><button class="chip" data-a="tkAdopt" data-id="${d.id}">Adopt</button><button class="btn-g x lib-del" data-a="tkHide" data-id="${d.id}" aria-label="Delete ${esc(d.name)}">${ICON.trash}</button></div>`).join('')}</div>` : ''}`;
 }
 function taskModal(t, def) { // t = existing task, def = a library task being adopted, neither = brand new custom task
   const src = t || def || { name: '', unit: 'times', sessions: 1, base: 10, max: 30, diff: 1, list: 'Daily', days: [0, 1, 2, 3, 4, 5, 6] };
@@ -1247,7 +1500,7 @@ function taskModal(t, def) { // t = existing task, def = a library task being ad
     <label>Quest list</label><select name="list">${[...new Set([...S.lists, 'Wind Down', src.list].filter(Boolean))].map(l => `<option ${l === src.list ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
     <label>Days</label><div class="chips days" id="tkDays">${WD.map((w, i) => `<button type="button" class="chip ${(src.days || []).includes(i) ? 'on' : ''}" data-a="chipT" data-k="${i}">${w}</button>`).join('')}</div>
   </form>
-  <div class="actions">${t && t.custom ? `<button class="btn-g bad" data-a="tkDel" data-id="${t.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="tkSave" data-id="${t ? t.id : ''}" data-d="${def ? def.id : ''}">${t ? 'Save' : def ? 'Adopt' : 'Create'}</button></div>`);
+  <div class="actions">${t ? `<button class="btn-g bad" data-a="${t.custom ? 'tkDel' : 'tkHide'}" data-id="${t.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="tkSave" data-id="${t ? t.id : ''}" data-d="${def ? def.id : ''}">${t ? 'Save' : def ? 'Adopt' : 'Create'}</button></div>`);
 }
 function saveTask(id, defId) {
   const f = new FormData($('#tkForm')), name = (f.get('name') || '').trim(), unit = f.get('unit'), days = chipsOn('#tkDays').map(Number);
@@ -1281,7 +1534,7 @@ function viewCal() {
   }
   const sel = ui.calSel, evs = S.events.filter(e => occursOn(e, sel)), day = S.days[sel], spi = pauseInfo(sel);
   const repTxt = e => ({ none: 'Once', daily: 'Daily', weekly: 'Weekly · ' + (e.days && e.days.length ? e.days : [dparse(e.start).getDay()]).map(i => WD[i]).join(' '), monthly: 'Monthly', yearly: 'Yearly' })[e.repeat || 'none'];
-  const active = SKL.filter(s => isSkill(s) && S.skills[s.id] && S.skills[s.id].active), tks = activeTasks();
+  const active = SKL.filter(s => isLib(s) && S.skills[s.id] && S.skills[s.id].active), tks = activeTasks();
   const pauses = S.pauses.filter(p => !p.end || p.end >= tk).sort((a, b) => a.start < b.start ? -1 : 1);
   const sideDue = (S.side || []).filter(q => q.status === 'active' && (q.due === sel || q.cps && q.cps.some(c => !c.done && cpDate(q, c) === sel)));
   return `<div class="row month"><button class="btn-g" data-a="calNav" data-id="-1" aria-label="Previous month">‹</button><h3 class="sp">${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3><button class="btn-g" data-a="calNav" data-id="1" aria-label="Next month">›</button></div>
@@ -1317,7 +1570,7 @@ function eventModal(ev) {
   <form id="evForm" onsubmit="return false">
   <label>Title</label><input name="title" value="${esc(e.title)}" placeholder="e.g. BJJ class">
   <div class="grid2"><div><label>List</label><select name="list">${lists.map(l => `<option ${l === e.list ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
-  <div><label>Linked skill</label><select name="skill"><option value="">None</option>${SKL.filter(isSkill).map(s => `<option value="${s.id}" ${s.id === e.skill ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div></div>
+  <div><label>Linked skill</label><select name="skill"><option value="">None</option>${skillOptions(e.skill)}</select></div></div>
   <div class="grid2"><div><label>Fixed target (optional)</label><input name="target" type="number" step="any" value="${esc(e.target || '')}" placeholder="adaptive"></div>
   <div><label>Unit (no skill)</label><input name="unit" value="${esc(e.unit || '')}" placeholder="min, reps…"></div></div>
   <label>Repeats</label><select name="repeat" data-c="evRepeat">${[['none', 'Does not repeat'], ['daily', 'Every day'], ['weekly', 'Weekly on…'], ['monthly', 'Every month'], ['yearly', 'Every year']].map(([v, n]) => `<option value="${v}" ${v === e.repeat ? 'selected' : ''}>${n}</option>`).join('')}</select>
@@ -1338,7 +1591,7 @@ function saveEvent(id) {
   closeModal(true); regenToday(); afterChange();
 }
 function vacModal() {
-  const tk = todayKey(), active = SKL.filter(s => isSkill(s) && (S.skills[s.id] || {}).active);
+  const tk = todayKey(), active = SKL.filter(s => isLib(s) && (S.skills[s.id] || {}).active);
   openModal(`<h3>Vacation pause</h3><p class="mu small">Plan it ahead. Paused quests don't appear on those days. Days with nothing left don't touch your streak or give penalties.</p>
   <label>Label (optional)</label><input id="vNote" placeholder="e.g. Seoul trip">
   <div class="grid2"><div><label>First day</label><input id="vStart" type="date" min="${tk}" value="${addDays(tk, 1)}"></div><div><label>Last day</label><input id="vEnd" type="date" min="${tk}" value="${addDays(tk, 7)}"></div></div>
@@ -1360,31 +1613,71 @@ function emModal() {
 function viewLog() {
   return `<div class="seg">${[['workout', 'Workouts'], ['food', 'Food'], ['body', 'Body']].map(([id, n]) => `<button class="${ui.logSeg === id ? 'on' : ''}" data-a="logSeg" data-id="${id}">${n}</button>`).join('')}</div>` + (ui.logSeg === 'workout' ? viewWorkout() : ui.logSeg === 'body' ? viewBody() : viewFood());
 }
+const DIST_ACTS = ['run', 'walk', 'hike', 'trail'];
+const hasDist = id => DIST_ACTS.includes(id) || !!(ACT[id] && ACT[id].dist);
+function actOptions(sel) { // <optgroup> per Workout subfolder; anything else under "Other"
+  const wf = workoutFolders(), live = ACTS.filter(a => !a.del), other = live.filter(a => !wf.some(f => f.id === a.f));
+  return wf.map(f => [f.name, live.filter(a => a.f === f.id)]).concat([['Other', other]]).filter(([, l]) => l.length)
+    .map(([n, l]) => `<optgroup label="${esc(n)}">${l.map(a => `<option value="${a.id}" ${a.id === sel ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</optgroup>`).join('');
+}
 function viewWorkout() {
-  const k = todayKey(), groups = [...new Set(ACTIVITIES.map(a => a.group))];
+  const k = todayKey(), mine = ACTS.filter(a => a.custom && !a.del);
   const todays = S.workouts.filter(w => w.date === k);
   const week = S.workouts.filter(w => w.date > addDays(k, -7));
   return `<div class="card"><h3>Log a workout</h3>
-    <label>Activity</label><select id="wAct" data-c="wcalc">${groups.map(g => `<optgroup label="${g}">${ACTIVITIES.filter(a => a.group === g).map(a => `<option value="${a.id}" ${a.id === ui.lastAct ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</optgroup>`).join('')}</select>
+    <label>Activity</label><select id="wAct" data-c="wcalc">${actOptions(ui.lastAct)}</select>
     <div class="grid2"><div><label>Minutes</label><input id="wMin" type="number" inputmode="numeric" value="45" data-i="wcalc"></div>
     <div id="wDistWrap"><label>Distance (${imperial() ? 'mi' : 'km'})</label><input id="wDist" type="number" step="0.1" inputmode="decimal" placeholder="optional"></div></div>
     <label>Intensity</label><div class="seg" style="margin-top:0">${['Light', 'Moderate', 'Vigorous'].map((n, i) => `<button class="${ui.intensity === i ? 'on' : ''}" data-a="int" data-id="${i}">${n}</button>`).join('')}</div>
     <div class="row est"><span class="mu small sp">Estimated burn</span><b id="wKcal" class="num">—</b></div>
     <button class="btn-p btn-big" data-a="wLog">Log workout</button>
-    <p class="mu2 small">MET × your weight × time (2024 Compendium of Physical Activities). Linked skill quests fill in automatically.</p></div>
+    <p class="mu2 small">MET × your weight × time (2024 Compendium of Physical Activities). Linked skill quests fill in automatically.</p>
+    <button class="btn-s" data-a="caNew" style="margin-top:2px">+ New workout type</button></div>
   <h2>Today</h2><div class="card">${todays.length ? todays.map(w => `<div class="list-item"><div class="sp"><div>${esc((ACT[w.act] || { name: w.act }).name)}</div><div class="mu small">${w.min} min · ${['light', 'moderate', 'vigorous'][w.int]}${w.auto ? ' · from quest' : w.practice ? ' · from practice' : ''}</div></div><span class="num">${w.kcal} kcal</span>${w.auto ? '' : `<button class="btn-g x" data-a="wDel" data-id="${w.id}" aria-label="Delete">✕</button>`}</div>`).join('') : '<div class="mu small">Nothing logged yet.</div>'}</div>
-  <div class="grid3"><div class="stat"><b>${week.length}</b><span>Sessions · 7d</span></div><div class="stat"><b>${week.reduce((a, w) => a + w.min, 0)}</b><span>Minutes · 7d</span></div><div class="stat"><b>${week.reduce((a, w) => a + (w.kcal || 0), 0).toLocaleString()}</b><span>kcal · 7d</span></div></div>`;
+  <div class="grid3"><div class="stat"><b>${week.length}</b><span>Sessions · 7d</span></div><div class="stat"><b>${week.reduce((a, w) => a + w.min, 0)}</b><span>Minutes · 7d</span></div><div class="stat"><b>${week.reduce((a, w) => a + (w.kcal || 0), 0).toLocaleString()}</b><span>kcal · 7d</span></div></div>
+  ${mine.length ? `<h2>Your workout types</h2><div class="card">${mine.map(a => `<div class="list-item"><div class="sp"><div>${esc(a.name)}</div><div class="mu small">${esc((folderById(a.f) || { name: 'Other' }).name)} · MET ${a.met.join(' / ')}${a.skill && SK[a.skill] ? ' · ' + esc(SK[a.skill].name) : ''}${a.dist ? ' · distance' : ''}</div></div><button class="chip" data-a="caEdit" data-id="${a.id}">Edit</button></div>`).join('')}</div>` : ''}`;
+}
+function caModal(a) { // the user's own workout type
+  const wf = workoutFolders(), like = a ? a.like : 'hiit';
+  openModal(`<h3>${a ? 'Edit workout type' : 'New workout type'}</h3><p class="mu small">Your own activity in "Log a workout". Calories use MET values like the built-in ones.</p>
+  <form id="caForm" onsubmit="return false">
+  <label>Name</label><input name="name" value="${esc(a ? a.name : '')}" maxlength="40" placeholder="e.g. Sled pushes">
+  <label>Group</label><select name="f" data-c="caF">${wf.map(f => `<option value="${f.id}" ${(a ? a.f : 'strength') === f.id ? 'selected' : ''}>${esc(f.name)}</option>`).join('')}<option value="__new">+ New group…</option></select>
+  <div id="caNewF" hidden><input name="fNew" placeholder="New group (a folder under Workout)" maxlength="32" style="margin-top:6px"></div>
+  <label>Calories</label><select name="like" data-c="caLike"><option value="__met" ${a && !a.like ? 'selected' : ''}>My own MET values</option>${ACTS.filter(x => !x.del && (!a || x.id !== a.id)).map(x => `<option value="${x.id}" ${x.id === like ? 'selected' : ''}>Burns like ${esc(x.name)}</option>`).join('')}</select>
+  <div id="caMet" class="met3" ${a && !a.like ? '' : 'hidden'}>${['Light', 'Moderate', 'Vigorous'].map((n, i) => `<div><label>${n}</label><input name="met${i}" type="number" step="0.1" inputmode="decimal" value="${a ? a.met[i] : [3, 5, 8][i]}"></div>`).join('')}
+    <div class="mu2 small">MET: 1 = sitting still, 3.5 = brisk walk, 8 = jogging, 12+ = all-out.</div></div>
+  <label>Linked skill (optional)</label><select name="skill"><option value="">None</option>${skillOptions(a ? a.skill : '')}</select>
+  <div class="mu2 small" style="margin-top:4px">Logging it adds XP to the skill and fills that skill's minute quest.</div>
+  <label class="check"><input type="checkbox" name="dist" ${a && a.dist ? 'checked' : ''}> Track distance</label>
+  </form>
+  <div class="actions">${a ? `<button class="btn-g bad" data-a="caDel" data-id="${a.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="caSave" data-id="${a ? a.id : ''}">${a ? 'Save' : 'Create'}</button></div>`);
+}
+function saveAct(id) {
+  const f = new FormData($('#caForm')), name = (f.get('name') || '').trim();
+  if (!name) { toast('Name your workout'); return; }
+  let fid = f.get('f');
+  if (fid === '__new') { const n = (f.get('fNew') || '').trim(); if (!n) { toast('Name the new group'); return; } fid = 'u_' + uid().slice(0, 8); S.folders.push({ id: fid, name: n, parent: 'workout' }); }
+  const like = f.get('like'); let met;
+  if (like === '__met') { met = [0, 1, 2].map(i => num(f.get('met' + i))); if (met.some(v => !v || v < 1 || v > 25)) { toast('MET values go from 1 to 25'); return; } }
+  else { const L = ACT[like]; if (!L) { toast('Pick an activity to compare with'); return; } met = L.met.slice(); }
+  const def = { id: id || 'ca_' + uid().slice(0, 8), name, f: fid, met, like: like === '__met' ? null : like, skill: f.get('skill') || null, dist: !!f.get('dist') };
+  const i = S.customActs.findIndex(a => a.id === def.id);
+  if (i >= 0) S.customActs[i] = Object.assign(S.customActs[i], def); else S.customActs.push(def);
+  rebuildACT(); ui.lastAct = def.id; closeModal(true); afterChange(); toast(i >= 0 ? 'Workout type updated' : 'Workout type added', 'ti');
 }
 function updateWkcal() {
   const a = $('#wAct'), m = $('#wMin'); if (!a || !m) return;
   $('#wKcal').textContent = workoutKcal(a.value, num(m.value) || 0, ui.intensity) + ' kcal';
-  $('#wDistWrap').style.visibility = ['run', 'walk', 'hike'].includes(a.value) ? 'visible' : 'hidden';
+  $('#wDistWrap').style.visibility = hasDist(a.value) ? 'visible' : 'hidden';
 }
 function logWorkout() {
   const act = $('#wAct').value; let min = Math.round(num($('#wMin').value) || 0); if (min <= 0) { toast('Enter minutes'); return; }
-  let dist = ['run', 'walk', 'hike'].includes(act) ? num($('#wDist').value) : null; if (dist && imperial()) dist = dist / 0.621371;
-  const a = ACT[act], k = todayKey(), room = DAY_CAP - S.workouts.filter(x => x.date === k).reduce((t, x) => t + (x.min || 0), 0);
+  let dist = hasDist(act) ? num($('#wDist').value) : null; if (dist && imperial()) dist = dist / 0.621371;
+  const a = ACT[act]; if (!a) { toast('Pick an activity'); return; }
+  const k = todayKey(), room = DAY_CAP - S.workouts.filter(x => x.date === k).reduce((t, x) => t + (x.min || 0), 0);
   if (min > room) { if (room <= 0) { toast('Already 24 h of workouts logged today', 'bad'); return; } min = room; toast(`Capped at 24 h for today · logged ${min} min`, 'bad'); }
+  if (a.skill && !SK[a.skill]) a.skill = null;
   if (a.skill) { min = capMin(a.skill, k, min); if (!min) return; }
   const w = { id: uid(), date: k, act, min, int: ui.intensity, kcal: workoutKcal(act, min, ui.intensity), skill: a.skill, xp: Math.round(min / 3), dist };
   ui.lastAct = act;
@@ -1629,6 +1922,7 @@ function meOverview() {
   const tile = (v, l) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`;
   return `<div class="card row" style="gap:14px">${emblem(rk.tier, 60)}<div class="sp"><h3 style="font-size:18px">${esc(S.profile.name || 'Unnamed')}</h3>
     <div class="gold small">${esc(rk.name)} · Level ${o.L}</div><div class="bar gold"><i style="width:${o.into / o.need * 100}%"></i></div><div class="mu2 small num">${o.into} / ${o.need} XP · ${S.xp.toLocaleString()} total</div></div></div>
+  <div class="card">${rankStrip(o.L)}</div>
   <div class="grid3">${tile(S.streak.cur, 'Streak')}${tile(S.streak.best, 'Best streak')}${tile(S.stats.perfect, 'Perfect days')}
     ${tile(S.stats.qdone, 'Quests done')}${tile(S.workouts.length, 'Workouts')}${tile(kc.toLocaleString(), 'kcal burned')}
     ${tile(hours.toFixed(0), 'Hours trained')}${tile(fb.length, 'Books read')}${tile(titles.length + S.titles.claimed.length, 'Titles')}
@@ -1637,15 +1931,93 @@ function meOverview() {
   <h2>Discipline · Lv ${skLevel('discipline').L}</h2><div class="card"><div class="hex-wrap">${radar(SK.discipline.stats.map(st => ({ n: st.n, v: statValue('discipline', st) })))}</div></div>
   <h2>Top skills</h2><div class="card">${top.length ? top.map(s => { const l = skLevel(s.id); return `<div class="list-item"><span class="sp">${esc(s.name)}</span><span class="mu small num">Lv ${l.L}</span><div style="width:80px" class="bar"><i style="width:${l.into / l.need * 100}%"></i></div></div>`; }).join('') : '<div class="mu small">Complete quests to level up skills.</div>'}</div>`;
 }
+/* ---------- martial-art belts ---------- */
+const ord = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+function beltDef(id) { // the ladder in use: the user's edited copy, else the standard one from the catalog
+  const st = (S.belts || {})[id], std = BELTS[id];
+  if (st && st.ladder && st.ladder.length) return { word: st.word || (std && std.word) || 'Belt', belts: st.ladder, custom: true };
+  return std ? { word: std.word || 'Belt', belts: std.belts } : null;
+}
+const beltSt = id => (S.belts[id] || (S.belts[id] = { ladder: null, hist: [] }));
+function beltCur(id) { // highest belt claimed
+  const st = (S.belts || {})[id], d = beltDef(id); if (!st || !d || !(st.hist || []).length) return null;
+  return st.hist.filter(h => h.i < d.belts.length).sort((a, b) => b.i - a.i || b.m - a.m)[0] || null;
+}
+function markTxt(b, v) {
+  if (!b || !b.m) return '';
+  if (b.ml === 'dan') return ord((b.d0 || 1) + v) + ' dan';
+  if (b.ml === 'kyu') return ord(b.m + 1 - v) + ' kyu';
+  if (b.ml === 'degree') return v ? ord(v) + ' degree' : '';
+  return v ? v + ' stripe' + (v > 1 ? 's' : '') : '';
+}
+function beltName(id, i, m) { const d = beltDef(id), b = d && d.belts[i]; if (!b) return ''; const mk = markTxt(b, m || 0); return `${b.n} ${d.word.toLowerCase()}${mk ? ' · ' + mk : ''}`; }
+function beltPct(id) { // white belt = about average for the art's hexagon (50), the top of the ladder ~ 99.7
+  const d = beltDef(id), c = beltCur(id); if (!d || !c) return 2;
+  const b = d.belts[c.i], pos = (c.i + (b && b.m ? c.m / (b.m + 1) : 0)) / Math.max(1, d.belts.length - 1);
+  return Math.round(Math.min(99.7, 50 + 49.7 * Math.pow(clamp(pos, 0, 1), .8)));
+}
+const isDark = c => { const h = (c || '#000').replace('#', ''), v = parseInt(h.length === 3 ? h.split('').map(x => x + x).join('') : h, 16); return ((v >> 16 & 255) * .3 + (v >> 8 & 255) * .59 + (v & 255) * .11) < 60; };
+function beltSvg(b, m = 0, w = 84) { // flat belt with a rank bar and its marks
+  if (!b) return '';
+  const h = 13; let g = '';
+  if (b.c2) { const n = 7; for (let i = 0; i < n; i++) g += `<rect x="${(i * w / n).toFixed(1)}" y="0" width="${(w / n + .3).toFixed(1)}" height="${h}" fill="${i % 2 ? b.c2 : b.c}"/>`; }
+  else g += `<rect x="0" y="0" width="${w}" height="${h}" fill="${b.c}"/>`;
+  if (b.m) { const bx = w * .66, bw = w * .22, dark = isDark(b.c); g += `<rect x="${bx.toFixed(1)}" y="0" width="${bw.toFixed(1)}" height="${h}" fill="${dark ? '#c4302b' : '#161616'}"/>`;
+    const n = b.ml === 'dan' ? (b.d0 || 1) + m : m, sw = Math.max(1, Math.min(2.2, bw / 10)), gap = sw * .7, show = Math.min(n, Math.floor((bw - 2) / (sw + gap)));
+    for (let k = 0; k < show; k++) g += `<rect x="${(bx + 1.5 + k * (sw + gap)).toFixed(1)}" y="1.5" width="${sw.toFixed(1)}" height="${h - 3}" fill="${b.ml === 'dan' || b.ml === 'degree' ? '#e2c27a' : '#f4f2ec'}"/>`; }
+  return `<svg class="belt" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><g>${g}</g><rect x=".5" y=".5" width="${w - 1}" height="${h - 1}" fill="none" stroke="rgba(0,0,0,.35)"/></svg>`;
+}
+function beltBox(id) { // the belt section inside a martial art's skill card
+  const d = beltDef(id), cur = beltCur(id), st = (S.belts || {})[id], s = SK[id];
+  if (!d) return folderOf(s) === 'combat' || folderPath(folderOf(s)).startsWith('Workout › Combat') ? `<div class="belt-box"><div class="mu small">This art has no standard belts. If your school uses ranks, set them up here.</div><button class="btn-s" data-a="beltEdit" data-id="${id}" style="margin-top:8px">Set up belts</button></div>` : '';
+  const hist = (st && st.hist || []).slice().sort((a, b) => a.date < b.date ? 1 : -1);
+  return `<div class="belt-box"><div class="row" style="gap:10px">${cur ? beltSvg(d.belts[cur.i], cur.m) : beltSvg({ c: 'transparent' })}<div class="sp"><b>${cur ? esc(beltName(id, cur.i, cur.m)) : 'No ' + esc(d.word.toLowerCase()) + ' claimed'}</b>${cur ? `<div class="mu small">since ${fmtDate(cur.date)}</div>` : ''}</div><button class="btn-s btn-p" data-a="beltClaim" data-id="${id}">Claim ${esc(d.word.toLowerCase())}</button></div>
+    ${hist.length > 1 || (hist.length && !cur) ? `<div class="belt-hist">${hist.map(h => `<div class="row small"><span class="sp mu">${esc(beltName(id, h.i, h.m))} · ${fmtDate(h.date)}</span><button class="btn-g x" data-a="beltDel" data-id="${id}" data-k="${h.id}" aria-label="Remove">✕</button></div>`).join('')}</div>` : cur ? `<div class="row small" style="margin-top:4px"><span class="sp"></span><button class="btn-g small" data-a="beltDel" data-id="${id}" data-k="${cur.id}">Undo claim</button></div>` : ''}
+    <div class="row small" style="margin-top:6px"><span class="sp mu2">${d.custom ? "Your school's order" : 'Standard order · schools vary'}</span><button class="btn-g small" data-a="beltEdit" data-id="${id}">Edit ${esc(d.word.toLowerCase())}s</button></div></div>`;
+}
+function beltClaimModal(id) {
+  const d = beltDef(id); if (!d) return; const cur = beltCur(id);
+  ui.bc = { id, i: cur ? cur.i : 0, m: cur ? cur.m : 0 };
+  openModal(`<h3>Claim a ${esc(d.word.toLowerCase())} · ${esc(SK[id].name)}</h3><p class="mu small">Pick the ${esc(d.word.toLowerCase())} you were awarded. It shows on the skill, fills the hexagon's Belt side and earns a title.</p><div id="bcBody">${bcBody()}</div>
+  <label>Date awarded</label><input id="bcDate" type="date" value="${todayKey()}" max="${todayKey()}">
+  <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="beltSave">Claim</button></div>`);
+}
+function bcBody() {
+  const { id, i, m } = ui.bc, d = beltDef(id), b = d.belts[i];
+  return `<div class="belt-pick">${d.belts.map((x, k) => `<button class="${k === i ? 'on' : ''}" data-a="bcPick" data-id="${k}">${beltSvg(x, 0, 56)}<span>${esc(x.n)}</span></button>`).join('')}</div>
+    ${b && b.m ? `<label>${b.ml === 'dan' ? 'Dan' : b.ml === 'kyu' ? 'Kyu' : b.ml === 'degree' ? 'Degree' : 'Stripes'}</label><select data-c="bcMark">${Array.from({ length: b.m + 1 }, (_, v) => `<option value="${v}" ${v === m ? 'selected' : ''}>${esc(markTxt(b, v) || (b.ml === 'degree' ? 'No degree yet' : 'No stripes'))}</option>`).join('')}</select>` : ''}
+    <div class="row" style="margin-top:12px;gap:10px">${beltSvg(b, m, 110)}<b class="small">${esc(beltName(id, i, m))}</b></div>`;
+}
+function beltEditModal(id) {
+  const d = beltDef(id);
+  ui.be = { id, word: d ? d.word : 'Belt', rows: (d ? d.belts : [{ n: 'White', c: '#f2f0ea', m: 0, ml: 'stripe' }, { n: 'Black', c: '#161616', m: 0, ml: 'dan' }]).map(b => Object.assign({}, b)) };
+  openModal(`<h3>${esc(SK[id].name)} · ${esc(ui.be.word.toLowerCase())} order</h3><p class="mu small">Match your school: rename, recolor, reorder, add or remove ${esc(ui.be.word.toLowerCase())}s. "Marks" are stripes, degrees, dan or kyu a ${esc(ui.be.word.toLowerCase())} can carry.</p><div id="beBody">${beBody()}</div>
+  <div class="actions">${BELTS[id] ? `<button class="btn-g" data-a="beReset">Standard order</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="beSave">Save</button></div>`);
+}
+function beBody() {
+  const R = ui.be.rows;
+  return `<label>Called</label><select data-c="beWord"><option ${ui.be.word === 'Belt' ? 'selected' : ''}>Belt</option><option ${ui.be.word === 'Sash' ? 'selected' : ''}>Sash</option><option ${ui.be.word === 'Cord' ? 'selected' : ''}>Cord</option></select>
+  <div class="be-rows">${R.map((b, i) => `<div class="be-row"><input type="color" value="${esc(b.c)}" data-i="be" data-id="${i}" data-k="c" aria-label="Color"><input value="${esc(b.n)}" data-i="be" data-id="${i}" data-k="n" placeholder="Name" maxlength="24">
+    <input type="number" min="0" max="12" value="${b.m || 0}" data-i="be" data-id="${i}" data-k="m" aria-label="Marks" title="Marks">
+    <select data-c="be" data-id="${i}" data-k="ml" aria-label="Mark type">${[['stripe', 'stripes'], ['degree', 'degrees'], ['dan', 'dan'], ['kyu', 'kyu']].map(([v, n]) => `<option value="${v}" ${(b.ml || 'stripe') === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <span class="be-btns"><button class="btn-g x" data-a="beMove" data-id="${i}" data-v="-1" aria-label="Move up" ${i ? '' : 'disabled'}>↑</button><button class="btn-g x" data-a="beMove" data-id="${i}" data-v="1" aria-label="Move down" ${i < R.length - 1 ? '' : 'disabled'}>↓</button><button class="btn-g x" data-a="beDel" data-id="${i}" aria-label="Remove">✕</button></span></div>`).join('')}</div>
+  <button class="btn-s" data-a="beAdd">+ Add ${esc(ui.be.word.toLowerCase())}</button>`;
+}
+
+function statsOf(id) { // a skill's hexagon sides; a Belt side is added when you set up belts for an art that has none built in
+  const s = SK[id], st = s.stats || [], b = (S.belts || {})[id];
+  if (st.some(x => x.t === 'belt') || !(b && b.ladder && b.ladder.length)) return st;
+  const i = s.custom ? st.length : Math.max(0, st.length - 2); return st.slice(0, i).concat([{ k: 'belt', n: 'Belt', t: 'belt' }], st.slice(i));
+}
 function skillCard(id) {
-  const s = SK[id], st = skState(id), l = skLevel(id), open = ui.openSkill === id;
-  const axes = s.stats.map(x => ({ n: x.n, v: statValue(id, x) }));
+  const s = SK[id], st = skState(id), l = skLevel(id), open = ui.openSkill === id, stats = statsOf(id);
+  const axes = stats.map(x => ({ n: x.n, v: statValue(id, x) }));
   let body = '';
   if (open) {
-    body = `<div class="hex-wrap" style="margin-top:6px">${radar(axes, 230)}</div>`;
+    body = `<div class="hex-wrap" style="margin-top:6px">${radar(axes, 230)}</div>` + beltBox(id);
     if (s.unit) body += `<div class="mu small">Next target <b class="num">${esc(fmtTarget(skillTarget(id, todayKey()), s.unit))}</b> · difficulty ×${st.load.toFixed(2)} · ${(st.min / 60).toFixed(1)} h logged${histMin(id) ? ` + ${(histMin(id) / 60).toFixed(0)} h past` : ''}</div>`;
     if (s.custom) body += `<div class="mu2 small" style="margin-top:4px">Each side grows with the hours you put into that part. ${s.scale || 100} h on one part = 50 (average).</div>`;
-    body += s.stats.map(x => statEditor(id, x)).join('');
+    body += stats.map(x => statEditor(id, x)).join('');
     if (s.unit) {
       body += `<hr><div class="small mu">Log practice time</div>
         ${s.custom ? `<div class="chips" id="pf_${id}" style="margin:8px 0">${s.stats.map(x => `<button class="chip" data-a="chipT" data-k="${esc(x.k)}">${esc(x.n)}</button>`).join('')}</div><div class="mu2 small" style="margin-bottom:8px">No parts picked = split evenly.</div>` : ''}
@@ -1655,20 +2027,43 @@ function skillCard(id) {
         <div class="row" style="margin-top:6px"><input id="ph_${id}" type="number" inputmode="decimal" step="any" placeholder="Hours" style="flex:1"><button class="btn-s" data-a="hist" data-id="${id}">Add hours</button></div>
         ${histMin(id) ? `<div class="row small" style="margin-top:6px"><span class="sp mu">${(histMin(id) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })} h of past experience</span><button class="btn-g small" data-a="histClear" data-id="${id}">Clear</button></div>` : ''}</div>
         <div class="row wrap" style="margin-top:12px;gap:8px"><button class="btn-s" data-a="skLoad" data-id="${id}" data-v="0.85">Easier</button><button class="btn-s" data-a="skLoad" data-id="${id}" data-v="1.15">Harder</button><span class="sp"></span>
-        ${s.custom ? `<button class="btn-s" data-a="csEdit" data-id="${id}">Edit skill</button>` : ''}<button class="btn-s" data-a="skToggle" data-id="${id}">${st.active ? 'Remove from quests' : 'Add to quests'}</button></div>`;
+        ${s.custom ? `<button class="btn-s" data-a="csEdit" data-id="${id}">Edit skill</button>` : `<button class="btn-g small bad" data-a="skHide" data-id="${id}">Delete</button>`}<button class="btn-s" data-a="skToggle" data-id="${id}">${st.active ? 'Remove from quests' : 'Add to quests'}</button></div>`;
     }
   }
-  return `<div class="card skill-card"><div class="row" data-a="skOpen" data-id="${id}" role="button"><div class="sp"><div>${esc(s.name)} <span class="mu small num">Lv ${l.L}</span>${s.custom ? ' <span class="pill">Custom</span>' : ''}</div>${s.custom ? `<div class="gold small">${esc(customRank(id))}</div>` : ''}
+  const bc = beltDef(id) && beltCur(id);
+  return `<div class="card skill-card"><div class="row" data-a="skOpen" data-id="${id}" role="button"><div class="sp"><div>${esc(s.name)} <span class="mu small num">Lv ${l.L}</span>${s.custom ? ' <span class="pill">Custom</span>' : ''}${bc ? ' ' + beltSvg(beltDef(id).belts[bc.i], bc.m, 40) : ''}</div>${s.custom ? `<div class="gold small">${esc(customRank(id))}</div>` : ''}
     <div class="bar" style="max-width:200px"><i style="width:${l.into / l.need * 100}%"></i></div></div><span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
 }
+function libSkills(fid) { // skills in a folder and everything under it
+  return SKL.filter(s => isLib(s) && folderOf(s) === fid).concat(...subFolders(fid).map(f => libSkills(f.id)));
+}
+function libFolder(f, depth = 0) {
+  const all = libSkills(f.id), user = /^u_/.test(f.id);
+  if (!all.length && !user) return '';
+  const own = SKL.filter(s => isLib(s) && folderOf(s) === f.id), on = all.filter(s => (S.skills[s.id] || {}).active).length;
+  return `<details data-f="${f.id}" ${ui.libOpen.has(f.id) ? 'open' : ''}><summary><span class="sp">${user ? '<span class="fd-ic">' + ICON.folder + '</span>' : ''}${esc(f.name)}</span><span class="mu2 small num">${on}/${all.length}</span>${ICON.chev}</summary><div class="lib-body">
+    ${subFolders(f.id).map(c => libFolder(c, depth + 1)).join('')}
+    ${own.map(s => { const a = (S.skills[s.id] || {}).active;
+      return `<div class="list-item"><span class="sp">${esc(s.name)}${s.custom ? ' <span class="pill">Custom</span>' : ''}</span><span class="mu2 small num">Lv ${skLevel(s.id).L}</span><button class="chip ${a ? 'on' : ''}" data-a="skToggle" data-id="${s.id}">${a ? 'Active' : 'Add'}</button><button class="btn-g x lib-del" data-a="${s.custom ? 'csDel' : 'skHide'}" data-id="${s.id}" aria-label="Delete ${esc(s.name)}">${ICON.trash}</button></div>`; }).join('')}
+    <div class="lib-acts"><button class="btn-g small" data-a="csNew" data-f="${f.id}">+ Skill here</button><button class="btn-g small" data-a="fdNew" data-f="${f.id}">+ Folder here</button>${user ? `<span class="sp"></span><button class="btn-g small" data-a="fdEdit" data-id="${f.id}">Rename</button><button class="btn-g small bad" data-a="fdDel" data-id="${f.id}">Delete</button>` : ''}</div></div></details>`;
+}
 function meSkills() {
-  const active = SKL.filter(s => isSkill(s) && S.skills[s.id] && S.skills[s.id].active);
-  const cats = [...new Set(SKL.filter(isSkill).map(s => s.cat))];
-  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">Skills you train and level, each with its own hexagon. Tap one to rate its stats or add past experience. The dashed ring is the average adult (50).</p><button class="btn-p btn-s" data-a="csNew">+ New skill</button></div>
+  const active = SKL.filter(s => isLib(s) && S.skills[s.id] && S.skills[s.id].active);
+  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">Skills you train and level, each with its own hexagon. Tap one to rate its stats or add past experience. The dashed ring is the average adult (50).</p></div>
+  <div class="row" style="gap:8px;margin-top:10px"><button class="btn-p btn-s" data-a="csNew">+ New skill</button><button class="btn-s" data-a="fdNew">+ New folder</button></div>
   <h2>Active</h2>${skillCard('discipline')}${active.map(s => skillCard(s.id)).join('')}
-  <h2>Library</h2><div class="card lib">${cats.map(cat => { const list = SKL.filter(s => s.cat === cat && isSkill(s)); const on = list.filter(s => (S.skills[s.id] || {}).active).length;
-    return `<details ${cat === 'Custom' ? 'open' : ''}><summary><span class="sp">${esc(cat)}</span><span class="mu2 small num">${on}/${list.length}</span>${ICON.chev}</summary>${list.map(s => { const a = (S.skills[s.id] || {}).active;
-      return `<div class="list-item"><span class="sp">${esc(s.name)}</span><span class="mu2 small num">Lv ${skLevel(s.id).L}</span><button class="chip ${a ? 'on' : ''}" data-a="skToggle" data-id="${s.id}">${a ? 'Active' : 'Add'}</button></div>`; }).join('')}</details>`; }).join('')}</div>`;
+  <h2>Library</h2><div class="card lib">${subFolders(null).map(f => libFolder(f)).join('')}</div>`;
+}
+function folderModal(f, parent) {
+  openModal(`<h3>${f ? 'Rename folder' : 'New folder'}</h3><p class="mu small">Group skills your own way. A folder can sit at the top or inside another one (for example a new subfolder under Workout).</p>
+  <label>Name</label><input id="fdName" value="${esc(f ? f.name : '')}" maxlength="32" placeholder="e.g. Seminary">
+  <label>Inside</label><select id="fdParent"><option value="">Top level</option>${folderOptions(f ? f.parent : parent, { skip: f && f.id })}</select>
+  <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="fdSave" data-id="${f ? f.id : ''}">${f ? 'Save' : 'Create'}</button></div>`);
+}
+function skillOptions(sel) { // <optgroup> per folder (Workout first), for "linked skill" pickers
+  const out = [], walk = pid => subFolders(pid).forEach(f => { const l = SKL.filter(s => isLib(s) && folderOf(s) === f.id); if (l.length) out.push([folderPath(f.id), l]); walk(f.id); });
+  walk(null); out.sort((a, b) => (b[0].startsWith('Workout') ? 1 : 0) - (a[0].startsWith('Workout') ? 1 : 0));
+  return out.map(([n, l]) => `<optgroup label="${esc(n)}">${l.map(s => `<option value="${s.id}" ${s.id === sel ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</optgroup>`).join('');
 }
 const histMin = id => { const s = skState(id); return (s.hist || 0) + Object.values(s.hsm || {}).reduce((a, v) => a + v, 0); };
 function statEditor(id, x) {
@@ -1687,6 +2082,8 @@ function csModal(c) {
   openModal(`<h3>${c ? 'Edit skill' : 'Create a skill'}</h3><p class="mu small">Your own skill, with its own hexagon. Each stat is one part of the skill; its side grows with the hours you log on that part.</p>
   <form id="csForm" onsubmit="return false">
   <label>Name</label><input name="name" value="${esc(c ? c.name : '')}" placeholder="e.g. Game Programming">
+  <label>Folder</label><select name="f" data-c="csFolder">${folderOptions(c ? folderOf(c) : (ui.csF || 'custom'))}<option value="__new">+ New folder…</option></select>
+  <div id="csNewF" hidden><input name="fNew" placeholder="New folder name" maxlength="32" style="margin-top:6px"><label>Inside</label><select name="fNewP"><option value="">Top level</option>${folderOptions(null)}</select></div>
   <label>Title name for ranks</label><input name="role" value="${esc(c ? c.role || '' : '')}" placeholder="e.g. Game Designer (defaults to the skill name)">
   <div class="mu2 small" style="margin-top:4px">Ranks: Novice → Apprentice → Journeyman → Adept → Expert → Master → Grandmaster → Legendary I, II…</div>
   <div class="grid2"><div><label>Quest list</label><select name="list">${S.lists.map(l => `<option ${(c ? c.list : 'Craft') === l ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
@@ -1698,7 +2095,7 @@ function csModal(c) {
   <button type="button" class="btn-s" data-a="csAddStat">+ Add stat</button>
   <label>Hours on one part for an average score (50)</label><input name="scale" type="number" value="${c ? c.scale || 100 : 100}">
   <label class="check"><input type="checkbox" name="phys" ${c && c.phys ? 'checked' : ''}> Physical (counts as training, gets deload weeks)</label>
-  <label>Calorie estimate uses</label><select name="act"><option value="">No calorie tracking</option>${ACTIVITIES.map(a => `<option value="${a.id}" ${c && c.act === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select>
+  <label>Calorie estimate uses</label><select name="act"><option value="">No calorie tracking</option>${ACTS.filter(a => !a.del).map(a => `<option value="${a.id}" ${c && c.act === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}</select>
   </form>
   <div class="actions">${c ? `<button class="btn-g bad" data-a="csDel" data-id="${c.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="csSave" data-id="${c ? c.id : ''}">${c ? 'Save' : 'Create'}</button></div>`);
 }
@@ -1710,12 +2107,15 @@ function saveCustomSkill(id) {
   if (stats.length < 3 || stats.length > 8) { toast('Use 3 to 8 stats'); return; }
   if (!base || base <= 0) { toast('Set a starting target'); return; }
   const unit = f.get('unit');
-  const def = { id: id || 'c_' + uid().slice(0, 8), name, role: (f.get('role') || '').trim(), list: f.get('list'), unit, base, max: Math.max(base, max || base * 4), phys: !!f.get('phys'), act: f.get('act') || null, scale: Math.max(1, num(f.get('scale')) || 100), stats };
+  let fid = f.get('f') || 'custom';
+  if (fid === '__new') { const fn = (f.get('fNew') || '').trim(); if (!fn) { toast('Name the new folder'); return; } fid = 'u_' + uid().slice(0, 8); S.folders.push({ id: fid, name: fn, parent: f.get('fNewP') || null }); }
+  const def = { id: id || 'c_' + uid().slice(0, 8), name, f: fid, role: (f.get('role') || '').trim(), list: f.get('list'), unit, base, max: Math.max(base, max || base * 4), phys: !!f.get('phys'), act: f.get('act') || null, scale: Math.max(1, num(f.get('scale')) || 100), stats };
   const i = S.customSkills.findIndex(c => c.id === def.id);
   if (i >= 0) S.customSkills[i] = def; else S.customSkills.push(def);
   rebuildSK();
   const st = skState(def.id); st.days = days;
   if (i < 0) { st.active = true; st.load = [1, 1, 1.6, 2.3][+f.get('lvl') || 1]; ui.openSkill = def.id; }
+  let p = folderById(fid); while (p) { ui.libOpen.add(p.id); p = p.parent ? folderById(p.parent) : null; }
   closeModal(true); regenToday(); afterChange(); toast(i >= 0 ? 'Skill updated' : 'Skill created', 'ti');
 }
 function meTitles() {
@@ -1757,12 +2157,14 @@ function meSettings() {
     <label>Diet goal</label><div class="row dg-sum"><div class="sp small">${esc(dietSummary())}</div><button type="button" class="btn-s" data-a="dietGoal">Edit</button></div>
     <button class="btn-p btn-big" data-a="setSave">Save profile</button></form>
     <div class="mu2 small" style="margin-top:8px">${ft}′${inch}″ · started ${p.start ? fmtDate(p.start) : '—'}</div></div>
+  ${themeCard()}
   ${szCard()}
   <div class="card" id="fxCard"><h3>Feedback</h3><p class="mu small" style="margin-top:2px">What happens when you check something off.</p>
     <label class="check"><input type="checkbox" data-c="fx" data-k="sound" ${fxOpts().sound ? 'checked' : ''}> Checkmark sound</label>
     <label class="check"><input type="checkbox" data-c="fx" data-k="haptic" ${fxOpts().haptic ? 'checked' : ''}> Vibration${navigator.vibrate ? '' : ' <span class="mu2 small">(not supported on this device)</span>'}</label>
     <label class="check"><input type="checkbox" data-c="fx" data-k="cele" ${fxOpts().cele ? 'checked' : ''}> Fireworks for streak milestones</label>
     <button class="btn-s" data-a="fxTest" style="margin-top:12px">Try it</button></div>
+  ${deletedCard()}
   <div class="card"><h3>Quest lists</h3><div class="chips" style="margin:8px 0">${S.lists.map(l => `<span class="chip">${esc(l)}</span>`).join('')}</div>
     <div class="row"><input id="newList" placeholder="New list name"><button class="btn-s" data-a="listAdd">Add</button></div></div>
   <div class="card"><h3>Backup</h3><p class="mu small" style="margin-top:2px">Your data lives only on this phone. ${S.lastBackup ? 'Last backup: <b>' + fmtDate(S.lastBackup) + '</b>' : '<b>No backup yet.</b>'}</p>
@@ -1772,16 +2174,25 @@ function meSettings() {
     <button class="btn-g bad" data-a="reset">Erase all data</button></div>`;
 }
 
+function deletedCard() { // built-in skills and tasks the user deleted (hidden, progress kept)
+  const sk = (S.hideSk || []).filter(id => SK[id]), tk = (S.hideTk || []).filter(id => S.tasks[id] || TASK_DEF[id]);
+  if (!sk.length && !tk.length) return '';
+  const row = (n, sub, k, id) => `<div class="list-item"><div class="sp"><div>${esc(n)}</div><div class="mu small">${esc(sub)}</div></div><button class="chip" data-a="unhide" data-k="${k}" data-id="${id}">Restore</button></div>`;
+  return `<div class="card"><h3>Deleted defaults</h3><p class="mu small" style="margin-top:2px">Built-in skills and tasks you deleted. Their XP and titles were kept. Restoring puts them back in the library, not on your quests.</p>
+    ${sk.map(id => row(SK[id].name, 'Skill · ' + folderPath(folderOf(SK[id])), 'hideSk', id)).join('')}${tk.map(id => row((S.tasks[id] || TASK_DEF[id]).name, 'Task', 'hideTk', id)).join('')}</div>`;
+}
+
 /* ---------- backups ---------- */
 const backupName = () => `deificatio-backup-${todayKey()}`;
 function markBackup(msg) { S.lastBackup = todayKey(); S.backupSnooze = null; save(); render(); toast(msg, 'ti'); }
+const backupText = () => JSON.stringify(custPhoto.data ? Object.assign({}, S, { _bgPhoto: custPhoto.data }) : S);
 function downloadBackup() {
-  const blob = new Blob([JSON.stringify(S)], { type: 'application/json' }), a = document.createElement('a');
+  const blob = new Blob([backupText()], { type: 'application/json' }), a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = backupName() + '.json'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000); markBackup('Backup downloaded');
 }
 function shareBackup() {
-  const data = JSON.stringify(S), opts = [new File([data], backupName() + '.json', { type: 'application/json' }), new File([data], backupName() + '.txt', { type: 'text/plain' })];
+  const data = backupText(), opts = [new File([data], backupName() + '.json', { type: 'application/json' }), new File([data], backupName() + '.txt', { type: 'text/plain' })];
   const file = navigator.share && navigator.canShare ? opts.find(f => { try { return navigator.canShare({ files: [f] }); } catch (e) { return false; } }) : null;
   if (!file) { downloadBackup(); return; }
   navigator.share({ files: [file], title: 'Deificatio backup' }).then(() => markBackup('Backup saved')).catch(e => { if (!e || e.name !== 'AbortError') downloadBackup(); });
@@ -1813,6 +2224,11 @@ const A = {
   tkEdit: el => taskModal(S.tasks[el.dataset.id], null),
   tkSave: el => saveTask(el.dataset.id, el.dataset.d),
   tkToggle: el => { const t = S.tasks[el.dataset.id]; if (!t) return; t.active = !t.active; regenToday(); afterChange(); toast(t.active ? t.name + ' is back on your quests' : t.name + ' removed from quests (progress kept)'); },
+  tkHide: el => {
+    const id = el.dataset.id, t = S.tasks[id], nm = (t || TASK_DEF[id] || {}).name || 'this task';
+    if (!confirm(`Delete "${nm}"? Its level and achievements are kept, and you can restore it in Profile → Settings → Deleted defaults.`)) return;
+    if (!S.hideTk.includes(id)) S.hideTk.push(id); if (t) t.active = false; closeModal(true); ui.openTask = null; regenToday(); afterChange(); toast(nm + ' deleted · restore it in Settings');
+  },
   tkDel: el => { if (!confirm('Delete this task? Its level and achievements go with it.')) return; delete S.tasks[el.dataset.id]; S.pauses.forEach(p => { if (p.tasks) p.tasks = p.tasks.filter(x => x !== el.dataset.id); }); closeModal(true); ui.openTask = null; regenToday(); afterChange(); },
   tkDay: el => { const t = S.tasks[el.dataset.id], d = +el.dataset.d; if (!t) return; t.days = t.days.includes(d) ? t.days.filter(x => x !== d) : [...t.days, d].sort(); regenToday(); afterChange(); },
   // side quests
@@ -1957,7 +2373,20 @@ const A = {
   fastFood: () => { ui.fastFood = !ui.fastFood; render(); },
   szLevel: el => { szSet(o => { o.level = el.dataset.id; }); szRefresh(); },
   szMain: el => { szSet(o => { o.main = el.dataset.id; }); szRefresh(); },
-  szReset: () => { S.szView = null; save(); szRefresh(); toast('Season display reset'); },
+  szReset: () => { S[SZC().key] = null; save(); szRefresh(); toast('Season display reset'); },
+  themePick: el => {
+    const id = el.dataset.id, t = THEME_LIST.find(x => x[0] === id); if (!t) return;
+    if (t[3]) { toast('That theme is waiting on its art. Coming soon.'); return; }
+    S.theme = Object.assign({}, S.theme || {}, { id }); save();
+    const go = () => { ui.season = applySeason(); themeRefresh(); };
+    if (id === 'custom' && custOpts().mode === 'photo' && !custPhoto.url) loadCustomPhoto().then(go); else go();
+  },
+  custMode: el => { custSet(o => { o.mode = el.dataset.id; }); const go = () => { ui.season = applySeason(); themeRefresh(); }; if (el.dataset.id === 'photo' && !custPhoto.url) loadCustomPhoto().then(go); else go(); },
+  custCards: el => { custSet(o => { o.cards = el.dataset.id; }); ui.season = applySeason(); themeRefresh(); },
+  custPhotoPick: () => { const i = $('#custPhotoIn'); if (!i) return; i.onchange = () => { pickPhoto(i.files[0]); i.value = ''; }; i.click(); },
+  wheelTgt: el => { ui.wheelTgt = el.dataset.id; themeRefresh(); },
+  cwSwatch: el => { const w = el.closest('.cw'); if (!w) return; const [h, s, v] = hexHsv(el.dataset.id); w.dataset.h = h; w.dataset.s = s; w.dataset.v = v; const r = w.querySelector('[data-i=cwV]'); if (r) r.value = Math.round(v * 100); initWheels(w.parentNode); wheelChanged(w, true); },
+  calSet: el => { if (calSet() === el.dataset.id) return; S.cal = el.dataset.id; save(); ui.season = applySeason(); szRefresh(); themeRefresh(); toast(S.cal === 'ja' ? '日本の七十二候 · Japanese micro-seasons' : '한국 칠십이후 · Korean micro-seasons'); },
   szOpts: () => { closeModal(true); ui.tab = 'me'; ui.profSeg = 'settings'; render(); const c = $('#szCard'); if (c) window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 70); },
   range: el => { ui.bodyRange = +el.dataset.id; render(); },
   bodyAdd: () => { let w = num($('#bW').value); const bf = num($('#bF').value); if (w == null && bf == null) { toast('Enter weight or body fat'); return; } if (w != null && imperial()) w = w / 2.20462; S.body.push({ id: uid(), date: $('#bD').value || todayKey(), w, bf }); afterChange(); toast('Saved'); },
@@ -1974,10 +2403,53 @@ const A = {
   skToggle: el => { const id = el.dataset.id, s = skState(id); s.active = !s.active; if (s.active && SK[id].cat === 'Faith') s.days = [0, 1, 2, 3, 4, 5, 6]; regenToday(); afterChange(); toast(s.active ? SK[id].name + ' added to quests' : SK[id].name + ' removed from quests'); },
   skLoad: el => { const s = skState(el.dataset.id); s.load = clamp(s.load * +el.dataset.v, 0.4, 6); regenToday(); afterChange(); },
   practice: el => { const id = el.dataset.id, m = Math.round(num($('#pm_' + id).value) || 0); if (m <= 0) { toast('Enter minutes'); return; } logPractice(id, m, SK[id].custom ? chipsOn('#pf_' + id) : []); },
-  csNew: () => csModal(null),
+  csNew: el => { ui.csF = el && el.dataset.f || null; csModal(null); },
   csEdit: el => csModal(SK[el.dataset.id]),
   csAddStat: () => { const n = $$('.csStat').length; if (n >= 8) { toast('8 stats max'); return; } $('#csStats').insertAdjacentHTML('beforeend', `<input class="csStat" data-k="" placeholder="Stat ${n + 1}" style="margin-bottom:6px">`); },
   csSave: el => saveCustomSkill(el.dataset.id),
+  skHide: el => {
+    const id = el.dataset.id, c = SK[id]; if (!c) return;
+    if (!confirm(`Delete ${c.name}? It leaves your library and quests. Its XP and titles are kept, and you can restore it in Profile → Settings → Deleted defaults.`)) return;
+    skState(id).active = false; if (!S.hideSk.includes(id)) S.hideSk.push(id); if (ui.openSkill === id) ui.openSkill = null;
+    regenToday(); afterChange(); toast(c.name + ' deleted · restore it in Settings');
+  },
+  unhide: el => { const k = el.dataset.k, id = el.dataset.id; S[k] = (S[k] || []).filter(x => x !== id); if (k === 'hideTk' && S.tasks[id]) S.tasks[id].active = false; afterChange(); toast('Restored to the library'); },
+  fdNew: el => folderModal(null, el && el.dataset.f || null),
+  fdEdit: el => folderModal(folderById(el.dataset.id), null),
+  fdSave: el => {
+    const id = el.dataset.id, name = ($('#fdName').value || '').trim(), parent = $('#fdParent').value || null;
+    if (!name) { toast('Name the folder'); return; }
+    if (id) { const f = S.folders.find(x => x.id === id); if (f) { f.name = name; f.parent = parent; } }
+    else { const f = { id: 'u_' + uid().slice(0, 8), name, parent }; S.folders.push(f); ui.libOpen.add(f.id); }
+    let p = parent ? folderById(parent) : null; while (p) { ui.libOpen.add(p.id); p = p.parent ? folderById(p.parent) : null; }
+    closeModal(true); afterChange(); toast(id ? 'Folder updated' : 'Folder created', 'ti');
+  },
+  fdDel: el => {
+    const f = S.folders.find(x => x.id === el.dataset.id); if (!f) return;
+    if (!confirm(`Delete the folder "${f.name}"? Its skills and folders move up one level; nothing else is deleted.`)) return;
+    S.folders.forEach(x => { if (x.parent === f.id) x.parent = f.parent || null; });
+    S.customSkills.forEach(c => { if (c.f === f.id) c.f = f.parent || 'custom'; });
+    S.customActs.forEach(a => { if (a.f === f.id) a.f = f.parent || null; });
+    S.folders = S.folders.filter(x => x.id !== f.id); rebuildSK(); afterChange(); toast('Folder deleted');
+  },
+  caNew: () => caModal(null),
+  caEdit: el => caModal(ACT[el.dataset.id]),
+  caSave: el => saveAct(el.dataset.id),
+  caDel: el => { const a = S.customActs.find(x => x.id === el.dataset.id); if (!a || !confirm(`Delete "${a.name}"? Workouts you already logged with it keep their name and calories.`)) return; a.del = true; rebuildACT(); closeModal(true); afterChange(); },
+  beltClaim: el => beltClaimModal(el.dataset.id),
+  bcPick: el => { ui.bc.i = +el.dataset.id; ui.bc.m = 0; $('#bcBody').innerHTML = bcBody(); },
+  beltSave: () => { const { id, i, m } = ui.bc, date = ($('#bcDate') || {}).value || todayKey(); beltSt(id).hist.push({ id: uid(), i, m, date }); closeModal(true); afterChange(); toast('Claimed: ' + beltName(id, i, m), 'ti'); },
+  beltDel: el => { const st = beltSt(el.dataset.id); if (!confirm('Remove this claim?')) return; st.hist = st.hist.filter(h => h.id !== el.dataset.k); afterChange(); },
+  beltEdit: el => beltEditModal(el.dataset.id),
+  beMove: el => { const i = +el.dataset.id, j = i + +el.dataset.v, R = ui.be.rows; if (j < 0 || j >= R.length) return; [R[i], R[j]] = [R[j], R[i]]; $('#beBody').innerHTML = beBody(); },
+  beDel: el => { if (ui.be.rows.length <= 1) { toast('Keep at least one'); return; } ui.be.rows.splice(+el.dataset.id, 1); $('#beBody').innerHTML = beBody(); },
+  beAdd: () => { ui.be.rows.push({ n: '', c: '#8a8a8a', m: 0, ml: 'stripe' }); $('#beBody').innerHTML = beBody(); },
+  beReset: () => { if (!confirm('Go back to the standard order? Your claims stay.')) return; const st = beltSt(ui.be.id); st.ladder = null; st.word = null; closeModal(true); afterChange(); },
+  beSave: () => {
+    const rows = ui.be.rows.map(b => Object.assign({}, b, { n: (b.n || '').trim(), m: clamp(Math.round(num(b.m) || 0), 0, 12) })).filter(b => b.n);
+    if (!rows.length) { toast('Name at least one'); return; }
+    const st = beltSt(ui.be.id); st.ladder = rows; st.word = ui.be.word; closeModal(true); afterChange(); toast('Saved', 'ti');
+  },
   csDel: el => {
     const id = el.dataset.id; if (!confirm('Delete this skill? Its XP stays in your overall level.')) return;
     S.customSkills = S.customSkills.filter(c => c.id !== id); delete S.skills[id];
@@ -2007,10 +2479,12 @@ const A = {
   backupLater: () => { S.backupSnooze = todayKey(); save(); render(); },
   importOpen: () => {
     const i = $('#importFile'); if (!i) return;
-    i.onchange = () => { const f = i.files[0]; if (!f) return; f.text().then(t => { try { const d = JSON.parse(t); if (!d.profile || !d.days) throw 0; if (!confirm('Replace all current data with this backup?')) return; S = Object.assign(fresh(), d); rebuildSK(); save(); boot(); toast('Backup restored'); } catch (e) { toast('Not a valid backup file', 'bad'); } }); i.value = ''; };
+    i.onchange = () => { const f = i.files[0]; if (!f) return; f.text().then(t => { try { const d = JSON.parse(t); if (!d.profile || !d.days) throw 0; if (!confirm('Replace all current data with this backup?')) return; const ph = d._bgPhoto; delete d._bgPhoto; S = Object.assign(fresh(), d); rebuildSK(); save();
+          const fin = () => { lookKey = null; boot(); toast('Backup restored'); };
+          if (ph) fetch(ph).then(r => r.blob()).then(b => IDB.set('bgPhoto', b)).then(loadCustomPhoto).then(fin, fin); else fin(); } catch (e) { toast('Not a valid backup file', 'bad'); } }); i.value = ''; };
     i.click();
   },
-  reset: () => { if (!confirm('Erase ALL data? This cannot be undone.') || !confirm('Really erase everything?')) return; localStorage.removeItem(STORE); S = fresh(); rebuildSK(); boot(); },
+  reset: () => { if (!confirm('Erase ALL data? This cannot be undone.') || !confirm('Really erase everything?')) return; localStorage.removeItem(STORE); IDB.del('bgPhoto').catch(() => { }); custPhoto.url = custPhoto.data = null; lookKey = null; S = fresh(); rebuildSK(); boot(); },
 };
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
@@ -2025,6 +2499,9 @@ document.addEventListener('input', e => {
   if (k === 'dg' && ui.dg) { ui.dg[e.target.dataset.k] = num(e.target.value); $('#dgAim').innerHTML = dgAimTxt(); }
   if (k === 'fsCalc' && ui.fs) { fsRead(); $$('#fsChips .chip').forEach(b => b.classList.toggle('on', +b.dataset.id === ui.fs.len)); $('#fsEnd').innerHTML = fsEndTxt(); }
   if (k === 'fvName' && ui.fv) ui.fv.name = e.target.value;
+  if (k === 'be' && ui.be) { const r = ui.be.rows[+e.target.dataset.id]; if (r) r[e.target.dataset.k] = e.target.value; }
+  if (k === 'cwV') { const w = e.target.closest('.cw'); w.dataset.v = Math.max(.04, +e.target.value / 100); clearTimeout(ui.cwT); ui.cwT = setTimeout(() => initWheels(w.parentNode), 40); wheelChanged(w, false); }
+  if (k === 'custDim') { const v = +e.target.value; S.theme.custom = Object.assign(custOpts(), { dim: v }); $('#dimV').textContent = v + '%'; const d = $('#bg .bg-dim'); if (d) d.style.opacity = v / 100; lookKey = null; }
   if (k === 'sd' && ui.sd) { const f = e.target.dataset.k, v = e.target.value; if (f === 'goalH') ui.sd.goalMin = Math.round((num(v) || 0) * 60); else ui.sd[f] = f === 'durN' ? num(v) : v; if (f === 'durN' && $('#sdEnd')) $('#sdEnd').innerHTML = sdEndTxt(); }
   if (k === 'sdCp' && ui.sd) { const c = ui.sd.cps[+e.target.dataset.id]; if (c) c[e.target.dataset.k] = e.target.dataset.k === 'day' ? num(e.target.value) : e.target.value; }
   if (k === 'sdRwT' && ui.sd) ui.sd.reward.text = e.target.value;
@@ -2045,6 +2522,12 @@ document.addEventListener('change', e => {
   if (k === 'scale') { skState(t.dataset.id).sc[t.dataset.k] = +t.value; afterChange(); }
   if (k === 'fx') { S.fx = Object.assign(fxOpts(), { [t.dataset.k]: t.checked }); save(); if (t.checked && t.dataset.k !== 'cele') fx('check'); }
   if (k === 'tkUnit') { const m = $('#tkMin'); if (m) m.hidden = t.value !== 'min'; }
+  if (k === 'csFolder') { const w = $('#csNewF'); if (w) w.hidden = t.value !== '__new'; }
+  if (k === 'caF') { const w = $('#caNewF'); if (w) w.hidden = t.value !== '__new'; }
+  if (k === 'caLike') { const w = $('#caMet'); if (w) w.hidden = t.value !== '__met'; }
+  if (k === 'bcMark' && ui.bc) { ui.bc.m = +t.value; $('#bcBody').innerHTML = bcBody(); }
+  if (k === 'be' && ui.be) ui.be.rows[+t.dataset.id][t.dataset.k] = t.value;
+  if (k === 'beWord' && ui.be) { ui.be.word = t.value; $('#beBody').innerHTML = beBody(); }
   if (k === 'tkExp') { const b = $('#tkForm [name=base]'); if (b) b.value = roundUnit((+b.dataset.b || 10) * EXP_MULT[t.value], 'min'); }
   if (k === 'sd' && ui.sd) { const f = t.dataset.k; ui.sd[f] = t.value || null; if (f === 'start' && !ui.sd.start) ui.sd.start = todayKey(); if (f === 'durU') $('#sdBody').innerHTML = sdBody(); else if ($('#sdEnd')) $('#sdEnd').innerHTML = sdEndTxt(); }
   if (k === 'sdRwAll' && ui.sd) { ui.sd.reward.all = t.checked; const sc = $('#sdScope'); if (sc) sc.hidden = t.checked; }
@@ -2053,12 +2536,19 @@ document.addEventListener('change', e => {
   if (k === 'dgBurn' && ui.dg) { ui.dg.burn = t.checked; $('#dgAim').innerHTML = dgAimTxt(); }
   if (k === 'dgQuest' && ui.dg) ui.dg.quest = t.checked;
   if (k === 'fsCalc' && ui.fs) { fsRead(); $('#fsEnd').innerHTML = fsEndTxt(); }
+  if (k === 'cwV' || k === 'custDim') save();
+  if (k === 'cwHex') { const m = /^#?([0-9a-f]{6})$/i.exec(t.value.trim()); if (!m) { toast('Use a hex color like #2a6fd6'); return; } const w = t.closest('.cw'), [h, s, v] = hexHsv('#' + m[1]); w.dataset.h = h; w.dataset.s = s; w.dataset.v = v; initWheels(w.parentNode); wheelChanged(w, true); }
+  if (k === 'calPick') { S.cal = t.value === 'ja' ? 'ja' : 'ko'; applySeason(); }
   if (k === 'setupUnits') { const imp = t.value === 'imperial'; $('#hw').innerHTML = imp ? '<div><label>Height (ft)</label><input name="ft" type="number" value="5"></div><div><label>Height (in)</label><input name="in" type="number" value="10"></div>' : '<div><label>Height (cm)</label><input name="cm" type="number" value="178"></div><div></div>'; $('#wlab').textContent = imp ? 'Weight (lb)' : 'Weight (kg)'; }
 });
+
+// remember which library folders are open across re-renders
+document.addEventListener('toggle', e => { const d = e.target; if (d.tagName === 'DETAILS' && d.dataset.f) { if (d.open) ui.libOpen.add(d.dataset.f); else ui.libOpen.delete(d.dataset.f); } }, true);
 
 /* ---------- boot ---------- */
 function boot() {
   migrate();
+  if (themeId() === 'custom' && custOpts().mode === 'photo' && !custPhoto.url && !boot.ph) { boot.ph = 1; loadCustomPhoto().then(() => { if (S.setup) render(); }); }
   if (!S.setup) { renderSetup(); return; }
   evaluate(); ensureToday(); expireSide(); checkTitles(true); save(); render();
 }
