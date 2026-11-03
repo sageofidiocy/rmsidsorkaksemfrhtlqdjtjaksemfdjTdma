@@ -315,6 +315,11 @@
     T('plants', 'Water the plants', 'times', 1, 0, 0, 1, 'Chores', [0, 3], ['Green Thumb', 'Plant Parent', 'Photosynthesis Sponsor', 'Leaf Whisperer', 'Jungle Keeper', 'Botanical Overlord']),
     T('journal', 'Journal', 'min', 1, 5, 20, 2, 'Wind Down', ALL, ['Dear Diary', 'Ink Spiller', 'Memoirist', 'Chronicler', 'Keeper of Days', 'Living Archive']),
     T('plan', 'Plan tomorrow', 'min', 1, 5, 15, 1, 'Wind Down', ALL, ['Plan Made', 'Ahead of Schedule', 'List Maker', 'Strategist', 'Chief of Tomorrow', 'Prophet of Productivity']),
+    // v16: commute check-ins (weekdays by default; change the days in Calendar → Weekly plan)
+    T('gowork', 'Go to work', 'times', 1, 0, 0, 1, 'Work', [1, 2, 3, 4, 5], ['Clocked In', 'Punctual Professional', 'Commute Conqueror', 'Office Fixture', 'Employee of the Year', 'Pillar of the Workforce']),
+    T('leavework', 'Leave work', 'times', 1, 0, 0, 1, 'Work', [1, 2, 3, 4, 5], ['Clocked Out', 'Work-Life Balancer', 'Boundary Setter', 'Out the Door on Time', 'Master of the Exit', 'Legend of Leaving on Time']),
+    T('goschool', 'Go to school', 'times', 1, 0, 0, 1, 'Study', [1, 2, 3, 4, 5], ['First Bell', 'Present!', 'Perfect Attendance', 'Hallway Regular', 'Honor Roll Commuter', 'Lifelong Learner']),
+    T('leaveschool', 'Leave school', 'times', 1, 0, 0, 1, 'Study', [1, 2, 3, 4, 5], ['Final Bell', 'Homeward Bound', 'Backpack Unloaded', 'Bus Line Veteran', 'Recess Forever', 'Graduate of Going Home']),
   ];
 
   /* One-time and time-limited quest ideas the user can adopt and edit. dur: [n, 'd'|'w'|'m'|'y'] or null = until done. */
@@ -327,15 +332,15 @@
       { title: 'Call an old friend', diff: 1 },
       { title: 'Visit a city you’ve never been to', diff: 3, reward: { kind: 'custom', text: 'A souvenir for yourself' } },
       { title: 'Donate clothes you no longer wear', diff: 1 },
-      { title: 'Spend a full day offline', diff: 3, reward: { kind: 'pass', days: 1, all: true } },
+      { title: 'Spend a full day offline', diff: 3, reward: { kind: 'custom', text: 'A slow breakfast out' } },
     ],
     timed: [
-      { title: 'Finish a personal project', dur: null, track: 'cp', cps: ['Plan it out', 'Build the first version', 'Polish', 'Share it'], diff: 4, reward: { kind: 'pass', days: 1, all: true } },
+      { title: 'Finish a personal project', dur: null, track: 'cp', cps: ['Plan it out', 'Build the first version', 'Polish', 'Share it'], diff: 4, reward: { kind: 'custom', text: 'A launch-day dinner' } },
       { title: 'Deep-clean the whole house', dur: [3, 'd'], track: 'cp', cps: ['Kitchen', 'Bathroom', 'Bedroom', 'Living room'], diff: 2, reward: { kind: 'custom', text: 'Order takeout' } },
       { title: 'Train for a 5K', dur: [8, 'w'], track: 'time', goalH: 20, diff: 3, reward: { kind: 'custom', text: 'New running shoes' } },
       { title: 'Read the Gospels', dur: [1, 'm'], track: 'cp', cps: ['Matthew', 'Mark', 'Luke', 'John'], diff: 2 },
       { title: 'Learn 100 new Hanja', dur: [3, 'm'], track: 'time', goalH: 30, diff: 3 },
-      { title: 'Build a portfolio', dur: [6, 'm'], track: 'cp', cps: ['Pick the best work', 'Write case studies', 'Make the site', 'Send it to 5 people'], diff: 4, reward: { kind: 'pass', days: 2, all: true } },
+      { title: 'Build a portfolio', dur: [6, 'm'], track: 'cp', cps: ['Pick the best work', 'Write case studies', 'Make the site', 'Send it to 5 people'], diff: 4, reward: { kind: 'custom', text: 'New gear for the next project' } },
       { title: 'Practice an instrument for 50 hours', dur: [1, 'y'], track: 'time', goalH: 50, diff: 3 },
     ],
   };

@@ -18,6 +18,21 @@ Michroma: Copyright 2011 The Michroma Project Authors (https://github.com/google
 Nixie One: Copyright (c) 2011, Jovanny Lemonad (lemonad@jovanny.ru), with Reserved Font Name "Nixie"
 Comic Neue: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-LightItalic.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-Regular.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-Italic.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-Bold.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-BoldItalic.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue)
 
+v16 CJK fonts (subsets, cjk-*.woff2; all SIL Open Font License 1.1, from github.com/google/fonts/ofl):
+Nanum Gothic Coding, Nanum Brush Script: Copyright (c) 2009-2010 NHN Corporation, designed by Sandoll Communications Inc.
+Song Myung: Copyright 2018 The Song Myung Project Authors. Gowun Batang: Copyright 2021 The Gowun Batang Project Authors (https://github.com/yangheeryu/Gowun-Batang)
+Gaegu: Copyright 2018 The Gaegu Project Authors. Orbit: Copyright 2022 The Orbit Project Authors (https://github.com/JAMO-TYPEFACE/Orbit)
+Hahmlet: Copyright 2020 The Hahmlet Project Authors (https://github.com/hyper-type/hahmlet). Jua: Copyright 2018 The BM JUA Project Authors
+Poor Story: Copyright (c) YoonDesign Inc. Do Hyeon: Copyright 2018 The Do Hyeon Project Authors
+DotGothic16: Copyright 2020 The DotGothic16 Project Authors (https://github.com/fontworks-fonts/DotGothic16/). Klee One: Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee)
+Zen Antique: Copyright 2021 The Zen Antique Project Authors (https://github.com/googlefonts/zen-antique). Zen Old Mincho: Copyright 2021 The Zen Old Mincho Project Authors (https://github.com/googlefonts/zen-oldmincho)
+Yuji Syuku: Copyright 2021 The Yuji Project Authors (https://github.com/Kinutafontfactory/Yuji). Kaisei Decol: Copyright 2020 The Kaisei Project Authors (https://github.com/Font-Kai/Kaisei)
+Dela Gothic One: Copyright 2020 The Dela Gothic Project Authors (https://github.com/syakuzen/DelaGothic). Mochiy Pop One: Copyright 2020 The MochiyPop Project Authors (https://github.com/fontdasu/Mochiypop)
+Yusei Magic: Copyright 2020 The Yusei Magic Project Authors (https://github.com/tanukifont/YuseiMagic)
+ZCOOL QingKe HuangYou, ZCOOL XiaoWei, ZCOOL KuaiLe: Copyright 2018 The ZCOOL ... Project Authors (https://github.com/googlefonts)
+Ma Shan Zheng: Copyright 2018 The MaShanZheng Project Authors (https://github.com/googlefonts/mashanzheng). Long Cang: Copyright 2018 The LongCang Project Authors (https://github.com/googlefonts/longcang)
+Chiron Hei HK (cjk-tc-chironheihk, the Cyberpunk Hong Kong street; weight 800 instance): Copyright 2025 The Chiron Hei HK Project Authors (https://github.com/chiron-fonts/chiron-hei-hk)
+
 Full license text:
 
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007

@@ -53,6 +53,7 @@ const ICON = {
   saver: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2.8l7.5 3v5.8c0 4.6-3.2 8-7.5 9.9-4.3-1.9-7.5-5.3-7.5-9.9V5.8z"/><path d="M12 7.6c.7 2.2 3 3.1 3 6.1a3 3 0 0 1-6 0c0-1.4.7-2.2 1.1-2.9.2.9.6 1.5 1.1 1.7-.2-1.9.1-3.6.8-4.9z" fill="currentColor" stroke="none"/></svg>',
   camera: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 8h4l1.8-2.5h5.4L16.5 8h4v11h-17z"/><circle cx="12" cy="13.3" r="3.6"/></svg>',
   sliders: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 018 0v3"/></svg>',
 };
 
 /* ---------- state ---------- */
@@ -147,6 +148,8 @@ function migrate() {
   // v11: coins (1 per perfect day; perfect days you already had count) and Streak Savers bought with them
   if (typeof S.coins !== 'number') S.coins = (S.stats && S.stats.perfect) || 0;
   if (typeof S.savers !== 'number') S.savers = 0;
+  if (!S.coinTier) S.coinTier = coinRate((S.streak && S.streak.cur) || 0); // v16
+  if (S.profile && S.profile.student == null) S.profile.student = false; // v16: students get more vacation days
   // v14: custom penalties. Owed fixed penalties are { k: day, f: id, t: what was owed }; old days with "tier 4" (0%) are Tier III + the $5 donation
   if (!Array.isArray(S.owed)) S.owed = [];
   owedFix();
@@ -486,25 +489,30 @@ function seasonHero(si, preview) {
    S.homeText = null (season names) | { mode 'season'|'clock'|'custom' (the main text), main, sub, time '12'|'24'|'off', date (HT_DATES id),
      extra: { season|clock|custom: null | 'above'|'below'|'left'|'right' } }  (v14: the other two can show as smaller subtexts) */
 const HT_POS = [['', 'Off'], ['above', 'Above'], ['below', 'Below'], ['left', 'Left'], ['right', 'Right']];
-const htOpts = () => { const o = Object.assign({ mode: 'season', main: '', sub: '', time: '12', date: 'long' }, S.homeText || {}); o.extra = Object.assign({ season: null, clock: null, custom: null }, o.extra || {}); return o; };
+const htOpts = () => { const o = Object.assign({ mode: 'season', main: '', sub: '', time: '12', date: 'long', wd: true }, S.homeText || {}); o.extra = Object.assign({ season: null, clock: null, custom: null }, o.extra || {}); return o; };
 const HT_MODES = [['season', 'Season names'], ['clock', 'Date & time'], ['custom', 'My own words']];
 const HT_TIMES = [['12', '12-hour'], ['24', '24-hour'], ['off', 'No time']];
-const HT_DATES = ['long', 'med', 'short', 'us', 'eu', 'iso', 'ko', 'ja', 'zh', 'off'];
+const HT_DATES = ['long', 'med', 'short', 'us', 'eu', 'iso', 'ko', 'kohj', 'ja', 'zh', 'off'];
+const HT_WD = ['long', 'med', 'ko', 'kohj', 'ja', 'zh']; // formats that can show the weekday (v16: o.wd false hides it)
+// v16: the lang a date is written in (so the UI style's CJK font picks it up); kohj = Korean in hanja
+const htDateLang = f => f === 'ko' || f === 'kohj' ? 'ko' : f === 'ja' ? 'ja' : f === 'zh' ? (calSet() === 'zh' && zhTrad() ? 'zh-Hant' : 'zh-Hans') : '';
+const htLangAttr = f => htDateLang(f) ? ` lang="${htDateLang(f)}"` : '';
 const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WDL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-function htDate(d, f) {
-  const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate(), w = d.getDay();
+function htDate(d, f, wd = true) {
+  const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate(), w = d.getDay(), W = s => wd ? s : '';
   switch (f) {
-    case 'long': return `${WDL[w]}, ${MON[m]} ${dd}`;
-    case 'med': return `${WDL[w].slice(0, 3)}, ${MON[m].slice(0, 3)} ${dd}, ${y}`;
+    case 'long': return `${W(WDL[w] + ', ')}${MON[m]} ${dd}`;
+    case 'med': return `${W(WDL[w].slice(0, 3) + ', ')}${MON[m].slice(0, 3)} ${dd}, ${y}`;
     case 'short': return `${MON[m]} ${dd}, ${y}`;
     case 'us': return `${pad(m + 1)}/${pad(dd)}/${y}`;
     case 'eu': return `${pad(dd)}/${pad(m + 1)}/${y}`;
     case 'iso': return `${y}-${pad(m + 1)}-${pad(dd)}`;
     // v15: the weekday in full, no brackets (on Mondays "(월)" / "（月）" read like a second month marker)
-    case 'ko': return `${y}년 ${m + 1}월 ${dd}일 ${'일월화수목금토'[w]}요일`;
-    case 'ja': return `${y}年${m + 1}月${dd}日 ${'日月火水木金土'[w]}曜日`;
-    case 'zh': return `${y}年${m + 1}月${dd}日 星期${'日一二三四五六'[w]}`;
+    case 'ko': return `${y}년 ${m + 1}월 ${dd}일${W(` ${'일월화수목금토'[w]}요일`)}`;
+    case 'kohj': return `${y}年 ${m + 1}月 ${dd}日${W(` ${'日月火水木金土'[w]}曜日`)}`; // v16: Korean written in hanja
+    case 'ja': return `${y}年${m + 1}月${dd}日${W(` ${'日月火水木金土'[w]}曜日`)}`;
+    case 'zh': return `${y}年${m + 1}月${dd}日${W(` 星期${'日一二三四五六'[w]}`)}`;
     default: return '';
   }
 }
@@ -518,24 +526,24 @@ const HT_EX = 'Carpe Diem';
 const htLines = v => { const ls = String(v || '').replace(/\r/g, '').split('\n'); return ls.length > 4 ? ls.slice(0, 3).concat(ls.slice(3).join(' ')).join('\n') : ls.join('\n'); };
 function htMainHtml(o, preview) { // the main (big) text
   if (o.mode === 'clock') {
-    const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date), big = t || dt, small = t ? dt : '';
-    return `<div class="season ht clock${preview ? ' prev' : ''}"><div class="sz-h lat" data-clk="${t ? 't' : 'd'}">${esc(big || ' ')}</div>${small ? `<div class="sz-g" data-clk="d"${/^(ko|ja|zh)$/.test(o.date) ? ` lang="${o.date}"` : ''}>${esc(small)}</div>` : ''}</div>`;
+    const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date, o.wd), big = t || dt, small = t ? dt : '';
+    return `<div class="season ht clock${preview ? ' prev' : ''}"><div class="sz-h${t || !htDateLang(o.date) ? ' lat' : ''}" data-clk="${t ? 't' : 'd'}"${t ? '' : htLangAttr(o.date)}>${esc(big || ' ')}</div>${small ? `<div class="sz-g" data-clk="d"${htLangAttr(o.date)}>${esc(small)}</div>` : ''}</div>`;
   }
   if (o.mode === 'custom') {
     const main = (o.main || '').trim() || (preview ? HT_EX : ''), sub = htLines(o.sub).trim();
-    return `<div class="season ht custom${preview ? ' prev' : ''}"><div class="sz-h lat${o.main ? '' : ' ph'}">${esc(main)}</div>${sub ? `<div class="sz-g ml">${esc(sub)}</div>` : ''}</div>`;
+    return `<div class="season ht custom${preview ? ' prev' : ''}"><div class="sz-h${textLang(main) ? '' : ' lat'}${o.main ? '' : ' ph'}"${langAttr(main)}>${esc(main)}</div>${sub ? `<div class="sz-g ml"${langAttr(sub)}>${esc(sub)}</div>` : ''}</div>`;
   }
   return seasonHero(ui.season, preview);
 }
 function htSubHtml(m, o, preview) { // one of the other two, small
   if (m === 'clock') {
-    const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date); if (!t && !dt) return '';
-    const dl = /^(ko|ja|zh)$/.test(o.date) ? ` lang="${o.date}"` : '';
+    const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date, o.wd); if (!t && !dt) return '';
+    const dl = htLangAttr(o.date);
     return `<div class="hts hts-clock">${t ? `<div class="hts-m" data-clk="t">${esc(t)}</div>` : ''}${dt ? `<div class="${t ? 'hts-s' : 'hts-m'}" data-clk="d"${dl}>${esc(dt)}</div>` : ''}</div>`;
   }
   if (m === 'custom') {
     const main = (o.main || '').trim(), sub = htLines(o.sub).trim(); if (!main && !sub && !preview) return '';
-    return `<div class="hts hts-custom">${main || !sub ? `<div class="hts-m${main ? '' : ' ph'}">${esc(main || HT_EX)}</div>` : ''}${sub ? `<div class="hts-s ml">${esc(sub)}</div>` : ''}</div>`;
+    return `<div class="hts hts-custom">${main || !sub ? `<div class="hts-m${main ? '' : ' ph'}"${langAttr(main)}>${esc(main || HT_EX)}</div>` : ''}${sub ? `<div class="hts-s ml"${langAttr(sub)}>${esc(sub)}</div>` : ''}</div>`;
   }
   const si = ui.season; if (!si) return '';
   const C = SZC(), so = szOpts(), mt = szText(so.level, si), gl = C.gloss[so.main], lat = LATIN_PARTS.includes(so.main);
@@ -554,13 +562,37 @@ function homeHero(preview) { // the big text at the top of Home, with any subtex
 function tickClock() { // keeps the clock on Home (and its preview) current
   const els = document.querySelectorAll('[data-clk]'); if (!els.length) return;
   const o = htOpts(), now = new Date();
-  els.forEach(el => { const v = el.dataset.clk === 't' ? htTime(now, o.time) : htDate(now, o.date); if (el.textContent !== v) el.textContent = v; });
+  let changed = false;
+  els.forEach(el => { const v = el.dataset.clk === 't' ? htTime(now, o.time) : htDate(now, o.date, o.wd); if (el.textContent !== v) { el.textContent = v; changed = true; } });
+  if (changed) fitWords();
 }
+/* v16: your own words in Korean / Japanese / Chinese get a lang (so the UI style's CJK font is used for them too) */
+function textLang(t) {
+  t = String(t || '');
+  if (/[\uac00-\ud7a3\u3130-\u318f]/.test(t)) return 'ko';
+  if (/[\u3040-\u30ff]/.test(t)) return 'ja';
+  if (/[\u4e00-\u9fff\u3400-\u4dbf]/.test(t)) return calSet() === 'ja' ? 'ja' : calSet() === 'ko' ? 'ko' : calLang();
+  return '';
+}
+const langAttr = t => textLang(t) ? ` lang="${textLang(t)}"` : '';
+/* v16: words without spaces (hangul, hanja, kana, hanzi phrases, dates) never break mid-word (CSS keep-all + nowrap dates);
+   when one doesn't fit its space (a narrow side column, a long main phrase) it's shrunk to fit instead, down to 45% */
+const FIT_SEL = '.season .sz-h, .season .sz-g, .season .sz-k, .season .sz-s, .season .sz-d, .hts-m, .hts-s, .sz-mini b, .hu > span, .jg-h b';
+function fitWords(root = document) {
+  root.querySelectorAll(FIT_SEL).forEach(el => {
+    el.style.fontSize = ''; const w = el.clientWidth; if (!w || el.scrollWidth <= w + 1) return;
+    const fs = parseFloat(getComputedStyle(el).fontSize); let k = w / el.scrollWidth;
+    for (let i = 0; i < 4; i++) { el.style.fontSize = Math.max(fs * .45, fs * k * .98).toFixed(2) + 'px'; if (el.scrollWidth <= w + 1 || fs * k * .98 <= fs * .45) break; k *= w / el.scrollWidth; }
+  });
+}
+window.addEventListener('resize', () => { clearTimeout(ui.fitT); ui.fitT = setTimeout(() => fitWords(), 120); });
+if (document.fonts) document.fonts.addEventListener('loadingdone', () => fitWords()); // a style's CJK font arriving changes widths
 setInterval(tickClock, 1000);
 function htCtl(m, o, setup) { // the settings for one kind of text
   const now = new Date();
   if (m === 'clock') return `<label>Time</label><div class="seg tight">${HT_TIMES.map(([v, n]) => `<button class="${o.time === v ? 'on' : ''}" data-a="htTime" data-id="${v}">${n}</button>`).join('')}</div>
-    <label>Date</label><select data-c="htDate" aria-label="Date format">${HT_DATES.map(v => `<option value="${v}" ${o.date === v ? 'selected' : ''}>${v === 'off' ? 'No date' : esc(htDate(now, v))}</option>`).join('')}</select>
+    <label>Date</label><select data-c="htDate" aria-label="Date format">${HT_DATES.map(v => `<option value="${v}" ${o.date === v ? 'selected' : ''}>${v === 'off' ? 'No date' : esc(htDate(now, v, o.wd)) + (v === 'kohj' ? ' (漢字)' : '')}</option>`).join('')}</select>
+    ${HT_WD.includes(o.date) ? `<label>Day of the week</label><div class="seg tight">${[[1, 'Show'], [0, 'Hide']].map(([v, n]) => `<button class="${!!o.wd === !!v ? 'on' : ''}" data-a="htWd" data-id="${v}">${n}</button>`).join('')}</div>` : ''}
     ${o.time === 'off' && o.date === 'off' ? '<div class="bad small" style="margin-top:6px">Pick a time or a date to show.</div>' : ''}`;
   if (m === 'custom') return `<label>${o.mode === 'custom' ? 'Big text' : 'Your words'}</label><input data-i="ht" data-k="main" value="${esc(o.main)}" maxlength="40" placeholder="e.g. ${HT_EX}">
     <label>Smaller line (optional, up to 4 lines)</label><textarea data-i="ht" data-k="sub" rows="2" maxlength="160" placeholder="e.g. 2 Cor 3:18">${esc(o.sub)}</textarea>`;
@@ -587,6 +619,7 @@ function htRefresh(fields) { // fields: re-draw the controls too (not while typi
 }
 // the top line holds major (+ minor) season inline; if it would wrap, give each level its own line
 function fitSeason(root = document) {
+  fitWords(root);
   root.querySelectorAll('.sz-top').forEach(el => {
     el.classList.remove('stack');
     const lh = parseFloat(getComputedStyle(el).lineHeight) || 18;
@@ -712,6 +745,7 @@ function seasonListModal() {
   ${order.map(ji => { const j = SEASONS.JEOLGI[ji], tt = szText('term', { j, ji }); return `<div class="jg"><div class="jg-h"><b class="${lat ? 'lat' : ''}"${lg}>${esc(tt[pm])}</b> <span class="jg-x small">${extras('term', tt)}</span> <span class="mu2 small">~${j[3]}/${j[4]}</span></div>
     <div class="jg-row">${j[6].map((h, hi) => { const idx = ji * 3 + hi, ht = szText('hu', { h, idx }); return `<button class="hu ${idx === cur ? 'now' : ''}" data-a="seasonPick" data-id="${idx}"><span class="${lat ? 'lat' : ''}"${lg}>${esc(ht[pm])}</span>${extras('hu', ht, 'small')}</button>`; }).join('')}</div></div>`; }).join('')}
   <div class="actions"><button data-a="close">Close</button></div>`);
+  fitWords($('#modal'));
 }
 const ui = { previewHu: null, tab: 'home', boardSeg: 'tasks', sideOpen: null, logSeg: 'workout', profSeg: 'overview', calMonth: null, calSel: null, bodyRange: 90, intensity: 1, foodRes: [], openSkill: null, emDur: 3, libOpen: new Set(['custom']) };
 let curDay = null;
@@ -727,9 +761,15 @@ const skLevel = id => levelOf((S.skills[id] || {}).xp || 0, needSkill);
 const RANKS = [[1, 'Initiate'], [3, 'Novice'], [6, 'Amateur'], [10, 'Apprentice'], [15, 'Journeyman'], [20, 'Adept'], [27, 'Expert'],
   [35, 'Vanguard'], [42, 'Veteran'], [50, 'Paragon'], [62, 'Master'], [75, 'Ascendant'], [88, 'Grandmaster']];
 const SOV = RANKS.length; // tier of Sovereign I (II = SOV + 1, …)
-function rankOf(L) {
-  if (L >= 100) { const n = Math.floor((L - 100) / 50) + 1; return { name: 'Sovereign ' + roman(n), tier: SOV + n - 1 }; }
-  let t = 0; RANKS.forEach((r, i) => { if (L >= r[0]) t = i; }); return { name: RANKS[t][1], tier: t };
+/* v17 rank skins (Daniel: "multiple cosmetically different ranking systems that utilize the same actual framework"): ranks.js
+   holds RANK_SKINS [{ id, name, group, names[14], icons[14] {d|e|t}, cols? }]; the 14th name is the endless top rank (II, III, …
+   like Sovereign). S.rankSkin = a skin id, or null/absent = Classic. Only names and emblems change: levels, XP, title ids stay. */
+const RANK_CLASSIC = [...RANKS.map(r => r[1]), 'Sovereign'];
+const rankSkin = () => (S.rankSkin && (window.RANK_SKINS || []).find(k => k.id === S.rankSkin)) || null;
+const rankWord = (t, sk = rankSkin()) => (sk ? sk.names : RANK_CLASSIC)[Math.min(t, SOV)];
+function rankOf(L, sk = rankSkin()) {
+  if (L >= 100) { const n = Math.floor((L - 100) / 50) + 1; return { name: rankWord(SOV, sk) + ' ' + roman(n), tier: SOV + n - 1 }; }
+  let t = 0; RANKS.forEach((r, i) => { if (L >= r[0]) t = i; }); return { name: rankWord(t, sk), tier: t };
 }
 /* one glyph per rank inside the gold hexagon (same order as RANKS, then Sovereign): spark, sprout, key, flame, compass,
    open book, cut gem, shield, crossed swords, laurel + star, summit flag, rising sun, chess king, crown (+ numeral, endless) */
@@ -749,20 +789,37 @@ const RANK_GLYPH = [
   '<path d="M16.8 34.4h14.4M18.4 31.4h11.2M20.2 31.4l1.4-8.4h4.8l1.4 8.4M20.4 23c-1.8-2.6-.4-5 3.6-5s5.4 2.4 3.6 5"/><path d="M24 18v-5.4M21.6 15h4.8"/>',
   '<path d="M16.4 27.8l-1.4-10 5.2 4.2 3.8-7 3.8 7 5.2-4.2-1.4 10z"/><path d="M16.8 30.6h14.4"/><circle cx="24" cy="12.6" r="1.1" fill="var(--gold)" stroke="none"/>',
 ];
-function emblem(tier, size = 46) {
+function skinIcon(sk, tier, sov) { // a skin's icon (fitted to 200 x 200 in ranks.js) placed inside the hexagon
+  const t = Math.min(tier, SOV), o = sk.icons[t] || {}, col = sk.cols ? sk.cols[t] : 'var(--gold)';
+  if (o.t) { const n = [...o.t].length, fs = n >= 4 ? 8.4 : n === 3 ? 10 : n === 2 ? 12.5 : 16;
+    return `<text x="24" y="${(sov ? 24 : 26.4) + fs * .36}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${col}"${sk.cols ? ' stroke="rgba(0,0,0,.5)" stroke-width=".5" paint-order="stroke"' : ''} font-family="Orbitron,'Arial Black',system-ui,sans-serif">${esc(o.t)}</text>`; }
+  const box = sov ? 18.5 : 23, x = 24 - box / 2, y = sov ? 11.2 : 24 - box / 2;
+  return `<g transform="translate(${x} ${y}) scale(${box / 200})" fill="${col}"${sk.cols ? ' stroke="rgba(0,0,0,.45)" stroke-width="5" stroke-linejoin="round" paint-order="stroke"' : ''}>${o.d ? `<path d="${o.d}"/>` : ''}${o.e ? `<path d="${o.e}" fill-rule="evenodd"/>` : ''}</g>`;
+}
+function emblem(tier, size = 46, sk = rankSkin()) { // sk: a rank skin, or null for Classic
   const hex = r => Array.from({ length: 6 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 3; return `${(24 + Math.cos(a) * r).toFixed(1)},${(24 + Math.sin(a) * r).toFixed(1)}`; }).join(' ');
   const sov = tier >= SOV;
   let g = `<polygon points="${hex(21)}" fill="${sov ? 'rgba(226,194,122,.16)' : 'none'}" stroke="var(--gold)" stroke-width="1.4"/>`;
   if (sov) g += `<polygon points="${hex(18)}" fill="none" stroke="var(--gold)" stroke-width=".8" opacity=".75"/>`;
-  g += `<g fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${RANK_GLYPH[Math.min(tier, SOV)]}</g>`;
+  g += sk ? skinIcon(sk, tier, sov) : `<g fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${RANK_GLYPH[Math.min(tier, SOV)]}</g>`;
   if (sov) g += `<text x="24" y="38.6" text-anchor="middle" font-size="7.6" fill="var(--gold)" font-weight="700" font-family="Georgia,serif">${roman(tier - SOV + 1)}</text>`;
   return `<svg class="emblem" style="width:${size}px;height:${size}px" viewBox="0 0 48 48">${g}</svg>`;
 }
-function rankStrip(L) { // every rank you can reach, in order; the current one highlighted (render() scrolls it into view)
-  const cur = rankOf(L), sov = cur.tier >= SOV, list = RANKS.map(([lv, n], i) => ({ lv, n, tier: i })).concat([{ lv: 100, n: 'Sovereign', tier: SOV, more: true }]);
+function rankStrip(L, sk = rankSkin()) { // every rank you can reach, in order; the current one highlighted (render() scrolls it into view)
+  const cur = rankOf(L, sk), sov = cur.tier >= SOV, list = RANKS.map(([lv], i) => ({ lv, n: rankWord(i, sk), tier: i })).concat([{ lv: 100, n: rankWord(SOV, sk), tier: SOV, more: true }]);
   return `<div class="ranks">${list.map(r => { const on = L >= r.lv, here = r.more ? sov : cur.tier === r.tier;
-    return `<div class="rk${on ? '' : ' locked'}${here ? ' cur' : ''}">${emblem(r.more && sov ? cur.tier : r.tier, 40)}<b>${esc(r.more && sov ? cur.name : r.n)}</b><span class="num">Lv ${r.lv}${r.more ? '+' : ''}</span></div>`; }).join('')}</div>
-    <div class="mu2 small" style="margin-top:6px">Sovereign keeps going: II at level 150, III at 200, then every 50 levels.</div>`;
+    return `<div class="rk${on ? '' : ' locked'}${here ? ' cur' : ''}">${emblem(r.more && sov ? cur.tier : r.tier, 40, sk)}<b>${esc(r.more && sov ? cur.name : r.n)}</b><span class="num">Lv ${r.lv}${r.more ? '+' : ''}</span></div>`; }).join('')}</div>
+    <div class="mu2 small" style="margin-top:6px">${esc(rankWord(SOV, sk))} keeps going: II at level 150, III at 200, then every 50 levels.</div>`;
+}
+function rankCard() { // v17: Settings > Themes & display > Rank style
+  const cur = rankSkin(), L = overall().L, opts = [{ id: 'classic', name: 'Classic', group: 'Classic' }].concat(window.RANK_SKINS || []);
+  const tile = o => { const sk = o.id === 'classic' ? null : o, on = (cur ? cur.id : 'classic') === o.id;
+    return `<button class="rs-tile${on ? ' on' : ''}" data-a="rankSkin" data-id="${o.id}" aria-pressed="${on}"><span class="rs-em">${[0, 6, SOV].map(t => emblem(t, 28, sk)).join('')}</span><b>${esc(o.name)}</b><small>${esc(rankWord(0, sk))} → ${esc(rankWord(SOV, sk))}</small></button>`; };
+  const groups = [...new Set(opts.map(o => o.group))];
+  return `<div class="card" id="rankCard"><h3>Rank style</h3><p class="mu small" style="margin-top:2px">Same levels, XP and rewards; only the rank names and emblems change. You're <b>${esc(rankOf(L).name)}</b> (level ${L}).</p>
+    ${groups.map(g => `<div class="rs-g"><div class="mu2 small rs-gh">${esc(g)}</div><div class="rs-grid">${opts.filter(o => o.group === g).map(tile).join('')}</div></div>`).join('')}
+    <label>All ranks</label>${rankStrip(L)}
+    <p class="mu2 small" style="margin-top:8px">Rank icons: Fluent Emoji High Contrast (Microsoft, MIT) and game-icons.net (Lorc, Delapouite and contributors, CC BY 3.0).</p></div>`;
 }
 
 /* ---------- time ---------- */
@@ -793,6 +850,66 @@ function scopeTxt(p) {
   return [...(p.lists || []), ...(p.skills || []).map(id => SK[id] ? SK[id].name : id), ...(p.tasks || []).map(id => S.tasks[id] ? S.tasks[id].name : id)].join(', ') || 'nothing';
 }
 const PAUSE_NAME = { vacation: 'Vacation', emergency: 'Extreme emergency', pass: 'Rest pass' };
+/* v16 limits: 12 extreme emergencies a calendar year; vacation days a year: 30 (153 for students), more for 10 coins a day.
+   S.vacBought = { 'YYYY': extra days bought that year } (they stay in that year's allowance even if a vacation is cancelled) */
+const EM_PER_YEAR = 12, VAC_DAYS = { adult: 30, student: 153 }, VAC_EXTRA_COST = 10;
+const emUsed = y => S.pauses.filter(p => p.type === 'emergency' && (p.start || '').slice(0, 4) === String(y)).length;
+const vacAllow = y => (S.profile.student ? VAC_DAYS.student : VAC_DAYS.adult) + ((S.vacBought || {})[y] || 0);
+function vacDaysIn(y, skipId) { // vacation days already planned or taken in year y (overlaps counted once)
+  const set = new Set();
+  S.pauses.filter(p => p.type === 'vacation' && p.id !== skipId).forEach(p => { let k = p.start; const e = p.end || p.start; while (k <= e) { if (k.slice(0, 4) === String(y)) set.add(k); k = addDays(k, 1); } });
+  return set;
+}
+function vacNeed(start, end) { // per year: { y: [new days, already used, allowance] } for a vacation start..end
+  const by = {}, used = {}; let k = start;
+  while (k <= end) { const y = k.slice(0, 4); if (!used[y]) used[y] = vacDaysIn(y); if (!used[y].has(k)) by[y] = (by[y] || 0) + 1; k = addDays(k, 1); }
+  return Object.entries(by).map(([y, n]) => ({ y, n, used: used[y].size, allow: vacAllow(y), extra: Math.max(0, used[y].size + n - vacAllow(y)) }));
+}
+
+/* ---------- schedule locks (v16) ----------
+   Daniel: lock in a commitment. S.locks = [{ id, kind 'skill'|'task'|'event', ref, days [weekdays locked], start, end (last day) }].
+   While a lock runs, its days can't be removed, the skill / task can't come off your quests or be deleted, and a locked event
+   can't be deleted or have its dates changed. More days can always be added; they aren't locked unless locked too (a new lock).
+   A lock can't be undone before its end. Quests done under a lock earn +25% XP (LOCK_BONUS). */
+const LOCK_BONUS = .25, LOCK_UNITS = [['d', 'Days'], ['w', 'Weeks'], ['m', 'Months'], ['y', 'Years']];
+const locksOf = (kind, ref, k = todayKey()) => (S.locks || []).filter(l => l.kind === kind && l.ref === ref && k >= l.start && k <= l.end);
+const isLocked = (kind, ref) => locksOf(kind, ref).length > 0;
+const lockedDays = (kind, ref) => [...new Set(locksOf(kind, ref).flatMap(l => l.days || []))];
+const lockEnd = (kind, ref) => locksOf(kind, ref).reduce((a, l) => l.end > a ? l.end : a, '');
+function lockRefuse(kind, ref, what) { if (!isLocked(kind, ref)) return false; toast(`Locked until ${fmtDate(lockEnd(kind, ref))}: you can't ${what}`, 'bad'); return true; }
+const lockBonusOn = (kind, ref, k) => { const wd = dparse(k).getDay(); return locksOf(kind, ref, k).some(l => kind === 'event' || (l.days || []).includes(wd)); };
+function lockBonus(q, kind, ref, k) { // +25% XP on a quest of a locked schedule (on a locked day)
+  if (!lockBonusOn(kind, ref, k)) return q;
+  if (q.xpPer) { q.xpPer = Math.round(q.xpPer * (1 + LOCK_BONUS)); q.xp = q.xpPer * (q.sessions || 1); } else q.xp = Math.round(q.xp * (1 + LOCK_BONUS));
+  q.lockB = true; return q;
+}
+const lockName = (kind, ref) => kind === 'skill' ? (SK[ref] || {}).name : kind === 'task' ? (S.tasks[ref] || {}).name : ((S.events.find(e => e.id === ref) || {}).title);
+const lockDaysOf = (kind, ref) => kind === 'skill' ? (skState(ref).days || []) : kind === 'task' ? ((S.tasks[ref] || {}).days || []) : [];
+function lockModal(kind, ref) {
+  ui.lk = { kind, ref, n: 1, u: 'm' }; const days = lockDaysOf(kind, ref), cur = lockedDays(kind, ref), fresh = days.filter(d => !cur.includes(d));
+  openModal(`<h3>${ICON.lock} Lock this schedule</h3>
+    <p class="small">Lock in your commitment to <b>${esc(lockName(kind, ref) || '')}</b>${kind === 'event' ? '' : ` on <b>${days.map(d => WD[d]).join(' ') || 'no days'}</b>`}${cur.length && fresh.length ? ` (new: ${fresh.map(d => WD[d]).join(' ')})` : ''}.</p>
+    <p class="mu small">Until it ends you can't ${kind === 'event' ? 'delete this event or change its dates' : 'remove these days, take it off your quests or delete it'}, and the lock itself can't be undone. You can still add more days; those aren't locked unless you lock them too. Quests done under the lock earn <b class="gold">+${Math.round(LOCK_BONUS * 100)}% XP</b>.</p>
+    <label>Lock for</label><div class="row" style="gap:8px"><input type="number" inputmode="numeric" min="1" max="99" id="lkN" value="1" data-i="lk" style="width:80px;flex:none"><select id="lkU" data-c="lkU">${LOCK_UNITS.map(([v, n]) => `<option value="${v}" ${v === 'm' ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+    <div class="dg-aim" id="lkEnd">${lockEndTxt()}</div>
+    <label class="check"><input type="checkbox" id="lkOk"> I understand I can't undo this before it ends</label>
+    <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="lkGo">${ICON.lock} Lock it</button></div>`);
+}
+const lockEndTxt = () => { const n = Math.round(num((document.getElementById('lkN') || {}).value) || ui.lk.n || 1), u = (document.getElementById('lkU') || {}).value || ui.lk.u; return n < 1 || n > 99 ? '<span class="bad">Pick 1 to 99.</span>' : `Locked through <b>${fmtDate(addDur(todayKey(), n, u))}</b>`; };
+function lockGo() {
+  const L = ui.lk, n = Math.round(num($('#lkN').value) || 0), u = $('#lkU').value;
+  if (n < 1 || n > 99) { toast('Pick how long: 1 to 99', 'bad'); return; }
+  if (!$('#lkOk').checked) { toast('Tick the box to confirm', 'bad'); return; }
+  const days = lockDaysOf(L.kind, L.ref); if (L.kind !== 'event' && !days.length) { toast('Pick at least one day first', 'bad'); return; }
+  const tk = todayKey(), end = addDur(tk, n, u);
+  S.locks = (S.locks || []).concat([{ id: uid(), kind: L.kind, ref: L.ref, days: days.slice(), start: tk, end }]);
+  closeModal(true); regenToday(); afterChange(); toast(`Locked through ${fmtDate(end)} · +${Math.round(LOCK_BONUS * 100)}% XP`, 'ti');
+}
+function lockCtl(kind, ref) { // the lock status / button in the weekly plan and on events
+  const on = isLocked(kind, ref), cur = lockedDays(kind, ref), fresh = lockDaysOf(kind, ref).filter(d => !cur.includes(d));
+  if (!on) return `<button class="btn-s lk-btn" data-a="lockNew" data-k="${kind}" data-id="${ref}">${ICON.lock} Lock</button>`;
+  return `<span class="pill gold lk-on">${ICON.lock} until ${fmtDate(lockEnd(kind, ref))}</span>${kind !== 'event' && fresh.length ? `<button class="btn-s lk-btn" data-a="lockNew" data-k="${kind}" data-id="${ref}">Lock new days</button>` : ''}`;
+}
 
 /* ---------- schedule ---------- */
 function occursOn(ev, k) {
@@ -874,21 +991,21 @@ function generate(k) {
       if (used.has(ev.skill)) continue; used.add(ev.skill);
       const sq = makeSkillQuest(ev.skill, k, ev.title, ev.list || SK[ev.skill].list);
       if (ev.target) { sq.target = ev.target; sq.xp = questXp(ev.skill, ev.target); }
-      q.push(sq);
-    } else q.push({ key: 'ev:' + ev.id, title: ev.title, list: ev.list || 'Daily', unit: ev.unit || '', target: ev.target || 0, progress: 0, done: false, xp: 15 });
+      q.push(lockBonus(lockBonus(sq, 'event', ev.id, k), 'skill', ev.skill, k));
+    } else q.push(lockBonus({ key: 'ev:' + ev.id, title: ev.title, list: ev.list || 'Daily', unit: ev.unit || '', target: ev.target || 0, progress: 0, done: false, xp: 15 }, 'event', ev.id, k));
   }
   for (const c of SKL) {
     const s = S.skills[c.id];
     if (!s || !s.active || !isLib(c) || used.has(c.id) || !s.days.includes(wd)) continue;
     if (rest && c.list !== 'Faith') continue;
-    used.add(c.id); q.push(makeSkillQuest(c.id, k));
+    used.add(c.id); q.push(lockBonus(makeSkillQuest(c.id, k), 'skill', c.id, k));
   }
   if (dietWanted(k)) q.push({ key: 'diet', title: 'Met diet requirements', list: 'Nutrition', progress: 0, done: false, xp: 15, auto: true });
   for (const t of activeTasks()) { // task quests also run on rest days: they're the everyday basics
     if (!(t.days || []).includes(wd)) continue;
     const per = taskXpPer(t), n = Math.max(1, t.sessions || 1), tq = { key: 't:' + t.id, title: taskTitle(t), list: t.list || 'Daily', task: t.id, unit: t.unit === 'min' ? 'min' : '', target: taskTarget(t), sessions: n, progress: 0, done: false, xpPer: per, xp: per * n };
     if (t.lock === 'sleep') tq.lockAt = sleepDeadline(k) + 15 * 60000;
-    q.push(tq);
+    q.push(lockBonus(tq, 'task', t.id, k));
   }
   q.push(...sideDueQuests(k)); // v11: side quests due today (deadline / checkpoint day) count toward the day
   const pi = pauseInfo(k);
@@ -980,7 +1097,7 @@ function evaluate() {
         syncDiet(k, true);
         const tot = d.q.length, done = d.q.filter(q => q.done).length, pct = done / tot;
         d.pct = pct;
-        if (pct >= 1) { S.streak.cur++; S.streak.best = Math.max(S.streak.best, S.streak.cur); S.stats.perfect++; addXp('discipline', 20, true); S.coins = (S.coins || 0) + 1; }
+        if (pct >= 1) { S.streak.cur++; S.streak.best = Math.max(S.streak.best, S.streak.cur); S.stats.perfect++; addXp('discipline', 20, true); S.coins = (S.coins || 0) + coinRate(S.streak.cur); coinTierNote(); }
         else {
           // remember the streak this miss ended, so a Streak Saver can bring it back (one saver per missed day)
           if (S.streak.cur > 0) S.streakBreak = { n: S.streak.cur, day: k, last: k, miss: 1, days: [k] };
@@ -1173,6 +1290,24 @@ function skRankOf(L) {
 const skillRank = id => skRankOf(skLevel(id).L).name; // e.g. "Seasoned"
 const nextSkRank = L => { const r = SKILL_RANKS.find(([at]) => at > L); return r ? { at: r[0], name: r[1] } : { at: SK_LEG + (Math.floor((L - SK_LEG) / SK_LEG_STEP) + 1) * SK_LEG_STEP, name: 'Legendary ' + roman(Math.floor((L - SK_LEG) / SK_LEG_STEP) + 2) }; };
 const stp = (at, id, name, desc) => ({ at, id, name, desc });
+/* v16: years of commitment (since you started), each with a badge. Title ids yr<N> are permanent. */
+const YEAR_BADGES = [[1, 'First Orbit'], [2, 'Second Lap'], [3, 'Third Time\'s the Habit'], [5, 'Half a Decade'], [7, 'Seven-Year Itch, Ignored'], [10, 'Decade of Discipline'],
+  [15, 'Fifteen and Still Here'], [20, 'Two Decades Deep'], [30, 'Pearl of Persistence'], [40, 'Over the Hill, Still Climbing'], [50, 'Golden Jubilee of Grinding'],
+  [60, 'Diamond Habit (and Diamond Knees)'], [70, 'Septuagenarian Streaker'], [80, 'Your Grandkids Use This App Now'], [90, 'Still Doing Push-ups at 90?!'],
+  [100, 'Centenarian Speedrunner'], [110, 'Supercentenarian Side Quest'], [120, 'Okay, Call the Guinness People']];
+function yearsIn() { // full years since you started
+  const s0 = S.profile.start; if (!s0) return 0; const a = dparse(s0), b = dparse(todayKey());
+  let y = b.getFullYear() - a.getFullYear(); if (b.getMonth() < a.getMonth() || (b.getMonth() === a.getMonth() && b.getDate() < a.getDate())) y--; return Math.max(0, y);
+}
+const yearTier = n => n >= 100 ? ['#ff8ad8', '#8ad8ff'] : n >= 60 ? ['#7fb2ff', '#3f6fd0'] : n >= 30 ? ['#6ee0b0', '#2f9a72'] : n >= 10 ? ['#f2d27a', '#b8862e'] : n >= 5 ? ['#e3e8ee', '#8f99a6'] : ['#e8b07a', '#a8683a'];
+function yearBadge(n, earned, size = 56) { // a laurel medallion with the number of years
+  const [c1, c2] = earned ? yearTier(n) : ['#6b6b72', '#3c3c42'], id = 'yb' + n + (earned ? 'e' : 'l');
+  let leaves = ''; for (let i = 0; i < 9; i++) { const a = (200 + i * 17) * Math.PI / 180, x = 24 + Math.cos(a) * 19, y = 26 + Math.sin(a) * 19, r = (200 + i * 17 + 70);
+    leaves += `<ellipse cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" rx="1.9" ry="4.2" transform="rotate(${r} ${x.toFixed(1)} ${y.toFixed(1)})"/><ellipse cx="${(48 - x).toFixed(1)}" cy="${y.toFixed(1)}" rx="1.9" ry="4.2" transform="rotate(${-r} ${(48 - x).toFixed(1)} ${y.toFixed(1)})"/>`; }
+  return `<svg class="ybadge${earned ? '' : ' off'}" width="${size}" height="${size}" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs>
+    <g fill="url(#${id})" opacity="${earned ? 1 : .55}">${leaves}</g><circle cx="24" cy="24" r="13.5" fill="url(#${id})"/><circle cx="24" cy="24" r="11.5" fill="none" stroke="rgba(0,0,0,.28)" stroke-width="1"/>
+    <text x="24" y="${n >= 100 ? 27.6 : 28.3}" text-anchor="middle" font-size="${n >= 100 ? 9.5 : 12}" font-weight="700" font-family="system-ui, sans-serif" fill="${earned ? 'rgba(20,16,10,.82)' : '#2a2a2e'}">${n}</text></svg>`;
+}
 function ladder(cur, steps, more) {
   const all = steps.slice();
   if (more) for (let k = 0; k < 1000; k++) { const s = more(k); all.push(s); if (s.at > cur) break; }
@@ -1191,11 +1326,14 @@ function titleTracks() {
   // consistency
   add('Consistency', S.streak.best, [[3, 'Kindled'], [7, 'Week Unbroken'], [14, 'Fortnight Will'], [30, 'Iron Month'], [60, 'Relentless'], [100, 'Centurion'], [180, 'Half-Year Ascetic'], [365, 'Unbroken Year']].map(([n, nm]) => stp(n, 'streak' + n, nm, `${n}-day streak`)),
     k => stp((k + 2) * 365, 'streaky' + (k + 2), `Unbroken · ${k + 2} Years`, `${(k + 2) * 365}-day streak`), v => v + ' d', { note: `Best streak counts · current ${S.streak.cur}` });
+  add('Commitment', yearsIn(), YEAR_BADGES.map(([n, nm]) => stp(n, 'yr' + n, nm, `${n} year${n > 1 ? 's' : ''} with Deificatio`)), null, v => v + (v === 1 ? ' year' : ' years'), { note: 'Years since you started', badge: true });
   add('Consistency', S.stats.perfect, [[7, 'Flawless Week'], [30, 'Flawless Month'], [100, 'Hundred Perfect Days'], [365, 'Perfect Year']].map(([n, nm]) => stp(n, 'perf' + n, nm, `${n} perfect days`)), null, v => v + ' days');
   add('Consistency', S.stats.qdone, [10, 50, 100, 250, 500, 1000, 2500, 5000].map(n => stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`)),
     k => { const n = (k + 1) * 10000; return stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`); });
-  add('Consistency', overall().L, [[3, 'Novice'], [5, 'Awakened'], [6, 'Amateur'], [10, 'Apprentice'], [15, 'Journeyman'], [20, 'Adept'], [27, 'Expert'], [35, 'Vanguard'], [42, 'Veteran'], [50, 'Paragon'], [62, 'Master'], [75, 'Ascendant'], [88, 'Grandmaster'], [100, 'Sovereign']].map(([n, nm]) => stp(n, 'lvl' + n, nm, `Reach level ${n}`)),
-    k => { const n = 150 + k * 50; return stp(n, 'lvl' + n, 'Sovereign ' + roman(k + 2), `Reach level ${n}`); }, lv);
+  const lvName = (n, nm) => { const sk = rankSkin(); if (!sk) return nm; const i = RANKS.findIndex(r => r[0] === n); // v17: titles follow the rank style
+    return i >= 0 ? rankWord(i, sk) : n === 100 ? rankWord(SOV, sk) : sk.names.includes(nm) ? 'Truly ' + nm : nm; };
+  add('Consistency', overall().L, [[3, 'Novice'], [5, 'Awakened'], [6, 'Amateur'], [10, 'Apprentice'], [15, 'Journeyman'], [20, 'Adept'], [27, 'Expert'], [35, 'Vanguard'], [42, 'Veteran'], [50, 'Paragon'], [62, 'Master'], [75, 'Ascendant'], [88, 'Grandmaster'], [100, 'Sovereign']].map(([n, nm]) => stp(n, 'lvl' + n, lvName(n, nm), `Reach level ${n}`)),
+    k => { const n = 150 + k * 50; return stp(n, 'lvl' + n, rankWord(SOV) + ' ' + roman(k + 2), `Reach level ${n}`); }, lv);
   // training & body
   add('Training & body', S.workouts.length, [[1, 'First Sweat'], [10, 'Regular'], [50, 'Gym Rat'], [100, 'Hundred Sessions'], [250, 'Iron Habit'], [500, 'Machine'], [1000, 'Thousand Sessions']].map(([n, nm]) => stp(n, 'wk' + n, nm, `Log ${n.toLocaleString()} workout${n > 1 ? 's' : ''}`)), null, v => v + ' sessions');
   add('Training & body', Math.round(S.workouts.reduce((a, w) => a + (w.kcal || 0), 0)), [stp(10000, 'kc10k', 'Furnace', 'Burn 10,000 kcal')],
@@ -1554,6 +1692,7 @@ function render() {
   const rk = ui.tab === 'me' && $('#view .ranks .rk.cur'); if (rk) rk.parentNode.scrollLeft = Math.max(0, rk.offsetLeft - rk.parentNode.offsetLeft - 90);
   if (ui.tab === 'log' && ui.logSeg === 'workout') updateWkcal();
   if (S.owed.length) showDonation(); else streakOffer();
+  showCoinNote();
 }
 /* ---------- views: home (the season scene, no quests) ---------- */
 function viewHome() {
@@ -1585,6 +1724,7 @@ function renderSetup() {
     <label>Name</label><input name="name" placeholder="Your name" autocomplete="given-name">
     <div class="grid2"><div><label>Sex (for norms)</label><select name="sex"><option value="M">Male</option><option value="F">Female</option></select></div>
     <div><label>Birth year</label><input name="birthYear" type="number" inputmode="numeric" value="2003"></div></div>
+    <label class="check" style="margin-top:12px"><input type="checkbox" name="student"> I'm a student <span class="mu2 small">(${VAC_DAYS.student} vacation days a year instead of ${VAC_DAYS.adult}, for school breaks)</span></label>
     <label>Units</label><select name="units" data-c="setupUnits"><option value="imperial">Imperial (lb, ft, mi)</option><option value="metric">Metric (kg, cm, km)</option></select>
     <p class="mu2 small" style="margin:12px 0 0">Height, weight and the goal are optional. They're only used for calorie estimates (the diet goal and workout calories), so skip them if you don't want the health tracking.</p>
     <div class="grid2" id="hw">${SU_HW.imperial}</div>
@@ -1647,7 +1787,7 @@ function finishSetup() {
   if (ho.mode === 'clock' && ho.time === 'off' && ho.date === 'off') return stop('Pick a time or a date for Home', '#suLook');
   if (![...f.keys()].some(x => /^(sk|tk)_/.test(x)) && !confirm('You didn’t pick any skills or daily tasks, so your quest list starts almost empty. Start anyway? You can add them any time in Board.')) return;
   const p = S.profile;
-  p.name = (g('name') || '').trim(); p.sex = g('sex'); p.birthYear = +g('birthYear') || 2000; p.units = g('units');
+  p.name = (g('name') || '').trim(); p.sex = g('sex'); p.birthYear = +g('birthYear') || 2000; p.units = g('units'); p.student = !!g('student');
   const hIn = (+g('ft') || 0) * 12 + (+g('in') || 0); // v14: height & weight are optional (null = not given)
   p.heightCm = p.units === 'imperial' ? (hIn > 0 ? Math.round(hIn * 2.54) : null) : (+g('cm') > 0 ? +g('cm') : null);
   const w = num(g('weight')); p.weightKg = w ? (p.units === 'imperial' ? w / 2.20462 : w) : null;
@@ -1706,10 +1846,11 @@ function viewToday() {
     const plus = !x.task && !x.auto && !x.side && x.unit && x.target > 0 && !locked ? `<button class="btn-g x qplus" data-a="qLog" data-id="${esc(x.key)}" aria-label="Log ${esc(UNIT_NAME[x.unit] || 'amount')}">${ICON.plus}</button>` : '';
     const chk = x.done ? ICON.check : x.task && n > 1 && x.progress ? `<span class="num chk-n">${x.progress}</span>` : '';
     return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''} ${x.task ? 'task' : ''}"><button class="chk${x.task && n > 1 && x.progress && !x.done ? ' part' : ''}" data-a="tq" data-id="${esc(x.key)}" aria-label="Check ${esc(x.title)}">${chk}</button>
-      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${pips}${prog}</div>${minus}${plus}<div class="qx">+${x.xp}</div></div>`;
+      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${pips}${prog}</div>${minus}${plus}<div class="qx${x.lockB ? ' lkb' : ''}"${x.lockB ? ` title="Locked schedule: +${Math.round(LOCK_BONUS * 100)}% XP"` : ''}>${x.lockB ? ICON.lock : ''}+${x.xp}</div></div>`;
   };
   const rw = (S.rewards || []).filter(r => !r.used), side = sideSection();
-  const rwBanner = rw.length ? `<button class="banner rw" data-a="goBoard" data-id="rewards"><div class="row">${ICON.gift}<b class="sp">${rw.length === 1 ? 'You have a reward waiting' : rw.length + ' rewards waiting'}</b>${ICON.chev}</div><div class="small mu" style="margin-top:3px;text-align:left">${esc(rw.slice(0, 2).map(rewardName).join(' · '))}</div></button>` : '';
+  const rwNew = rw.filter(r => !(S.rwHidden || []).includes(r.id)); // v16: ✕ hides the banner until a new reward arrives
+  const rwBanner = rwNew.length ? `<div class="banner rw rw-x"><button class="rw-go" data-a="goBoard" data-id="rewards"><div class="row">${ICON.gift}<b class="sp">${rw.length === 1 ? 'You have a reward waiting' : rw.length + ' rewards waiting'}</b>${ICON.chev}</div><div class="small mu" style="margin-top:3px;text-align:left">${esc(rw.slice(0, 2).map(rewardName).join(' · '))}</div></button><button class="btn-g x rw-close" data-a="rwHide" aria-label="Hide until a new reward">✕</button></div>` : '';
   if (pi && pi.all) return `${seasonMini(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}${streakNag(k)}${backupNag(k)}${rwBanner}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : pi.ps.some(p => p.type === 'pass') ? 'You earned this rest. Nothing to log today.' : 'Everything is paused. Enjoy the break.'}</div>
   ${side}<div class="row" style="justify-content:center;margin-top:12px"><button class="btn-s" data-a="tab" data-id="log">Log a workout anyway</button></div>`;
   return `${seasonMini(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${streakNag(k)}${ownNag()}${backupNag(k)}${rwBanner}
@@ -1900,7 +2041,9 @@ function sdBody() {
   const on = sideCounts(d), cpDays = d.type === 'timed' && d.track === 'cp';
   h += `<label class="check" style="margin-top:14px"><input type="checkbox" data-c="sdReq" ${on ? 'checked' : ''}> Counts toward my day</label>
     <div class="mu2 small">${on ? `Its deadline${cpDays ? ' and every checkpoint with a day' : ''} join${cpDays ? '' : 's'} that day’s quests. Missing one means the day isn’t complete: penalties and a broken streak. Giving up counts as failing.` : 'Never counts toward your day and never gives a penalty.'}${on && d.type === 'timed' && d.durU === 'done' && !cpDays ? ' (An “until done” quest has no deadline, so there’s nothing to count.)' : ''}</div>`;
-  h += `<hr><label>Reward for finishing</label><div class="seg tight">${[['none', 'None'], ['custom', 'Treat'], ['pass', 'Rest pass']].map(([v, n]) => `<button class="${rw.kind === v ? 'on' : ''}" data-a="sdRw" data-id="${v}">${n}</button>`).join('')}</div>`;
+  // v16: a rest pass is no longer a quest reward (passes come only from coins, i.e. perfect days); an old quest that has one keeps it
+  h += `<hr><label>Reward for finishing</label><div class="seg tight">${[['none', 'None'], ['custom', 'Treat'], ...(rw.kind === 'pass' ? [['pass', 'Rest pass']] : [])].map(([v, n]) => `<button class="${rw.kind === v ? 'on' : ''}" data-a="sdRw" data-id="${v}">${n}</button>`).join('')}</div>
+    <div class="mu2 small">Rest passes come only from the coin shop, and coins only from perfect days.</div>`;
   if (rw.kind === 'custom') h += `<input data-i="sdRwT" value="${esc(rw.text || '')}" placeholder="e.g. A meal from Portillo's" maxlength="80"><div class="mu2 small">Anything you'd like to give yourself.</div>`;
   if (rw.kind === 'pass') h += `<div class="mu2 small">A pass you can use any time: those days don't need logging and can't give penalties.</div>
     <div class="grid2"><div><label>Days</label><input type="number" inputmode="numeric" min="1" max="14" data-i="sdRwD" value="${rw.days || 1}"></div><div></div></div>
@@ -1938,7 +2081,7 @@ function boardRewards() {
   const rs = S.rewards || [], ready = rs.filter(r => !r.used), used = rs.filter(r => r.used).sort((a, b) => a.used < b.used ? 1 : -1);
   const row = r => `<div class="list-item rw-item"><span class="rw-ic">${ICON.gift}</span><div class="sp"><div>${esc(rewardName(r))}</div><div class="mu small">From “${esc(r.from)}” · ${r.used ? (r.kind === 'pass' ? 'used from ' : 'enjoyed ') + fmtDate(r.used) : 'earned ' + fmtDate(r.earned)}</div></div>
     ${r.used ? '' : r.kind === 'pass' ? `<button class="btn-s btn-p" data-a="rwUse" data-id="${r.id}">Use pass</button>` : `<button class="btn-s btn-p" data-a="rwDone" data-id="${r.id}">Enjoyed it</button>`}</div>`;
-  return `${shopCard()}<p class="mu small" style="margin-top:14px">Rewards come from finishing one-time and time-limited quests, or from the coin shop. Treats are whatever you promised yourself; rest passes give you real days off with nothing to log and no penalty.</p>
+  return `${shopCard()}<p class="mu small" style="margin-top:14px">Treats come from finishing one-time and time-limited quests: whatever you promised yourself. Rest passes come only from the coin shop (coins come from perfect days): real days off with nothing to log and no penalty.</p>
   <h2>Ready · ${ready.length}</h2><div class="card">${ready.length ? ready.map(row).join('') : '<div class="mu small">Nothing yet. Add a reward to a quest and finish it.</div>'}</div>
   ${used.length ? `<h2>Used</h2><div class="card">${used.slice(0, 30).map(row).join('')}</div>` : ''}`;
 }
@@ -1962,7 +2105,20 @@ function usePass(r, start) {
    a Streak Saver (S.savers; brings back a streak a missed day just ended) and a Rest Day Pass (a 1-day, everything
    pass in S.rewards, used exactly like one earned from a quest). S.streakBreak = { n, day, last, miss, days[], asked }
    is the streak the latest miss ended; it can be restored until the end of the day after the last missed day. */
-const SHOP_COST = 10;
+const SHOP_COST = 30; // v16 (was 10): perfect days pay more as the streak grows
+/* v16: coins per perfect day by streak: 1, then 2 from day 10, 3 from 100, 4 from 1,000, 5 from 10,000, and 1,000,000 from 100,000 */
+const COIN_TIERS = [[100000, 1000000], [10000, 5], [1000, 4], [100, 3], [10, 2], [0, 1]];
+const coinRate = n => COIN_TIERS.find(([at]) => n >= at)[1];
+const LEGEND_MSG = "There's no way you're still alive, can't believe you passed me down multiple generations. Descendent of the legendary one, use these coins wisely.";
+function coinTierNote() { // the first time a streak reaches a new tier: say so (once per tier)
+  const r = coinRate(S.streak.cur); if (r <= (S.coinTier || 1)) return; S.coinTier = r;
+  ui.coinNote = r === 1000000 ? 'legend' : r;
+}
+function showCoinNote() {
+  const r = ui.coinNote; if (!r || !$('#modal').hidden) return; ui.coinNote = null;
+  if (r === 'legend') openModal(`<h3 class="gold">${ICON.coin} 1,000,000 coins a day</h3><p>${esc(LEGEND_MSG)}</p><p class="mu small">A ${S.streak.cur.toLocaleString()}-day streak.</p><div class="actions"><button class="btn-p" data-a="close">Use them wisely</button></div>`);
+  else toast(`${S.streak.cur.toLocaleString()}-day streak · perfect days now pay ${r} coins`, 'ti');
+}
 const SHOP = [
   ['saver', 'Streak Saver', 'Brings back a streak you just lost. One saver covers one missed day. The penalty for that day still happens.'],
   ['pass', 'Rest Day Pass', 'One complete rest day you can use any time: nothing to log, no penalties, streak frozen.']];
@@ -1970,7 +2126,7 @@ function shopCard() {
   const c = S.coins || 0, sb = sbValid() ? S.streakBreak : null;
   const row = ([id, n, d]) => `<div class="list-item shop-item"><span class="rw-ic">${id === 'saver' ? ICON.saver : ICON.gift}</span><div class="sp"><div>${n}${id === 'saver' && S.savers ? ` <span class="pill gold">${S.savers} owned</span>` : ''}</div><div class="mu small">${d}</div></div>
     <button class="btn-s btn-p buy" data-a="buy" data-id="${id}" ${c < SHOP_COST ? 'disabled' : ''}>${ICON.coin}<span class="num">${SHOP_COST}</span></button></div>`;
-  return `<div class="card shop" style="margin-top:14px"><div class="row"><span class="coin-big">${ICON.coin}</span><div class="sp"><h3><span class="num">${c}</span> coin${c === 1 ? '' : 's'}</h3><div class="mu small">You earn 1 coin for every perfect day (every quest done).</div></div></div>
+  return `<div class="card shop" style="margin-top:14px"><div class="row"><span class="coin-big">${ICON.coin}</span><div class="sp"><h3><span class="num">${c}</span> coin${c === 1 ? '' : 's'}</h3><div class="mu small">You earn ${coinRate(S.streak.cur).toLocaleString()} coin${coinRate(S.streak.cur) === 1 ? '' : 's'} for each perfect day (every quest done). More as your streak grows: 2 from a 10-day streak, 3 from 100, 4 from 1,000, 5 from 10,000.</div></div></div>
     ${sb ? `<div class="banner sv" style="margin-top:10px"><div class="row">${ICON.saver}<b class="sp">Your ${sb.n}-day streak can still be saved</b></div><div class="row" style="margin-top:8px;gap:8px"><button class="btn-s btn-p" data-a="svRestore">Bring it back</button></div></div>` : ''}
     ${SHOP.map(row).join('')}</div>`;
 }
@@ -2065,6 +2221,7 @@ function saveTask(id, defId) {
   const sessions = clamp(Math.round(num(f.get('sessions')) || 1), 1, 12), base = Math.round(num(f.get('base')) || 0), max = Math.round(num(f.get('max')) || 0), diff = +f.get('diff') || 1;
   if (!name) { toast('Name the task'); return; }
   if (!days.length) { toast('Pick at least one day'); return; }
+  if (id && lockedDays('task', id).some(d => !days.includes(d))) { lockRefuse('task', id, 'remove a locked day'); return; }
   if (unit === 'min' && (base < 1 || base > 600)) { toast('Minutes should be 1–600'); return; }
   const cfg = { name, unit, sessions, diff, list: f.get('list'), days, base: unit === 'min' ? base : 0, max: unit === 'min' ? Math.max(base, max || base) : 0 };
   let t = id ? S.tasks[id] : null;
@@ -2102,7 +2259,7 @@ function viewCal() {
   <div class="card">
     ${fastOn(sel) ? `<div class="small" style="margin-bottom:8px"><span class="gold">Fast${fastOn(sel).note ? ' · ' + esc(fastOn(sel).note) : ''}</span> · day ${fastDay(fastOn(sel), sel)} of ${fastLen(fastOn(sel))} · diet quest off</div>` : ''}
     ${spi ?`<div class="small" style="margin-bottom:8px">${ICON.pause} <span class="${spi.emergency ? 'bad' : 'acc'}">${spi.emergency ? 'Extreme emergency' : 'Vacation'}</span> · paused: ${esc(spi.all ? 'everything' : [...spi.lists, ...[...spi.skills].map(id => SK[id] ? SK[id].name : id)].join(', '))}</div>` : ''}
-    ${evs.length ? evs.map(e => `<div class="list-item"><div class="sp"><div>${esc(e.title)}</div><div class="mu small">${esc(e.list || '')} · ${esc(repTxt(e))}${e.skill && SK[e.skill] ? ' · ' + esc(SK[e.skill].name) : ''}</div></div><button class="btn-s" data-a="evEdit" data-id="${e.id}">Edit</button></div>`).join('') : '<div class="mu small">No events this day.</div>'}
+    ${evs.length ? evs.map(e => `<div class="list-item"><div class="sp"><div>${esc(e.title)}</div><div class="mu small">${esc(e.list || '')} · ${esc(repTxt(e))}${e.skill && SK[e.skill] ? ' · ' + esc(SK[e.skill].name) : ''}</div></div>${lockCtl('event', e.id)}<button class="btn-s" data-a="evEdit" data-id="${e.id}">Edit</button></div>`).join('') : '<div class="mu small">No events this day.</div>'}
     ${day && day.ev ? `<div class="mu small" style="margin-top:8px">Result: ${day.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(day.pct * 100)}%</span>${dayPenTxt(day) ? ` · <span class="bad">${esc(dayPenTxt(day))}</span>` : ''}${day.saved ? ' · <span class="gold">streak saved</span>' : ''}`}</div>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn-p btn-s" data-a="evNew">+ Event</button><span class="sp"></span>
     ${sel >= tk ? `<button class="btn-s" data-a="restToggle" data-id="${sel}">${S.rest.includes(sel) ? 'Unset rest day' : 'Mark rest day'}</button>` : ''}</div>
@@ -2115,10 +2272,11 @@ function viewCal() {
     <div class="row" style="margin-top:12px"><button class="btn-s" data-a="vacNew">+ Vacation pause</button></div></div>
   <h2>Weekly plan</h2>
   <div class="card"><p class="mu small" style="margin-top:0">Which days each active skill shows up as a quest. An event linked to a skill replaces its automatic quest that day.</p>
-  ${active.length ? active.map(s => `<div class="list-item col"><div class="row"><span class="sp">${esc(s.name)}</span><span class="mu small num">${esc(fmtTarget(skillTarget(s.id, tk), s.unit))}</span></div>
-    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}</button>`).join('')}</div></div>`).join('') : '<div class="mu small">No active skills. Turn some on in Board → Skills.</div>'}
-  ${tks.length ? `<div class="tg" style="margin-top:14px">Tasks</div>${tks.map(t => `<div class="list-item col"><div class="row"><span class="sp">${esc(t.name)}</span><span class="mu small">${esc(taskDesc(t))}</span></div>
-    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}</button>`).join('')}</div></div>`).join('')}` : ''}
+  ${active.length ? active.map(s => { const ld = lockedDays('skill', s.id); return `<div class="list-item col"><div class="row"><span class="sp">${esc(s.name)}</span><span class="mu small num">${esc(fmtTarget(skillTarget(s.id, tk), s.unit))}</span></div>
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}</button>`).join('')}</div><div class="row lk-row">${lockCtl('skill', s.id)}</div></div>`; }).join('') : '<div class="mu small">No active skills. Turn some on in Board → Skills.</div>'}
+  ${tks.length ? `<div class="tg" style="margin-top:14px">Tasks</div>${tks.map(t => { const ld = lockedDays('task', t.id); return `<div class="list-item col"><div class="row"><span class="sp">${esc(t.name)}</span><span class="mu small">${esc(taskDesc(t))}</span></div>
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}</button>`).join('')}</div><div class="row lk-row">${lockCtl('task', t.id)}</div></div>`; }).join('')}` : ''}
+  <p class="mu2 small" style="margin-top:10px">${ICON.lock} Lock a schedule to commit to it for a while: its days can't be removed until the lock ends, and those quests earn +${Math.round(LOCK_BONUS * 100)}% XP.</p>
   </div>`;
 }
 /* v14: tap a date on the calendar → every quest that day: what was done (past), live (today) or planned (ahead) */
@@ -2177,13 +2335,16 @@ function saveEvent(id) {
   if (end && end < start) { toast('End date is before start'); return; }
   const days = chipsOn('#evDays').map(Number);
   const e = { id: id || uid(), title: title || SK[skill].name, list: f.get('list'), skill: skill || null, repeat: f.get('repeat'), days, start, end, target: num(f.get('target')), unit: (f.get('unit') || '').trim() };
+  const old = id && S.events.find(x => x.id === id);
+  if (old && isLocked('event', id) && (old.repeat !== e.repeat || old.start !== e.start || (old.end || '') !== e.end || (old.days || []).some(d => !e.days.includes(d)))) { lockRefuse('event', id, 'change its dates (you can add days)'); return; }
   if (skill) skState(skill);
   const i = S.events.findIndex(x => x.id === e.id); if (i >= 0) S.events[i] = e; else S.events.push(e);
   closeModal(true); regenToday(); afterChange();
 }
 function vacModal() {
-  const tk = todayKey(), active = SKL.filter(s => isLib(s) && (S.skills[s.id] || {}).active);
+  const tk = todayKey(), active = SKL.filter(s => isLib(s) && (S.skills[s.id] || {}).active), y = tk.slice(0, 4), left = Math.max(0, vacAllow(y) - vacDaysIn(y).size);
   openModal(`<h3>Vacation pause</h3><p class="mu small">Plan it ahead. Paused quests don't appear on those days. Days with nothing left don't touch your streak or give penalties.</p>
+  <div class="dg-aim small"><b class="num">${left}</b> of ${vacAllow(y)} vacation days left in ${y} (${S.profile.student ? 'student' : 'adult'}: ${S.profile.student ? VAC_DAYS.student : VAC_DAYS.adult} a year${(S.vacBought || {})[y] ? `, +${S.vacBought[y]} bought` : ''}). Extra days cost ${VAC_EXTRA_COST} coins each.</div>
   <label>Label (optional)</label><input id="vNote" placeholder="e.g. Seoul trip">
   <div class="grid2"><div><label>First day</label><input id="vStart" type="date" min="${tk}" value="${addDays(tk, 1)}"></div><div><label>Last day</label><input id="vEnd" type="date" min="${tk}" value="${addDays(tk, 7)}"></div></div>
   <label class="check"><input type="checkbox" id="vAll"> Pause everything</label>
@@ -2193,8 +2354,10 @@ function vacModal() {
   <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="vacSave">Schedule pause</button></div>`);
 }
 function emModal() {
-  ui.emDur = 3;
+  ui.emDur = 3; const y = todayKey().slice(0, 4), left = EM_PER_YEAR - emUsed(y);
+  if (left <= 0) { openModal(`<h3 class="bad">Extreme emergency</h3><p class="mu">You've used all ${EM_PER_YEAR} extreme emergencies for ${y}. They come back on January 1. For time off you can plan, use a vacation pause or a Rest Day Pass.</p><div class="actions"><button data-a="close">OK</button></div>`, { cls: 'danger' }); return; }
   openModal(`<h3 class="bad">Extreme emergency</h3><p class="mu">Pauses <b>every</b> quest starting today, penalties included. Your streak is frozen and no penalties are given. Any pending penalty exercises wait until you're back.</p>
+  <div class="small mu2">${left} of ${EM_PER_YEAR} left for ${y}.</div>
   <label>How long?</label><div class="chips" id="emDur">${[[1, 'Today only'], [3, '3 days'], [7, '1 week'], [14, '2 weeks'], [0, 'Until I end it']].map(([v, n]) => `<button class="chip ${v === 3 ? 'on' : ''}" data-a="emDur" data-id="${v}">${n}</button>`).join('')}</div>
   <label>Note (optional)</label><input id="emNote" placeholder="Only you see this">
   <div class="actions"><button data-a="close">Cancel</button><button class="btn-bad" data-a="emStart">Pause everything</button></div>`, { cls: 'danger' });
@@ -2819,7 +2982,10 @@ function saveCustomSkill(id) {
 function meTitles() {
   const auto = autoTitles(), cats = Object.keys(TITLE_CATALOG);
   const locked = titleTracks().filter(t => t.next && !t.hidden), groups = [...new Set(locked.map(t => t.group))];
-  return `<h2>Earned · ${auto.length}</h2><div class="card">${auto.length ? auto.map(t => `<span class="title-badge auto" title="${esc(t.desc)}">${esc(t.name)}</span>`).join('') : '<div class="mu small">Titles unlock as you go. See what\'s next below.</div>'}</div>
+  const yN = yearsIn(), nextY = YEAR_BADGES.find(([n]) => n > yN), dLeft = nextY && S.profile.start ? daysBetween(todayKey(), addDays(addDur(S.profile.start, nextY[0], 'y'), 1)) : 0;
+  const badges = `<h2>Years of commitment</h2><div class="card"><div class="yb-grid">${YEAR_BADGES.map(([n, nm]) => { const on = yN >= n; return `<div class="yb${on ? ' on' : ''}" title="${esc(on ? nm : n + (n > 1 ? ' years' : ' year'))}">${yearBadge(n, on)}<small>${on ? esc(nm) : n + (n > 1 ? ' yrs' : ' yr')}</small></div>`; }).join('')}</div>
+    <div class="mu small" style="margin-top:8px">${yN ? `${yN} year${yN > 1 ? 's' : ''} in. ` : ''}${nextY ? `Next badge (${nextY[0]} year${nextY[0] > 1 ? 's' : ''}) in ${dLeft.toLocaleString()} day${dLeft === 1 ? '' : 's'}.` : 'Every badge earned. Legendary.'}</div></div>`;
+  return `${badges}<h2>Earned · ${auto.length}</h2><div class="card">${auto.length ? auto.map(t => `<span class="title-badge auto" title="${esc(t.desc)}">${esc(t.name)}</span>`).join('') : '<div class="mu small">Titles unlock as you go. See what\'s next below.</div>'}</div>
   <h2>Next up</h2><div class="card next-up">${groups.map(g => `<div class="tg">${esc(g)}</div>` + locked.filter(t => t.group === g).map(t => {
     const pct = clamp(t.cur / t.next.at * 100, 0, 100), to = t.fmt(t.next.at), suf = (to.match(/\s[^\d\s][^\d]*$/) || [''])[0];
     let from = t.fmt(t.cur); if (suf && from.endsWith(suf)) from = from.slice(0, -suf.length);
@@ -2848,11 +3014,12 @@ function meBooks() {
 function meSettings() {
   const p = S.profile, ft = Math.floor((p.heightCm || 0) / 2.54 / 12), inch = Math.round((p.heightCm || 0) / 2.54 - ft * 12), seg = ui.setSeg === 'look' ? 'look' : 'gen';
   const tabs = `<div class="seg set-seg">${[['gen', 'General'], ['look', 'Themes & display']].map(([v, n]) => `<button class="${seg === v ? 'on' : ''}" data-a="setSeg" data-id="${v}">${n}</button>`).join('')}</div>`;
-  if (seg === 'look') return tabs + themeCard() + styleCard() + colorCard() + htCard() + szCard(); // v13: everything about the look in one tab
+  if (seg === 'look') return tabs + themeCard() + styleCard() + colorCard() + rankCard() + htCard() + szCard(); // v13: everything about the look in one tab (v17: + rank style)
   return `${tabs}<div class="card"><h3>Profile</h3><form id="setForm" onsubmit="return false">
     <label>Name</label><input name="name" value="${esc(p.name)}">
     <div class="grid2"><div><label>Sex</label><select name="sex"><option value="M" ${p.sex === 'M' ? 'selected' : ''}>Male</option><option value="F" ${p.sex === 'F' ? 'selected' : ''}>Female</option></select></div><div><label>Birth year</label><input name="birthYear" type="number" value="${p.birthYear}"></div></div>
     <div class="grid2"><div><label>Height (${imperial() ? 'total in' : 'cm'}, optional)</label><input name="height" type="number" value="${p.heightCm ? (imperial() ? Math.round(p.heightCm / 2.54) : p.heightCm) : ''}" placeholder="—"></div><div><label>Units</label><select name="units"><option value="imperial" ${imperial() ? 'selected' : ''}>Imperial</option><option value="metric" ${!imperial() ? 'selected' : ''}>Metric</option></select></div></div>
+    <label class="check" style="margin-top:12px"><input type="checkbox" name="student" ${p.student ? 'checked' : ''}> I'm a student <span class="mu2 small">(${VAC_DAYS.student} vacation days a year instead of ${VAC_DAYS.adult})</span></label>
     <div class="grid2"><div><label>Wake (day reset)</label><input name="wake" type="time" value="${p.wake}"></div><div><label>Sleep deadline</label><input name="sleep" type="time" value="${p.sleep}"></div></div>
     <label>Diet goal</label><div class="row dg-sum"><div class="sp small">${esc(dietSummary())}</div><button type="button" class="btn-s" data-a="dietGoal">Edit</button></div>
     <button class="btn-p btn-big" data-a="setSave">Save profile</button></form>
@@ -2941,14 +3108,14 @@ const A = {
   tkAdopt: el => taskModal(null, TASK_DEF[el.dataset.id]),
   tkEdit: el => taskModal(S.tasks[el.dataset.id], null),
   tkSave: el => saveTask(el.dataset.id, el.dataset.d),
-  tkToggle: el => { const t = S.tasks[el.dataset.id]; if (!t) return; t.active = !t.active; regenToday(); afterChange(); toast(t.active ? t.name + ' is back on your quests' : t.name + ' removed from quests (progress kept)'); },
+  tkToggle: el => { const t = S.tasks[el.dataset.id]; if (!t) return; if (t.active && lockRefuse('task', t.id, 'take it off your quests')) return; t.active = !t.active; regenToday(); afterChange(); toast(t.active ? t.name + ' is back on your quests' : t.name + ' removed from quests (progress kept)'); },
   tkHide: el => {
-    const id = el.dataset.id, t = S.tasks[id], nm = (t || TASK_DEF[id] || {}).name || 'this task';
+    const id = el.dataset.id, t = S.tasks[id], nm = (t || TASK_DEF[id] || {}).name || 'this task'; if (lockRefuse('task', id, 'delete it')) return;
     if (!confirm(`Delete "${nm}"? Its level and achievements are kept, and you can restore it in Profile → Settings → Deleted defaults.`)) return;
     if (!S.hideTk.includes(id)) S.hideTk.push(id); if (t) t.active = false; closeModal(true); ui.openTask = null; regenToday(); afterChange(); toast(nm + ' deleted · restore it in Settings');
   },
-  tkDel: el => { if (!confirm('Delete this task? Its level and achievements go with it.')) return; delete S.tasks[el.dataset.id]; S.pauses.forEach(p => { if (p.tasks) p.tasks = p.tasks.filter(x => x !== el.dataset.id); }); closeModal(true); ui.openTask = null; regenToday(); afterChange(); },
-  tkDay: el => { const t = S.tasks[el.dataset.id], d = +el.dataset.d; if (!t) return; t.days = t.days.includes(d) ? t.days.filter(x => x !== d) : [...t.days, d].sort(); regenToday(); afterChange(); },
+  tkDel: el => { if (lockRefuse('task', el.dataset.id, 'delete it')) return; if (!confirm('Delete this task? Its level and achievements go with it.')) return; delete S.tasks[el.dataset.id]; S.pauses.forEach(p => { if (p.tasks) p.tasks = p.tasks.filter(x => x !== el.dataset.id); }); closeModal(true); ui.openTask = null; regenToday(); afterChange(); },
+  tkDay: el => { const t = S.tasks[el.dataset.id], d = +el.dataset.d; if (!t) return; if (t.days.includes(d) && lockedDays('task', t.id).includes(d)) { lockRefuse('task', t.id, 'remove a locked day'); return; } t.days = t.days.includes(d) ? t.days.filter(x => x !== d) : [...t.days, d].sort(); regenToday(); afterChange(); },
   // side quests
   sideNew: el => sideModal(null, el.dataset.id),
   sideIdea: el => sideModal(null, el.dataset.id, SIDE_TEMPLATES[el.dataset.id][+el.dataset.k]),
@@ -3024,9 +3191,9 @@ const A = {
   evNew: () => eventModal(null),
   evEdit: el => eventModal(S.events.find(e => e.id === el.dataset.id)),
   evSave: el => saveEvent(el.dataset.id),
-  evDel: el => { if (!confirm('Delete this event (all repeats)?')) return; S.events = S.events.filter(e => e.id !== el.dataset.id); closeModal(true); regenToday(); afterChange(); },
+  evDel: el => { if (lockRefuse('event', el.dataset.id, 'delete it')) return; if (!confirm('Delete this event (all repeats)?')) return; S.events = S.events.filter(e => e.id !== el.dataset.id); closeModal(true); regenToday(); afterChange(); },
   restToggle: el => { const k = el.dataset.id; S.rest = S.rest.includes(k) ? S.rest.filter(x => x !== k) : [...S.rest, k]; if (k === todayKey()) regenToday(); afterChange(); },
-  skDay: el => { const s = skState(el.dataset.id), d = +el.dataset.d; s.days = s.days.includes(d) ? s.days.filter(x => x !== d) : [...s.days, d].sort(); regenToday(); afterChange(); },
+  skDay: el => { const s = skState(el.dataset.id), d = +el.dataset.d; if (s.days.includes(d) && lockedDays('skill', el.dataset.id).includes(d)) { lockRefuse('skill', el.dataset.id, 'remove a locked day'); return; } s.days = s.days.includes(d) ? s.days.filter(x => x !== d) : [...s.days, d].sort(); regenToday(); afterChange(); },
   vacNew: () => vacModal(),
   vacSave: () => {
     const tk = todayKey(), start = $('#vStart').value, end = $('#vEnd').value, all = $('#vAll').checked;
@@ -3035,6 +3202,13 @@ const A = {
     if (start < tk) { toast("Pauses can't start in the past"); return; }
     if (end < start) { toast('Last day is before first day'); return; }
     if (!all && !lists.length && !skills.length && !tasks.length) { toast('Pick what to pause'); return; }
+    // v16: vacation days are limited per year; extra days cost coins
+    const need = vacNeed(start, end), extra = need.reduce((a, x) => a + x.extra, 0), cost = extra * VAC_EXTRA_COST;
+    if (extra) {
+      if ((S.coins || 0) < cost) { toast(`That's ${extra} day${extra > 1 ? 's' : ''} past your vacation allowance: ${cost} coins, you have ${S.coins || 0}`, 'bad'); return; }
+      if (!confirm(`${need.map(x => `${x.y}: ${x.used + x.n} of ${x.allow} days`).join(', ')}. Buy ${extra} extra day${extra > 1 ? 's' : ''} for ${cost} coins?`)) return;
+      S.coins -= cost; S.vacBought = S.vacBought || {}; need.forEach(x => { if (x.extra) S.vacBought[x.y] = (S.vacBought[x.y] || 0) + x.extra; });
+    }
     S.pauses.push({ id: uid(), type: 'vacation', start, end, all, lists: all ? [] : lists, skills: all ? [] : skills, tasks: all ? [] : tasks, note: $('#vNote').value.trim() });
     closeModal(true); if (start === tk) regenToday(); afterChange(); toast('Vacation pause scheduled');
   },
@@ -3042,6 +3216,7 @@ const A = {
   emDur: el => { ui.emDur = +el.dataset.id; $$('#emDur .chip').forEach(b => b.classList.toggle('on', b === el)); },
   emStart: () => {
     const k = todayKey(), d = ensureDay(k);
+    if (emUsed(k.slice(0, 4)) >= EM_PER_YEAR) { toast(`All ${EM_PER_YEAR} emergencies for this year are used`, 'bad'); return; }
     if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || (d.q.some(q => q.pen && !q.done && /^pen:/.test(q.key)) ? 1 : 0), (S.pendingPen || {}).tier || 0), fixed: [...new Set([...(d.penFixed || []), ...((S.pendingPen || {}).fixed || [])])] }; delete d.penTier; delete d.penFixed; }
     S.pauses.push({ id: uid(), type: 'emergency', all: true, start: k, end: ui.emDur ? addDays(k, ui.emDur - 1) : '', note: $('#emNote').value.trim() });
     closeModal(true); regenToday(); afterChange(); toast('All quests paused');
@@ -3120,6 +3295,10 @@ const A = {
   custCards: el => { custSet(o => { o.cards = el.dataset.id; }); ui.season = applySeason(); themeRefresh(); },
   htMode: el => { htSet(o => { o.mode = el.dataset.id; o.extra[o.mode] = null; }); htRefresh(true); if ($('#suText')) suRefresh(); },
   htTime: el => { htSet(o => { o.time = el.dataset.id; }); htRefresh(true); },
+  rwHide: () => { S.rwHidden = (S.rewards || []).filter(r => !r.used).map(r => r.id); afterChange(); },
+  lockNew: el => lockModal(el.dataset.k, el.dataset.id),
+  lkGo: () => lockGo(),
+  htWd: el => { htSet(o => { o.wd = el.dataset.id === '1'; }); htRefresh(true); },
   htExtra: el => { const [m, pos] = el.dataset.id.split(':'); htSet(o => { o.extra[m] = pos || null; }); htRefresh(true); },
   suBg: el => { S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color', bg: el.dataset.id }) }; ui.season = applySeason(); suRefresh(); },
   suPhoto: () => { const i = $('#suPhotoIn'); if (!i) return; i.onchange = async () => { const f = i.files[0]; i.value = ''; if (!f) return; S.theme = { id: 'custom', custom: custOpts() }; await pickPhoto(f); suRefresh(); }; i.click(); },
@@ -3127,6 +3306,7 @@ const A = {
   suCal: el => { S.cal = el.dataset.id; ui.season = applySeason(); suRefresh(); },
   suScript: el => { S.zhScript = el.dataset.id === 'trad' ? 'trad' : 'simp'; ui.season = applySeason(); suRefresh(); },
   setSeg: el => { ui.setSeg = el.dataset.id; render(); window.scrollTo(0, 0); },
+  rankSkin: el => { const id = el.dataset.id; S.rankSkin = id === 'classic' ? null : id; save(); lookRefresh(); toast(`Rank style: ${rankSkin() ? rankSkin().name : 'Classic'} · you're ${rankOf(overall().L).name}`, 'ti'); },
   styPick: el => { const L = lookOpts(); L.style = el.dataset.id; S.look = L; ui.lkOpen = null; save(); ui.season = applySeason(); lookRefresh(); toast(el.dataset.id === 'auto' ? `Matched: ${STYLE[styleId()].n}` : `UI style: ${STYLE[styleId()].n}`); },
   styOwn: el => { const L = lookOpts(), sid = styleId(); L.own[sid] = el.dataset.id === 'own'; S.look = L; save(); ui.season = applySeason(); lookRefresh(); },
   lkOpen: el => { ui.lkOpen = ui.lkOpen === el.dataset.id ? null : el.dataset.id; lookRefresh(); },
@@ -3151,7 +3331,7 @@ const A = {
   },
   profSeg: el => { ui.profSeg = el.dataset.id; render(); },
   skOpen: el => { ui.openSkill = ui.openSkill === el.dataset.id ? null : el.dataset.id; render(); },
-  skToggle: el => { const id = el.dataset.id, s = skState(id); s.active = !s.active; if (s.active && SK[id].cat === 'Faith') s.days = [0, 1, 2, 3, 4, 5, 6]; regenToday(); afterChange(); toast(s.active ? SK[id].name + ' added to quests' : SK[id].name + ' removed from quests'); },
+  skToggle: el => { const id = el.dataset.id, s = skState(id); if (s.active && lockRefuse('skill', id, 'take it off your quests')) return; s.active = !s.active; if (s.active && SK[id].cat === 'Faith') s.days = [0, 1, 2, 3, 4, 5, 6]; regenToday(); afterChange(); toast(s.active ? SK[id].name + ' added to quests' : SK[id].name + ' removed from quests'); },
   skLoad: el => { const s = skState(el.dataset.id); s.load = clamp(s.load * +el.dataset.v, 0.4, 6); regenToday(); afterChange(); },
   practice: el => {
     const id = el.dataset.id, u = SK[id].unit, keys = SK[id].custom ? chipsOn('#pf_' + id) : []; let n = num($('#pm_' + id).value) || 0;
@@ -3177,7 +3357,7 @@ const A = {
   csAddStat: () => { const n = $$('.csStat').length; if (n >= 8) { toast('8 stats max'); return; } $('#csStats').insertAdjacentHTML('beforeend', `<input class="csStat" data-k="" placeholder="Stat ${n + 1}" style="margin-bottom:6px">`); },
   csSave: el => saveCustomSkill(el.dataset.id),
   skHide: el => {
-    const id = el.dataset.id, c = SK[id]; if (!c) return;
+    const id = el.dataset.id, c = SK[id]; if (!c) return; if (lockRefuse('skill', id, 'delete it')) return;
     if (!confirm(`Delete ${c.name}? It leaves your library and quests. Its XP and titles are kept, and you can restore it in Profile → Settings → Deleted defaults.`)) return;
     skState(id).active = false; if (!S.hideSk.includes(id)) S.hideSk.push(id); if (ui.openSkill === id) ui.openSkill = null;
     regenToday(); afterChange(); toast(c.name + ' deleted · restore it in Settings');
@@ -3220,6 +3400,7 @@ const A = {
     const st = beltSt(ui.be.id); st.ladder = rows; st.word = ui.be.word; closeModal(true); afterChange(); toast('Saved', 'ti');
   },
   csDel: el => {
+    if (lockRefuse('skill', el.dataset.id, 'delete it')) return;
     const id = el.dataset.id; if (!confirm('Delete this skill? Its XP stays in your overall level.')) return;
     S.customSkills = S.customSkills.filter(c => c.id !== id); delete S.skills[id];
     S.events.forEach(e => { if (e.skill === id) e.skill = null; });
@@ -3235,7 +3416,7 @@ const A = {
   setSave: () => {
     const f = new FormData($('#setForm')), p = S.profile;
     const h = num(f.get('height')), wasImp = imperial();
-    p.name = f.get('name').trim(); p.sex = f.get('sex'); p.birthYear = +f.get('birthYear') || p.birthYear;
+    p.name = f.get('name').trim(); p.sex = f.get('sex'); p.birthYear = +f.get('birthYear') || p.birthYear; p.student = !!f.get('student');
     p.heightCm = h > 0 ? (wasImp ? Math.round(h * 2.54) : h) : null; // empty = not given
     p.units = f.get('units');
     const oldWake = p.wake; p.wake = f.get('wake') || p.wake; p.sleep = f.get('sleep') || p.sleep;
@@ -3274,6 +3455,7 @@ document.addEventListener('input', e => {
   if (k === 'fsCalc' && ui.fs) { fsRead(); $$('#fsChips .chip').forEach(b => b.classList.toggle('on', +b.dataset.id === ui.fs.len)); $('#fsEnd').innerHTML = fsEndTxt(); }
   if (k === 'fvName' && ui.fv) ui.fv.name = e.target.value;
   if (k === 'pe' && ui.pe) peInput(e.target);
+  if (k === 'lk' && ui.lk) $('#lkEnd').innerHTML = lockEndTxt();
   if (k === 'ht') { const f = e.target.dataset.k; let v = e.target.value; if (f === 'sub') { const c = htLines(v); if (c !== v) { const at = e.target.selectionStart; e.target.value = v = c; try { e.target.setSelectionRange(at, at); } catch (x) { } } } htSet(o => { o[f] = v; }); htRefresh(false); }
   if (k === 'be' && ui.be) { const r = ui.be.rows[+e.target.dataset.id]; if (r) r[e.target.dataset.k] = e.target.value; }
   if (k === 'cwV') { const w = e.target.closest('.cw'); w.dataset.v = Math.max(.04, +e.target.value / 100); clearTimeout(ui.cwT); ui.cwT = setTimeout(() => initWheels(w.parentNode), 40); wheelChanged(w, false); }
@@ -3311,6 +3493,7 @@ document.addEventListener('change', e => {
   if (k === 'peUnit' && ui.pe) { const it = ui.pe.items[+t.dataset.n]; it.unit = t.value; if (t.value === 'money') { it.sym = it.sym || '$'; it.grow = false; } peRefresh(); }
   if (k === 'peFrom' && ui.pe) { const it = ui.pe.items[+t.dataset.n], N = ui.pe.tiers.length, s = +t.value, was = peFrom(it), first = it.amts[was];
     it.amts = it.amts.map((a, i) => i < s ? null : a); if (!(it.amts[s] > 0)) it.amts[s] = first > 0 ? first : 10; if (!(it.amts[N - 1] > 0)) it.amts[N - 1] = it.amts[s]; peFill(it, N); peRefresh(); }
+  if (k === 'lkU' && ui.lk) $('#lkEnd').innerHTML = lockEndTxt();
   if (k === 'peGrow' && ui.pe) ui.pe.items[+t.dataset.n].grow = t.checked;
   if (k === 'sdReq' && ui.sd) { ui.sd.req = t.checked; $('#sdBody').innerHTML = sdBody(); }
   if (k === 'sdRwAll' && ui.sd) { ui.sd.reward.all = t.checked; const sc = $('#sdScope'); if (sc) sc.hidden = t.checked; }
