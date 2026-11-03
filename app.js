@@ -814,7 +814,7 @@ function rankStrip(L, sk = rankSkin()) { // every rank you can reach, in order; 
 function rankCard() { // v17: Settings > Themes & display > Rank style
   const cur = rankSkin(), L = overall().L, opts = [{ id: 'classic', name: 'Classic', group: 'Classic' }].concat(window.RANK_SKINS || []);
   const tile = o => { const sk = o.id === 'classic' ? null : o, on = (cur ? cur.id : 'classic') === o.id;
-    return `<button class="rs-tile${on ? ' on' : ''}" data-a="rankSkin" data-id="${o.id}" aria-pressed="${on}"><span class="rs-em">${[0, 6, SOV].map(t => emblem(t, 28, sk)).join('')}</span><b>${esc(o.name)}</b><small>${esc(rankWord(0, sk))} → ${esc(rankWord(SOV, sk))}</small></button>`; };
+    return `<button class="rs-tile${on ? ' on' : ''}" data-a="rankSkin" data-id="${o.id}" aria-pressed="${on}"><span class="rs-em">${[0, 6, SOV].map(t => emblem(t, 28, sk)).join('')}</span><b class="rs-n">${esc(o.name)}</b><br><small class="rs-s">${esc(rankWord(0, sk))} → ${esc(rankWord(SOV, sk))}</small></button>`; };
   const groups = [...new Set(opts.map(o => o.group))];
   return `<div class="card" id="rankCard"><h3>Rank style</h3><p class="mu small" style="margin-top:2px">Same levels, XP and rewards; only the rank names and emblems change. You're <b>${esc(rankOf(L).name)}</b> (level ${L}).</p>
     ${groups.map(g => `<div class="rs-g"><div class="mu2 small rs-gh">${esc(g)}</div><div class="rs-grid">${opts.filter(o => o.group === g).map(tile).join('')}</div></div>`).join('')}

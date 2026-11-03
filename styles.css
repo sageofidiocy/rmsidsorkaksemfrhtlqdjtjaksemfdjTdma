@@ -1141,3 +1141,126 @@ html[data-sty=mainframe] .sz-mini b.lat { font-size: 13px; }
 html[data-sty=mainframe] :is(.ht.clock .sz-h, .hts-clock .hts-m) { font-family: 'D Nixie', sans-serif; text-transform: none; letter-spacing: .06em; color: #ffb468; text-shadow: 0 0 10px rgba(255,138,40,.85), 0 0 26px rgba(255,110,20,.45), 0 1px 2px rgba(0,0,0,.6); }
 html[data-sty=mainframe] .home .ht.clock .sz-h { font-size: 66px; }
 html[data-ui=light][data-sty=mainframe] .card > h3:first-child { color: #1e1d19; }
+
+/* ===== v16: CJK fonts per UI style =====
+   The season names, CJK dates and CJK words on Home take a hangul / kana+kanji / simplified font that matches the UI style.
+   Subsets (fonts/cjk-*.woff2): every character the app uses, plus all 2,350 common hangul syllables (KS X 1001) so your own
+   Korean words match too; unicode-range keeps Latin in the style's own font. Traditional Chinese and Korean hanja use the kanji
+   font (JIS covers nearly all of them); anything a font lacks falls back glyph by glyph to Noto. Fonts download only when a style
+   that uses them is on, and are cached for offline after that (sw.js: /fonts/ cache-first). Licenses: fonts/LICENSE.txt (OFL). */
+@font-face { font-family: 'DK NanumGothicCoding'; src: url(fonts/cjk-hk-nanumgothiccoding.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK SongMyung'; src: url(fonts/cjk-hk-songmyung.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK NanumBrush'; src: url(fonts/cjk-hk-nanumbrush.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK GowunBatang'; src: url(fonts/cjk-hk-gowunbatang.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK Gaegu'; src: url(fonts/cjk-hk-gaegu.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK Orbit'; src: url(fonts/cjk-hk-orbit.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK Hahmlet'; src: url(fonts/cjk-hk-hahmlet.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK Jua'; src: url(fonts/cjk-hk-jua.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK PoorStory'; src: url(fonts/cjk-hk-poorstory.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DK DoHyeon'; src: url(fonts/cjk-hk-dohyeon.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+1100-11FF, U+3130-318F, U+AC00-D7A3; }
+@font-face { font-family: 'DJ DotGothic16'; src: url(fonts/cjk-jp-dotgothic16.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ ZenAntique'; src: url(fonts/cjk-jp-zenantique.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ YujiSyuku'; src: url(fonts/cjk-jp-yujisyuku.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ KaiseiDecol'; src: url(fonts/cjk-jp-kaiseidecol.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ KleeOne'; src: url(fonts/cjk-jp-kleeone.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ DelaGothic'; src: url(fonts/cjk-jp-delagothicone.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ ZenOldMincho'; src: url(fonts/cjk-jp-zenoldmincho.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ MochiyPop'; src: url(fonts/cjk-jp-mochiypopone.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DJ YuseiMagic'; src: url(fonts/cjk-jp-yuseimagic.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-30FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+@font-face { font-family: 'DS QingKe'; src: url(fonts/cjk-sc-zcoolqingke.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF; }
+@font-face { font-family: 'DS XiaoWei'; src: url(fonts/cjk-sc-zcoolxiaowei.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF; }
+@font-face { font-family: 'DS MaShanZheng'; src: url(fonts/cjk-sc-mashanzheng.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF; }
+@font-face { font-family: 'DS LongCang'; src: url(fonts/cjk-sc-longcang.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF; }
+@font-face { font-family: 'DS KuaiLe'; src: url(fonts/cjk-sc-zcoolkuaile.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+FF00-FFEF; }
+html[data-sty=retro] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK NanumGothicCoding', 'DJ DotGothic16', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=retro] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ DotGothic16', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=retro] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS QingKe', 'DJ DotGothic16', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=retro] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ DotGothic16', 'DS QingKe', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=illum] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK SongMyung', 'DJ ZenAntique', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=illum] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ ZenAntique', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=illum] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS XiaoWei', 'DJ ZenAntique', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=illum] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ ZenAntique', 'DS XiaoWei', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=ink] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK NanumBrush', 'DJ YujiSyuku', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=ink] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ YujiSyuku', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=ink] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS MaShanZheng', 'DJ YujiSyuku', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=ink] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ YujiSyuku', 'DS MaShanZheng', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=story] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK GowunBatang', 'DJ KaiseiDecol', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=story] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ KaiseiDecol', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=story] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS XiaoWei', 'DJ KaiseiDecol', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=story] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ KaiseiDecol', 'DS XiaoWei', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=analog] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK Gaegu', 'DJ KleeOne', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=analog] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ KleeOne', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=analog] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS LongCang', 'DJ KleeOne', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=analog] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ KleeOne', 'DS LongCang', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=system] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK Orbit', 'DJ DelaGothic', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=system] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ DelaGothic', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=system] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS QingKe', 'DJ DelaGothic', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=system] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ DelaGothic', 'DS QingKe', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=pixel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK NanumGothicCoding', 'DJ DotGothic16', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=pixel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ DotGothic16', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=pixel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS QingKe', 'DJ DotGothic16', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=pixel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ DotGothic16', 'DS QingKe', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=rosewood] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK Hahmlet', 'DJ ZenOldMincho', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=rosewood] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ ZenOldMincho', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=rosewood] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS XiaoWei', 'DJ ZenOldMincho', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=rosewood] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ ZenOldMincho', 'DS XiaoWei', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=pastel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK Jua', 'DJ MochiyPop', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=pastel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ MochiyPop', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=pastel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS KuaiLe', 'DJ MochiyPop', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=pastel] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ MochiyPop', 'DS KuaiLe', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=web1] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK PoorStory', 'DJ YuseiMagic', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=web1] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ YuseiMagic', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=web1] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS KuaiLe', 'DJ YuseiMagic', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=web1] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ YuseiMagic', 'DS KuaiLe', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+html[data-sty=mainframe] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK DoHyeon', 'DJ DotGothic16', "Noto Serif CJK KR", "Noto Serif KR", serif; font-style: normal; }
+html[data-sty=mainframe] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ DotGothic16', "Noto Serif CJK JP", "Noto Serif JP", serif; font-style: normal; }
+html[data-sty=mainframe] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS QingKe', 'DJ DotGothic16', "Noto Serif CJK SC", "Noto Serif SC", serif; font-style: normal; }
+html[data-sty=mainframe] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DJ DotGothic16', 'DS QingKe', "Noto Serif CJK TC", "Noto Serif TC", serif; font-style: normal; }
+/* v16 (Daniel: "only choose the best font for the cyberpunk aesthetic for each scene"): on the Cyberpunk theme each street's
+   language has one font, whatever the UI style: Seoul = Orbit (hanja in Chiron Hei HK), Tokyo = Dela Gothic One, mainland
+   China = ZCOOL QingKe HuangYou, Hong Kong = Chiron Hei HK (Hong Kong character forms). Beats the per-style rules above. */
+@font-face { font-family: 'DT ChironHeiHK'; src: url(fonts/cjk-tc-chironheihk.woff2) format('woff2'); font-weight: 100 900; font-display: swap; unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF; }
+html[data-theme=cyber][data-sty] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ko) { font-family: 'DK Orbit', 'DT ChironHeiHK', "Noto Sans CJK KR", "Noto Sans KR", sans-serif; font-style: normal; }
+html[data-theme=cyber][data-sty] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(ja) { font-family: 'DJ DelaGothic', "Noto Sans CJK JP", "Noto Sans JP", sans-serif; font-style: normal; }
+html[data-theme=cyber][data-sty] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hans) { font-family: 'DS QingKe', 'DT ChironHeiHK', "Noto Sans CJK SC", "Noto Sans SC", sans-serif; font-style: normal; }
+html[data-theme=cyber][data-sty] :is(.season, .hts, .sz-mini, .hu, .jg, .sz-prev, .cal-opt, .cal-seg, .szg, .ht-prev) :lang(zh-Hant) { font-family: 'DT ChironHeiHK', 'DS QingKe', "Noto Sans CJK TC", "Noto Sans TC", sans-serif; font-style: normal; }
+/* v16: a word without spaces (hangul, hanja, kana, hanzi) never breaks in the middle; dates and times stay on one line.
+   When one is wider than its space, fitWords() (app.js) shrinks it instead. */
+:is(.season, .hts, .sz-mini, .hu, .jg, .cal-opt) { word-break: keep-all; overflow-wrap: normal; }
+.hts-m, .hts-s { overflow-wrap: normal; }
+[data-clk=t] { white-space: nowrap; } /* a time never breaks; a date breaks only at its spaces (Korean), never inside 2026年11月3日 */
+.hts { max-width: 100%; min-width: 0; }
+.ht-side .hts { width: 100%; }
+.hu > span, .hu > small { max-width: 100%; min-width: 0; }
+/* v16: the reward banner on Quests can be closed */
+.banner.rw-x { position: relative; padding: 0; }
+.banner.rw-x .rw-go { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; padding: 12px 40px 12px 14px; font: inherit; }
+.banner.rw-x .rw-close { position: absolute; top: 6px; right: 6px; color: var(--mu); }
+/* v16: schedule locks */
+.lk-row { margin-top: 8px; gap: 8px; flex-wrap: wrap; }
+.lk-btn svg, .lk-on svg { width: 13px; height: 13px; vertical-align: -2px; }
+.chip.locked { box-shadow: inset 0 0 0 1.5px var(--gold); }
+.chip.locked::after { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); margin-left: 4px; vertical-align: 2px; }
+.qx.lkb { color: var(--gold); display: inline-flex; align-items: center; gap: 2px; }
+.qx.lkb svg { width: 11px; height: 11px; }
+.list-item .lk-on { margin-right: 6px; }
+/* v16: years-of-commitment badges */
+.yb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 10px 6px; }
+.yb { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; }
+.yb small { font-size: 10.5px; line-height: 1.25; color: var(--mu2); }
+.yb.on small { color: var(--tx); }
+.ybadge.off { filter: grayscale(1); opacity: .6; }
+
+/* v17: Rank style (Settings > Themes & display). v17.1: more space between tiles; name and range always on their own lines, wrapping
+   between words (never cut off or split mid-word) */
+.rs-g { margin-top: 14px; }
+.rs-gh { text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.rs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+button.rs-tile { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; text-align: left; padding: 10px; min-width: 0; height: auto; min-height: 0; overflow: visible; white-space: normal; border-radius: 12px; background: rgba(127,127,127,.06); border: 1px solid var(--line2); color: var(--tx); font: 13px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: 0; box-shadow: none; clip-path: none; }
+button.rs-tile.on { border-color: var(--ac); box-shadow: 0 0 0 1.5px var(--ac) inset; }
+button.rs-tile br { display: none; }
+.rs-tile .rs-n, .rs-tile .rs-s { display: block; width: 100%; white-space: normal; word-break: normal; overflow-wrap: break-word; hyphens: manual; overflow: visible; text-overflow: clip; }
+.rs-tile .rs-n { font-size: 13px; font-weight: 600; line-height: 1.25; margin-top: 2px; }
+.rs-tile .rs-s { font-size: 11px; color: var(--mu); line-height: 1.3; }
+.rs-em { display: flex; gap: 3px; margin-bottom: 2px; }
+#rankCard .ranks { margin-top: 4px; }
