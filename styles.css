@@ -283,6 +283,7 @@ button svg { vertical-align: -3px; }
 .dg-aim b { font-weight: 600; }
 .seg.goal4 { margin: 14px 0 4px; }
 .seg.goal4 button { font-size: 12.5px; padding: 8px 2px; }
+.seg.goal4 { flex-wrap: wrap; }
 .dg-sum { padding: 9px 11px; border: 1px solid var(--line2); border-radius: 10px; background: var(--bg); }
 .fast-card { border-color: rgba(226,194,122,.42); }
 .fast-card .ic-plate, .fast-row .ic-plate { color: var(--gold); flex: none; }
@@ -611,6 +612,8 @@ html[data-ui=light] .banner.up svg { color: #2b8a5a; }
 @font-face { font-family: 'D Fredoka'; src: url(fonts/fredoka-latin-600-normal.woff2) format('woff2'); font-weight: 551 900; font-display: swap; }
 @font-face { font-family: 'D Comic'; src: url(fonts/comic-neue-latin-400-normal.woff2) format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'D Comic'; src: url(fonts/comic-neue-latin-700-normal.woff2) format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'D Michroma'; src: url(fonts/michroma-latin-400-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Nixie'; src: url(fonts/nixie-one-latin-400-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
 
 /* text on the accent color follows the accent (your colors can be anything) */
 .btn-p, html[data-ui=light] .btn-p { color: var(--ac-tx, #10161a); }
@@ -671,7 +674,7 @@ html[data-sty=retro] #nav svg * { stroke-linecap: square; stroke-linejoin: miter
 html[data-sty=retro] #nav button.on svg { filter: drop-shadow(0 0 4px var(--ac)); }
 html[data-sty=retro] #nav button.on::before { border-radius: 0; left: 18%; right: 18%; box-shadow: 0 0 8px var(--ac); }
 html[data-sty=retro] .sheet::before { border-radius: 0; background: var(--acB); }
-html[data-sty=retro] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Orbitron', sans-serif; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+html[data-sty=retro] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Orbitron', sans-serif; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
 html[data-sty=retro] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 28px; }
 html[data-sty=retro] .home .ht.clock .sz-h { font-size: 52px; }
 html[data-sty=retro] .toast::before { content: '> '; color: var(--ac); }
@@ -702,7 +705,7 @@ html[data-sty=illum] .seg button { border-radius: 2px; font-variant: small-caps;
 html[data-sty=illum] :is(.bar, .prog, .bar > i, .prog i) { border-radius: 0; }
 html[data-sty=illum] #nav button { font-variant: small-caps; font-size: 11.5px; letter-spacing: .04em; }
 html[data-sty=illum] #nav svg * { stroke-width: 1.9; }
-html[data-sty=illum] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Fraktur', serif; font-weight: 400; letter-spacing: .01em; }
+html[data-sty=illum] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Fraktur', serif; font-weight: 400; letter-spacing: .01em; }
 html[data-sty=illum] .home :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-size: 44px; }
 html[data-sty=illum] .toast { border-radius: 3px; border-color: var(--goldB); }
 
@@ -733,7 +736,7 @@ html[data-sty=ink] :is(.bar > i, .prog i) { border-radius: 1px 6px 2px 6px; back
 html[data-sty=ink] .bar.gold > i { background: linear-gradient(90deg, var(--gold), var(--gold) 82%, transparent); }
 html[data-sty=ink] #nav svg * { stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 html[data-sty=ink] #nav button.on::before { left: calc(50% - 3px); right: auto; width: 6px; height: 6px; top: 6px; border-radius: 1px; background: var(--gold); }
-html[data-sty=ink] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Yuji', serif; font-weight: 400; letter-spacing: .02em; }
+html[data-sty=ink] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Yuji', serif; font-weight: 400; letter-spacing: .02em; }
 html[data-sty=ink] .toast { border-radius: 3px 12px 4px 12px; }
 
 /* ---------- Storybook (cottage) ---------- */
@@ -754,7 +757,7 @@ html[data-sty=story] :is(.bar, .prog) { height: 6px; border-radius: 99px; }
 html[data-sty=story] :is(.bar > i, .prog i) { border-radius: 99px; }
 html[data-sty=story] #nav svg * { stroke-width: 1.9; }
 html[data-sty=story] #nav button.on::before { left: calc(50% - 10px); right: auto; width: 20px; height: 3px; border-radius: 99px; }
-html[data-sty=story] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Fraunces', Georgia, serif; font-style: italic; font-weight: 600; }
+html[data-sty=story] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Fraunces', Georgia, serif; font-style: italic; font-weight: 600; }
 html[data-sty=story] .toast { border-radius: 16px; }
 
 /* ---------- Analog (paper planner) ---------- */
@@ -787,7 +790,7 @@ html[data-sty=analog] :is(.bar, .prog) { height: 6px; }
 html[data-sty=analog] #nav button { font-family: 'D Courier', monospace; }
 html[data-sty=analog] #nav svg * { stroke-width: 1.8; }
 html[data-sty=analog] #nav button.on::before { height: 3px; border-radius: 50%; transform: rotate(-2deg); }
-html[data-sty=analog] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Caveat', cursive; font-weight: 600; letter-spacing: 0; line-height: 1; }
+html[data-sty=analog] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Caveat', cursive; font-weight: 600; letter-spacing: 0; line-height: 1; }
 html[data-sty=analog] .home :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-size: 54px; }
 html[data-sty=analog] .toast { border-radius: 2px; border: 0; background: #fff6c8; color: #333; box-shadow: 0 6px 16px rgba(0,0,0,.3); }
 
@@ -821,7 +824,7 @@ html[data-sty=system] #nav button.on::before { border-radius: 0; box-shadow: 0 0
 html[data-sty=system] .toast { border-radius: 2px; border-color: var(--acB); box-shadow: 0 0 18px var(--acG); }
 html[data-sty=system] .toast::before { content: 'SYSTEM'; display: block; font: 600 10px/1.4 'D Rajdhani', sans-serif; letter-spacing: .3em; color: var(--ac); }
 html[data-sty=system] .banner { border-radius: 2px; }
-html[data-sty=system] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Rajdhani', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; text-shadow: 0 0 18px var(--acG), 0 1px 3px rgba(0,0,0,.6); }
+html[data-sty=system] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Rajdhani', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; text-shadow: 0 0 18px var(--acG), 0 1px 3px rgba(0,0,0,.6); }
 
 /* ---------- Pixel Quest (8-bit RPG menus) ---------- */
 :where(html[data-sty=pixel]) body, .pv[data-pv=pixel] { font-family: 'D VT323', ui-monospace, monospace; }
@@ -853,39 +856,39 @@ html[data-sty=pixel] #nav button { font-size: 15px; }
 html[data-sty=pixel] #nav svg { shape-rendering: crispEdges; }
 html[data-sty=pixel] #nav svg * { stroke-linecap: square; stroke-linejoin: miter; stroke-width: 2; }
 html[data-sty=pixel] #nav button.on::before { border-radius: 0; height: 3px; }
-html[data-sty=pixel] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Press', monospace; letter-spacing: 0; line-height: 1.45; font-weight: 400; }
+html[data-sty=pixel] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Press', monospace; letter-spacing: 0; line-height: 1.45; font-weight: 400; }
 html[data-sty=pixel] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 20px; }
 html[data-sty=pixel] .home .ht.clock .sz-h { font-size: 34px; }
 html[data-sty=pixel] .sz-prev .sz-h.lat, html[data-sty=pixel] .ht-prev .sz-h { font-size: 15px; }
 html[data-sty=pixel] .sheet::before { border-radius: 0; }
 
 /* ---------- Otome (romance-game elegance) ---------- */
-html[data-sty=otome] h3, .pv[data-pv=otome] .pv-h { font-family: 'D Cormorant', 'Cormorant Garamond', Georgia, serif; font-style: italic; font-weight: 600; font-size: 21px; letter-spacing: .01em; line-height: 1.15; }
-.pv[data-pv=otome] .pv-h { font-size: 15px; }
-html[data-sty=otome] .card > h3::after, .pv[data-pv=otome] .pv-h::after { content: ''; display: block; width: 64px; height: 1px; margin-top: 6px; background: linear-gradient(90deg, var(--gold), transparent); }
-html[data-sty=otome] main h2 { font-family: 'D Cormorant', serif; font-weight: 600; font-size: 14px; letter-spacing: .26em; }
-html[data-sty=otome] main h2::before { content: '✧ '; color: var(--gold); } html[data-sty=otome] main h2::after { content: ' ✧'; color: var(--gold); }
-html[data-sty=otome] .qt { font-family: 'D Cormorant', serif; font-weight: 600; font-size: 17.5px; }
-html[data-sty=otome] :is(.num, .stat b, .qx) { font-family: 'D Cormorant', serif; font-variant-numeric: lining-nums tabular-nums; font-weight: 600; }
-html[data-sty=otome] :is(.card, .stat, .sheet), .pv[data-pv=otome] .pv-card { border-radius: 20px; border: 1px solid var(--goldB); box-shadow: inset 0 0 0 4px var(--s1), inset 0 0 0 5px var(--goldA), 0 8px 26px rgba(180,86,111,.16); background-image: linear-gradient(160deg, rgba(255,255,255,.55), rgba(255,255,255,0) 45%); }
-html[data-sty=otome] .card { position: relative; }
-html[data-sty=otome] .card::after, .pv[data-pv=otome] .pv-card::after { content: '✦'; position: absolute; top: 5px; right: 9px; font-size: 9px; line-height: 1; color: var(--gold); opacity: .8; pointer-events: none; }
-html[data-sty=otome] .q, .pv[data-pv=otome] .pv-q { border-radius: 16px; border: 1px solid var(--goldA); box-shadow: 0 3px 12px rgba(180,86,111,.1); }
-:where(html[data-sty=otome]) button { border-radius: 99px; letter-spacing: .02em; }
-html[data-sty=otome] .btn-p, .pv[data-pv=otome] .pv-btn { border: 0; border-radius: 99px; background: linear-gradient(135deg, var(--ac), var(--ac2)); box-shadow: 0 4px 14px var(--acG); }
-html[data-sty=otome] :is(.chip, .pill), .pv[data-pv=otome] .pv-chip { border-color: var(--goldB); }
-html[data-sty=otome] .chk, .pv[data-pv=otome] .pv-chk { border-radius: 50%; border: 1.5px solid var(--goldB); }
-html[data-sty=otome] .q.done .chk { background: linear-gradient(135deg, var(--ac), var(--gold)); border-color: transparent; }
-html[data-sty=otome] .seg, html[data-sty=otome] .seg button { border-radius: 99px; }
-:where(html[data-sty=otome]) :is(input, select, textarea) { border-radius: 14px; }
-html[data-sty=otome] :is(.bar, .prog, .bar > i, .prog i) { border-radius: 99px; }
-html[data-sty=otome] :is(.bar > i, .prog i) { background: linear-gradient(90deg, var(--ac), var(--gold)); }
-html[data-sty=otome] #nav svg * { stroke-width: 1.4; }
-html[data-sty=otome] #nav button { font-family: 'D Cormorant', serif; font-style: italic; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
-html[data-sty=otome] #nav button.on::before { left: calc(50% - 3px); right: auto; width: 6px; height: 6px; top: 5px; border-radius: 1px; transform: rotate(45deg); }
-html[data-sty=otome] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Cormorant', serif; font-style: italic; font-weight: 600; letter-spacing: .01em; }
-html[data-sty=otome] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 48px; }
-html[data-sty=otome] .toast { border-radius: 18px; border-color: var(--goldB); }
+html[data-sty=rosewood] h3, .pv[data-pv=rosewood] .pv-h { font-family: 'D Cormorant', 'Cormorant Garamond', Georgia, serif; font-style: italic; font-weight: 600; font-size: 21px; letter-spacing: .01em; line-height: 1.15; }
+.pv[data-pv=rosewood] .pv-h { font-size: 15px; }
+html[data-sty=rosewood] .card > h3::after, .pv[data-pv=rosewood] .pv-h::after { content: ''; display: block; width: 64px; height: 1px; margin-top: 6px; background: linear-gradient(90deg, var(--gold), transparent); }
+html[data-sty=rosewood] main h2 { font-family: 'D Cormorant', serif; font-weight: 600; font-size: 14px; letter-spacing: .26em; }
+html[data-sty=rosewood] main h2::before { content: '✧ '; color: var(--gold); } html[data-sty=rosewood] main h2::after { content: ' ✧'; color: var(--gold); }
+html[data-sty=rosewood] .qt { font-family: 'D Cormorant', serif; font-weight: 600; font-size: 17.5px; }
+html[data-sty=rosewood] :is(.num, .stat b, .qx) { font-family: 'D Cormorant', serif; font-variant-numeric: lining-nums tabular-nums; font-weight: 600; }
+html[data-sty=rosewood] :is(.card, .stat, .sheet), .pv[data-pv=rosewood] .pv-card { border-radius: 20px; border: 1px solid var(--goldB); box-shadow: inset 0 0 0 4px var(--s1), inset 0 0 0 5px var(--goldA), 0 8px 26px rgba(180,86,111,.16); background-image: linear-gradient(160deg, rgba(255,255,255,.55), rgba(255,255,255,0) 45%); }
+html[data-sty=rosewood] .card { position: relative; }
+html[data-sty=rosewood] .card::after, .pv[data-pv=rosewood] .pv-card::after { content: '✦'; position: absolute; top: 5px; right: 9px; font-size: 9px; line-height: 1; color: var(--gold); opacity: .8; pointer-events: none; }
+html[data-sty=rosewood] .q, .pv[data-pv=rosewood] .pv-q { border-radius: 16px; border: 1px solid var(--goldA); box-shadow: 0 3px 12px rgba(180,86,111,.1); }
+:where(html[data-sty=rosewood]) button { border-radius: 99px; letter-spacing: .02em; }
+html[data-sty=rosewood] .btn-p, .pv[data-pv=rosewood] .pv-btn { border: 0; border-radius: 99px; background: linear-gradient(135deg, var(--ac), var(--ac2)); box-shadow: 0 4px 14px var(--acG); }
+html[data-sty=rosewood] :is(.chip, .pill), .pv[data-pv=rosewood] .pv-chip { border-color: var(--goldB); }
+html[data-sty=rosewood] .chk, .pv[data-pv=rosewood] .pv-chk { border-radius: 50%; border: 1.5px solid var(--goldB); }
+html[data-sty=rosewood] .q.done .chk { background: linear-gradient(135deg, var(--ac), var(--gold)); border-color: transparent; }
+html[data-sty=rosewood] .seg, html[data-sty=rosewood] .seg button { border-radius: 99px; }
+:where(html[data-sty=rosewood]) :is(input, select, textarea) { border-radius: 14px; }
+html[data-sty=rosewood] :is(.bar, .prog, .bar > i, .prog i) { border-radius: 99px; }
+html[data-sty=rosewood] :is(.bar > i, .prog i) { background: linear-gradient(90deg, var(--ac), var(--gold)); }
+html[data-sty=rosewood] #nav svg * { stroke-width: 1.4; }
+html[data-sty=rosewood] #nav button { font-family: 'D Cormorant', serif; font-style: italic; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
+html[data-sty=rosewood] #nav button.on::before { left: calc(50% - 3px); right: auto; width: 6px; height: 6px; top: 5px; border-radius: 1px; transform: rotate(45deg); }
+html[data-sty=rosewood] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Cormorant', serif; font-style: italic; font-weight: 600; letter-spacing: .01em; }
+html[data-sty=rosewood] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 48px; }
+html[data-sty=rosewood] .toast { border-radius: 18px; border-color: var(--goldB); }
 
 /* ---------- Pastel Pop (cutesy) ---------- */
 :where(html[data-sty=pastel]) body, .pv[data-pv=pastel] { font-family: 'D Fredoka', 'Nunito', system-ui, sans-serif; font-weight: 500; }
@@ -911,7 +914,7 @@ html[data-sty=pastel] :is(.bar > i, .prog i) { border-radius: 99px; background-i
 html[data-sty=pastel] #nav svg * { stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 html[data-sty=pastel] #nav button.on::before { left: calc(50% - 12px); right: auto; width: 24px; height: 4px; border-radius: 99px; top: 2px; }
 html[data-sty=pastel] .hs { border-width: 2px; }
-html[data-sty=pastel] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Fredoka', sans-serif; font-weight: 600; letter-spacing: .01em; }
+html[data-sty=pastel] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Fredoka', sans-serif; font-weight: 600; letter-spacing: .01em; }
 html[data-sty=pastel] .toast { border-radius: 18px; border: 2.5px solid var(--line2); }
 
 /* ---------- Minimal ---------- */
@@ -966,7 +969,7 @@ html[data-sty=web1] .hs.gold { color: #b000b0; }
 html[data-sty=web1] .banner { border-radius: 0; background: #ffffe1 !important; color: #000; border: 1px solid #000; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 html[data-sty=web1] .toast { border-radius: 0; background: #ffffe1; color: #000; border: 1px solid #000; box-shadow: 2px 2px 0 #000; }
 html[data-sty=web1] .toast::before { content: '⚠ '; }
-html[data-sty=web1] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Comic', cursive; font-weight: 700; letter-spacing: 0; background: linear-gradient(90deg, #ff0000, #ff8a00, #e6d200, #12b300, #0a6cff, #8f00ff); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(2px 2px 0 #000); }
+html[data-sty=web1] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Comic', cursive; font-weight: 700; letter-spacing: 0; background: linear-gradient(90deg, #ff0000, #ff8a00, #e6d200, #12b300, #0a6cff, #8f00ff); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(2px 2px 0 #000); }
 button.th-tile { text-transform: none; letter-spacing: 0; }
 html[data-sty=pixel] .sz-mini b.lat { font-size: 11px; line-height: 1.5; }
 html[data-sty=retro] .sz-mini b.lat { font-size: 13.5px; }
@@ -974,3 +977,167 @@ html[data-sty=system] .sz-mini b.lat { font-size: 16px; }
 /* the UI's brightness disagrees with the picture: a stronger veil keeps text outside the cards readable (not on Home) */
 html[data-ui=dark][data-bgl="1"] #bg::after { background: rgba(0,0,0,.52); }
 html[data-ui=light][data-bgl="0"] #bg::after { background: rgba(250,246,238,.46); }
+
+/* ===== v14 ===== */
+/* a complete phrase in one language never breaks across lines (it moves to the next line whole) */
+.season span[class^="p-"], .hts span[class^="p-"], .sz-mini span { display: inline-block; max-width: 100%; }
+/* Home text: the main text plus up to two smaller subtexts above / below / left / right of it */
+.ht-wrap { position: relative; }
+.ht-wrap .season { min-height: 0; padding-top: 4px; }
+.ht-wrap .season::before { display: none; }
+.home .ht-wrap { padding-top: 30px; text-align: center; }
+.home .ht-wrap::before { content: ''; position: absolute; left: -16px; right: -16px; top: -6px; height: 280px; z-index: -1; pointer-events: none; background: radial-gradient(130% 100% at 50% 0%, rgba(0,0,0,.5), rgba(0,0,0,.2) 60%, transparent 85%); }
+html[data-ui=light] .home .ht-wrap::before { background: radial-gradient(130% 100% at 50% 0%, rgba(255,255,255,.55), rgba(255,255,255,.22) 60%, transparent 85%); }
+.ht-wrap.prev { padding-top: 10px; }
+.ht-ab { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.ht-ab.top { margin-bottom: 2px; }
+.ht-ab.bot { margin-top: 10px; }
+.ht-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.ht-main { flex: 0 1 auto; min-width: 0; }
+.ht-side { flex: 0 1 34%; max-width: 34%; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+.ht-side.l { text-align: right; align-items: flex-end; padding-right: 12px; border-right: 1px solid color-mix(in srgb, var(--tx) 28%, transparent); }
+.ht-side.r { text-align: left; align-items: flex-start; padding-left: 12px; border-left: 1px solid color-mix(in srgb, var(--tx) 28%, transparent); }
+.hts { color: #fff; text-shadow: 0 1px 10px rgba(0,0,0,.55); line-height: 1.25; }
+html[data-ui=light] .hts { color: var(--tx); text-shadow: 0 1px 8px rgba(255,255,255,.6); }
+.hts-m { font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; font-size: 17px; font-weight: 500; letter-spacing: .02em; overflow-wrap: anywhere; }
+.hts-m:not(.lat):is(:lang(ko), :lang(ja), :lang(zh)) { font-family: "Noto Serif CJK KR", "Noto Serif KR", "Noto Serif JP", "Noto Serif SC", serif; font-size: 19px; letter-spacing: .06em; }
+.hts-s { margin-top: 2px; font-size: 13px; opacity: .85; overflow-wrap: anywhere; }
+.hts-clock .hts-m { font-family: ui-serif, "Noto Serif", "Times New Roman", serif; font-variant-numeric: lining-nums tabular-nums; font-size: 22px; }
+.hts-m.ph { opacity: .45; font-style: italic; }
+.hts-season { cursor: pointer; }
+.home .hts-m { font-size: 19px; }
+.home .hts-clock .hts-m { font-size: 26px; }
+.home .ht-side .hts-m { font-size: 16px; }
+.home .ht-side .hts-clock .hts-m { font-size: 21px; }
+html .home .ht-row .sz-h { font-size: 38px; }
+html .home .ht-row .sz-h.lat, html .home .ht-row .ht.custom .sz-h { font-size: 28px; }
+html .home .ht-row .ht.clock .sz-h { font-size: 40px; white-space: nowrap; }
+.ht-row .ht.clock .sz-g { font-size: 15px; }
+.ht-prev .ht-row .sz-h { font-size: 26px; }
+.ht-prev .ht-row .sz-h.lat { font-size: 21px; }
+.ht-prev .ht-row .ht.clock .sz-h { font-size: 30px; }
+.ml { white-space: pre-line; }
+.ht-also { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+.ht-ex { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 8px; }
+.ht-exn { font-size: 13px; color: var(--mu); }
+.ht-ex .seg { margin: 0; }
+.seg.tight.mini button { font-size: 12px; padding: 6px 2px; }
+.ht-exc { margin: 4px 0 6px 104px; }
+.ht-exc label:first-child { margin-top: 4px; }
+#htF textarea { resize: vertical; min-height: 58px; line-height: 1.35; }
+/* v14 Chinese micro-season names (simplified / traditional) */
+.sz-h:lang(zh-Hans), .sz-mini b:lang(zh-Hans), .hu span:lang(zh-Hans), .jg-h b:lang(zh-Hans), :lang(zh-Hans).p-hz, :lang(zh-Hans).p-alt, .cal-seg b:lang(zh-Hans), .cal-opt b:lang(zh-Hans), .hts-m:lang(zh-Hans) { font-family: "Noto Serif CJK SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif; }
+.sz-h:lang(zh-Hant), .sz-mini b:lang(zh-Hant), .hu span:lang(zh-Hant), .jg-h b:lang(zh-Hant), :lang(zh-Hant).p-hz, :lang(zh-Hant).p-alt, .cal-seg b:lang(zh-Hant), .cal-opt b:lang(zh-Hant), .hts-m:lang(zh-Hant) { font-family: "Noto Serif CJK TC", "Noto Serif TC", "Noto Serif HK", "Songti TC", "PMingLiU", "MingLiU", serif; }
+.season .p-py { font-style: italic; }
+/* v14 setup: your own look's background (colors left; your photo & the seasonal scenes right) and the "more later" note */
+.su-bg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.su-bgl .su-sw { margin-top: 6px; }
+.su-bgr { display: flex; flex-direction: column; gap: 8px; }
+.su-opt { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 8px; border-radius: 12px; border: 1px solid var(--line2); background: var(--s2); color: var(--tx); }
+.su-opt.on { border-color: var(--ac); box-shadow: 0 0 0 2px var(--acA); }
+.su-opt span { display: flex; flex-direction: column; min-width: 0; }
+.su-opt b { font-size: 13.5px; font-weight: 600; }
+.su-opt small { font-size: 11.5px; color: var(--mu); }
+.su-opt img, .su-ic { flex: none; width: 40px; height: 40px; border-radius: 9px; object-fit: cover; display: grid; place-items: center; background: var(--s1); color: var(--ac); }
+.su-ic.sc { background: linear-gradient(180deg, #f7c6c8 0%, #f4dcc0 38%, #9cc29a 62%, #5d8a6a 100%); }
+.su-more { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line2); background: var(--s1); color: var(--mu); }
+.su-more svg { flex: none; color: var(--ac); margin-top: 1px; }
+.su-more p { margin: 0; line-height: 1.45; }
+.su-more b { color: var(--tx); font-weight: 600; }
+/* v14 calendar: the day's quests */
+.dp-list { margin-top: 6px; max-height: 58vh; overflow: auto; }
+.dp-sum { margin: 4px 0 2px; }
+.dp-q { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.dp-q:last-child { border-bottom: 0; }
+.dp-st { flex: none; width: 22px; height: 22px; border-radius: 7px; border: 1.5px solid var(--line2); display: grid; place-items: center; font-style: normal; font-size: 12px; color: var(--mu); }
+.dp-st svg { width: 14px; height: 14px; }
+.dp-q.ok .dp-st { background: var(--ac); border-color: var(--ac); color: var(--ac-tx); }
+.dp-q.miss .dp-st { border-color: var(--bad); color: var(--bad); }
+.dp-q.part .dp-st { border-color: var(--gold); color: var(--gold); }
+.dp-q.ok .dp-t { opacity: .75; }
+.dp-q.pen .dp-t { color: var(--bad); }
+.dp-t { font-size: 14px; }
+.dp-res { margin-top: 10px; }
+/* v14 penalty editor */
+.pe-tiers { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.pe-tier { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 34px; align-items: center; gap: 8px; }
+.pe-n { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: var(--s2); color: var(--mu); border: 1px solid var(--line2); }
+.pe-th { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--mu); white-space: nowrap; }
+.pe-th input { width: 58px; padding: 7px 6px; text-align: center; }
+.pe-th b { color: var(--tx); font-weight: 600; min-width: 58px; text-align: center; }
+.pe-fix { font-size: 11px; color: var(--mu2); text-align: center; }
+.pe-item { margin: 8px 0; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 12px; background: var(--s2); }
+.pe-item label:first-child, .pe-item .grid2:first-child label { margin-top: 0; }
+.pe-amt { display: flex; align-items: center; gap: 6px; }
+.pe-amt input { min-width: 0; }
+.pe-mid { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 8px; margin-top: 8px; }
+.pe-mid > span:first-child { flex-basis: 100%; }
+.pe-midc { display: flex; flex-direction: column; gap: 2px; width: 92px; }
+.pe-midc small { font-size: 11px; color: var(--mu); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pe-midc input { padding: 7px 8px; }
+.owed { margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: var(--s2); border: 1px solid var(--line2); }
+.sheet .btn-s svg { width: 14px; height: 14px; }
+
+/* ===== v14 UI style: Mainframe (1960s analog computing) =====
+   brushed-steel console panels with screws and engraved label plates, recessed display windows, round panel lamps for
+   checks, chunky switch-key buttons, Nixie-tube numbers (amber glow) and a segmented VFD bar (cyan-green phosphor) */
+:where(html[data-sty=mainframe]) body, .pv[data-pv=mainframe] { font-family: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif; }
+html[data-sty=mainframe] h3, .pv[data-pv=mainframe] .pv-h { font-family: 'D Michroma', 'Helvetica Neue', sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: .12em; font-size: 11.5px; }
+html[data-sty=mainframe] .card > h3:first-child, html[data-sty=mainframe] .card > .row:first-child > h3, .pv[data-pv=mainframe] .pv-h { display: inline-block; padding: 4px 9px 3px; border-radius: 2px; color: #1e1d19; text-shadow: 0 1px 0 rgba(255,255,255,.45);
+  background: linear-gradient(180deg, #e2dbc5, #bdb59d); box-shadow: inset 0 0 0 1px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.6), 0 1px 0 rgba(0,0,0,.5); }
+.pv[data-pv=mainframe] .pv-h { font-size: 8.5px; padding: 3px 6px 2px; }
+html[data-sty=mainframe] main h2 { font-family: 'D Michroma', sans-serif; font-size: 10.5px; letter-spacing: .24em; color: var(--mu); opacity: 1; }
+html[data-sty=mainframe] main h2::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+html[data-sty=mainframe] :is(.card, .stat, .sheet), .pv[data-pv=mainframe] .pv-card { border-radius: 6px; border: 1px solid var(--line2);
+  background-image: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%, rgba(0,0,0,.12)), repeating-linear-gradient(90deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -2px 0 rgba(0,0,0,.35), 0 2px 0 rgba(0,0,0,.45), 0 6px 16px rgba(0,0,0,.25); }
+html[data-sty=mainframe] .card, .pv[data-pv=mainframe] .pv-card { position: relative; }
+/* two screws in the top corners */
+html[data-sty=mainframe] .card::before, html[data-sty=mainframe] .card::after, .pv[data-pv=mainframe] .pv-card::before, .pv[data-pv=mainframe] .pv-card::after { content: ''; position: absolute; top: 7px; width: 7px; height: 7px; border-radius: 50%; pointer-events: none;
+  background: linear-gradient(135deg, transparent 42%, rgba(0,0,0,.55) 42% 58%, transparent 58%), radial-gradient(circle at 35% 30%, #a9ab9f, #55584f 70%); box-shadow: 0 1px 0 rgba(255,255,255,.12), inset 0 0 0 1px rgba(0,0,0,.4); }
+html[data-sty=mainframe] .card::before, .pv[data-pv=mainframe] .pv-card::before { left: 7px; }
+html[data-sty=mainframe] .card::after, .pv[data-pv=mainframe] .pv-card::after { right: 7px; }
+.pv[data-pv=mainframe] .pv-card::before, .pv[data-pv=mainframe] .pv-card::after { width: 5px; height: 5px; top: 4px; }
+html[data-sty=mainframe] .card > h3:first-child { margin-left: 8px; }
+/* quests sit in recessed display windows */
+html[data-sty=mainframe] .q, .pv[data-pv=mainframe] .pv-q { border-radius: 4px; border: 1px solid rgba(0,0,0,.55); background: color-mix(in srgb, var(--bg) 78%, transparent); box-shadow: inset 0 2px 7px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.07); }
+html[data-sty=mainframe] .qt { letter-spacing: .01em; }
+/* numbers in Nixie tubes */
+html[data-sty=mainframe] :is(.qx, .stat b, .num.big, .coins .num, .streak .num, .hs .num), .pv[data-pv=mainframe] .pv-q b { font-family: 'D Nixie', 'Helvetica Neue', sans-serif; font-weight: 400; color: var(--ac); letter-spacing: .04em; text-shadow: 0 0 6px color-mix(in srgb, var(--ac) 70%, transparent), 0 0 1px var(--ac); }
+html[data-sty=mainframe] .qx { font-size: 15px; }
+/* round panel lamps for the checks: dark when off, lit amber when done */
+html[data-sty=mainframe] .chk, .pv[data-pv=mainframe] .pv-chk { border-radius: 50%; border: 2px solid #1a1b19; background: radial-gradient(circle at 36% 30%, #6a675c, #2a2a26 70%); box-shadow: 0 0 0 2px #50534c, inset 0 1px 2px rgba(0,0,0,.6); }
+html[data-sty=mainframe] .q.done .chk { background: radial-gradient(circle at 36% 30%, #fff1cf, var(--ac) 46%, color-mix(in srgb, var(--ac) 55%, #000)); box-shadow: 0 0 0 2px #50534c, 0 0 12px var(--ac); border-color: #1a1b19; }
+html[data-sty=mainframe] .q.done .chk svg { opacity: .55; }
+/* switch keys */
+:where(html[data-sty=mainframe]) button { border-radius: 4px; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+html[data-sty=mainframe] :is(.btn-s, .btn-g:not(.x):not(.star)) { background: linear-gradient(180deg, #54574f, #393b35); border: 1px solid #141512; color: #ece6d4; box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 2px 0 #0b0c0a; }
+html[data-sty=mainframe] .btn-p, .pv[data-pv=mainframe] .pv-btn { border-radius: 4px; border: 1px solid color-mix(in srgb, var(--ac) 50%, #000); background: linear-gradient(180deg, color-mix(in srgb, var(--ac) 70%, #fff), var(--ac) 55%, color-mix(in srgb, var(--ac) 78%, #000));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 0 color-mix(in srgb, var(--ac) 40%, #000), 0 0 14px color-mix(in srgb, var(--ac) 35%, transparent); text-transform: uppercase; letter-spacing: .08em; }
+html[data-sty=mainframe] :is(.btn-s, .btn-p, .btn-g):active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,.15); }
+html[data-sty=mainframe] :is(.chip, .pill, .title-badge), .pv[data-pv=mainframe] .pv-chip { border-radius: 3px; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+html[data-sty=mainframe] .chip.on { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); text-shadow: 0 0 6px color-mix(in srgb, var(--gold) 60%, transparent); }
+/* the selector strip: the picked position lights up */
+html[data-sty=mainframe] .seg { border-radius: 5px; background: #101110; border: 1px solid #000; box-shadow: inset 0 2px 6px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.08); }
+html[data-sty=mainframe] .seg button { border-radius: 3px; }
+html[data-sty=mainframe] .seg button.on { color: var(--ac); background: #1d1f1c; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ac) 45%, transparent), 0 0 10px color-mix(in srgb, var(--ac) 18%, transparent); text-shadow: 0 0 8px color-mix(in srgb, var(--ac) 70%, transparent); }
+:where(html[data-sty=mainframe]) :is(input, select, textarea) { border-radius: 3px; background: #0f100f; border-color: #3c3f3a; box-shadow: inset 0 2px 4px rgba(0,0,0,.5); }
+/* VFD bars: segmented phosphor */
+html[data-sty=mainframe] :is(.bar, .prog) { height: 7px; border-radius: 2px; background: #0c0d0c; box-shadow: inset 0 1px 2px rgba(0,0,0,.7); }
+html[data-sty=mainframe] :is(.bar > i, .prog i) { border-radius: 0; background: repeating-linear-gradient(90deg, var(--gold) 0 5px, transparent 5px 7px); box-shadow: 0 0 7px color-mix(in srgb, var(--gold) 60%, transparent); }
+html[data-sty=mainframe] .bar.gold > i { background: repeating-linear-gradient(90deg, var(--ac) 0 5px, transparent 5px 7px); box-shadow: 0 0 7px color-mix(in srgb, var(--ac) 60%, transparent); }
+html[data-sty=mainframe] #top { border-bottom: 1px solid #000; box-shadow: inset 0 -1px 0 rgba(255,255,255,.08); }
+html[data-sty=mainframe] #nav { border-top: 1px solid #000; box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+html[data-sty=mainframe] #nav button { font-family: 'D Michroma', sans-serif; text-transform: uppercase; font-size: 7.5px; letter-spacing: .06em; }
+html[data-sty=mainframe] #nav button.on::before { left: calc(50% - 4px); right: auto; width: 8px; height: 8px; top: 3px; border-radius: 50%; background: var(--ac); box-shadow: 0 0 8px var(--ac), 0 0 2px #fff inset; }
+html[data-sty=mainframe] #nav button.on svg { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ac) 60%, transparent)); }
+html[data-sty=mainframe] .toast { border-radius: 4px; background: #0e100f; border: 1px solid #000; color: var(--gold); font-family: 'D Michroma', sans-serif; font-size: 11px; letter-spacing: .06em; text-shadow: 0 0 6px color-mix(in srgb, var(--gold) 55%, transparent); box-shadow: 0 0 0 2px #444840, 0 6px 18px rgba(0,0,0,.5); }
+html[data-sty=mainframe] .banner { border-radius: 5px; }
+html[data-sty=mainframe] .sheet::before { border-radius: 2px; background: #6a6d64; }
+html[data-sty=mainframe] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat, .hts-m.lat, .hts-custom .hts-m) { font-family: 'D Michroma', sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: .06em; }
+html[data-sty=mainframe] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 25px; line-height: 1.25; }
+html[data-sty=mainframe] .sz-mini b.lat { font-size: 13px; }
+/* the clock on Home is a row of Nixie tubes */
+html[data-sty=mainframe] :is(.ht.clock .sz-h, .hts-clock .hts-m) { font-family: 'D Nixie', sans-serif; text-transform: none; letter-spacing: .06em; color: #ffb468; text-shadow: 0 0 10px rgba(255,138,40,.85), 0 0 26px rgba(255,110,20,.45), 0 1px 2px rgba(0,0,0,.6); }
+html[data-sty=mainframe] .home .ht.clock .sz-h { font-size: 66px; }
+html[data-ui=light][data-sty=mainframe] .card > h3:first-child { color: #1e1d19; }

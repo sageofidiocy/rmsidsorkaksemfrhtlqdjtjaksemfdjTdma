@@ -51,6 +51,8 @@ const ICON = {
   plus: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg>',
   coin: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="6" opacity=".45"/><path d="M12 8l1.2 2.8 2.8 1.2-2.8 1.2L12 16l-1.2-2.8L8 12l2.8-1.2z" fill="currentColor" stroke="none"/></svg>',
   saver: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2.8l7.5 3v5.8c0 4.6-3.2 8-7.5 9.9-4.3-1.9-7.5-5.3-7.5-9.9V5.8z"/><path d="M12 7.6c.7 2.2 3 3.1 3 6.1a3 3 0 0 1-6 0c0-1.4.7-2.2 1.1-2.9.2.9.6 1.5 1.1 1.7-.2-1.9.1-3.6.8-4.9z" fill="currentColor" stroke="none"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 8h4l1.8-2.5h5.4L16.5 8h4v11h-17z"/><circle cx="12" cy="13.3" r="3.6"/></svg>',
+  sliders: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
 };
 
 /* ---------- state ---------- */
@@ -145,6 +147,14 @@ function migrate() {
   // v11: coins (1 per perfect day; perfect days you already had count) and Streak Savers bought with them
   if (typeof S.coins !== 'number') S.coins = (S.stats && S.stats.perfect) || 0;
   if (typeof S.savers !== 'number') S.savers = 0;
+  // v14: custom penalties. Owed fixed penalties are { k: day, f: id, t: what was owed }; old days with "tier 4" (0%) are Tier III + the $5 donation
+  if (!Array.isArray(S.owed)) S.owed = [];
+  owedFix();
+  Object.values(S.days || {}).forEach(d => { if (d && d.tier === 4 && !d.fn) { d.tier = 3; d.fn = ['Donation · $5']; } });
+  if (S.pendingPen && S.pendingPen.tier > 3 && !S.pen) S.pendingPen.tier = 3;
+  if (S.stats && !S.stats.paid && S.stats.donated) S.stats.paid = { $: S.stats.donated * 5 };
+  // v14: the Otome UI style is now called Rosewood (same look, your colors kept)
+  if (S.look) { const L = S.look; if (L.style === 'otome') L.style = 'rosewood'; ['own', 'colors'].forEach(k => { if (L[k] && L[k].otome != null) { if (L[k].rosewood == null) L[k].rosewood = L[k].otome; delete L[k].otome; } }); }
   if ((S.v || 0) >= 3) return;
   S.v = 3;
   if (!S.setup) return;
@@ -194,17 +204,18 @@ function applySeason() {
 let bgSvg = '', bgUrl = null, themeLook = null, themeUrls = [];
 const themePrefetched = {};
 function themePrefetch(id) { // fetch both halves of the year's pictures now, so the service worker has them for offline use
-  const k = id + calSet(); if (themePrefetched[k] || !navigator.onLine) return; themePrefetched[k] = 1;
-  THEMEFX.images(id, calSet()).forEach(u => fetch(u).catch(() => { themePrefetched[k] = 0; }));
+  const k = id + themeCal(); if (themePrefetched[k] || !navigator.onLine) return; themePrefetched[k] = 1;
+  THEMEFX.images(id, themeCal()).forEach(u => fetch(u).catch(() => { themePrefetched[k] = 0; }));
 }
 /* ---------- themes ----------
    seasonal = the 72 micro-season scenes (Korean or Japanese set); custom = a solid color or your own photo with an
    accent color; cyber / cottage / village / academia = painted pictures (themes/) that change with the 24 solar terms
-   through the layers themes.js draws on top (light, weather, signs). The Korean or Japanese picture follows S.cal. */
+   through the layers themes.js draws on top (light, weather, signs). The Korean, Japanese or Chinese picture follows S.cal
+   (v15: a picture per season where there is one; the Chinese alley follows the script: mainland or Hong Kong). */
 const THEME_LIST = [
   ['seasonal', 'Seasonal', 'The 72 micro-season scenes'], ['custom', 'Custom', 'Your color or photo'],
-  ['cyber', 'Cyberpunk', 'Neon alley, changes every solar term'], ['cottage', 'Cottagecore', 'Solarpunk cottage, changes every solar term'],
-  ['village', 'Mountain village', 'Hanok or gasshō village, changes every solar term'], ['academia', 'Academia', 'Light → dark academia, changes every solar term']];
+  ['cyber', 'Cyberpunk', 'Neon alley, changes every solar term'], ['cottage', 'Cottagecore', 'Storybook cottage, changes every solar term'],
+  ['village', 'Mountain village', 'Hanok, gasshō or Huizhou village, changes every solar term'], ['academia', 'Academia', 'Light → dark academia, changes every solar term']];
 const termTheme = id => window.THEMEFX && THEMEFX.LIST.includes(id);
 const themeId = () => { const id = (S.theme && S.theme.id) || 'seasonal'; return THEME_LIST.some(t => t[0] === id && !t[3]) ? id : 'seasonal'; };
 const custOpts = () => Object.assign({ mode: 'color', bg: '#22304a', accent: '#e8a85c', cards: 'auto', dim: 20, tint: null }, (S.theme && S.theme.custom) || {});
@@ -250,8 +261,8 @@ function applyLook(si) {
       setBg(photo ? `<img src="${custPhoto.url}" alt=""><div class="bg-dim" style="opacity:${clamp(o.dim, 0, 70) / 100}"></div>` : `<div class="bg-solid" style="background:${esc(o.bg)}"></div>`);
     }
   } else if (termTheme(id)) {
-    const key = ['term', id, calSet(), si.ji].join('|');
-    if (themeRKey !== key) { themeRKey = key; themeR = THEMEFX.render(id, calSet(), si.ji); }
+    const key = ['term', id, themeCal(), si.ji].join('|');
+    if (themeRKey !== key) { themeRKey = key; themeR = THEMEFX.render(id, themeCal(), si.ji); }
     const r = themeR, pref = cardsPref(id); light = pref === 'auto' ? r.ui.light : pref === 'light'; themeLook = r;
     pal = uiPalette(r.ui.tint, r.ui.accent, light);
     if (lookKey !== key) {
@@ -266,9 +277,9 @@ function applyLook(si) {
     if (lookKey && !lookKey.startsWith('seasonal')) bgIdx = null;
     lookKey = 'seasonal'; light = cardsPref('seasonal') === 'light';
     pal = light ? uiPalette(SEASON_TINT[si.season], THEMES[si.season].ac, true) : Object.assign({}, THEMES[si.season], UI_DARK_TEXT);
-    const bgKey = si.idx + ':' + calSet();
+    const bgKey = si.idx + ':' + artCal();
     if (bgIdx !== bgKey) { // drawn once into an <img> (cheap to composite under the blurred cards)
-      bgSvg = SCENES.render(si.h[3], si.season, si.idx, calSet()); bgIdx = bgKey;
+      bgSvg = SCENES.render(si.h[3], si.season, si.idx, artCal()); bgIdx = bgKey;
       try { if (bgUrl) URL.revokeObjectURL(bgUrl); bgUrl = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' })); setBg(`<img src="${bgUrl}" alt="">`); }
       catch (e) { setBg(bgSvg); }
     }
@@ -288,9 +299,10 @@ const UI_STYLES = [
   { id: 'ink', n: 'Ink & Brush', d: 'Rice paper, brush-written titles and vermilion seals.', bg: 'village', pal: { card: '#f4efe3', bg: '#d6cdbb', accent: '#1f1c19', gold: '#bb3a26', light: true, alpha: .92 } },
   { id: 'story', n: 'Storybook', d: 'Stitched cottage cards, a soft serif and garden colors.', bg: 'cottage', pal: { card: '#fbf5e6', bg: '#e3d8bc', accent: '#55854a', gold: '#b0642a', light: true, alpha: .9 } },
   { id: 'analog', n: 'Analog', d: 'A paper planner: ruled pages, typewriter ink and washi tape.', pal: { card: '#fbfaf3', bg: '#e6e0d0', accent: '#2c4f9e', gold: '#c0392b', light: true, alpha: .97 } },
+  { id: 'mainframe', n: 'Mainframe', d: '1960s analog computing: steel console panels, glowing Nixie numbers, panel lamps and switch keys.', pal: { card: '#2c2f2c', bg: '#151715', accent: '#ff8f3a', gold: '#5fe8c0', light: false, alpha: .94, extra: { tx: '#ebe4d2', mu: '#aaa593', mu2: '#807c6e', line: '#40443f', line2: '#565a53' } } },
   { id: 'system', n: 'System', d: 'Manhwa status windows: glowing frames, brackets and system alerts.', pal: { card: '#0b1834', bg: '#040a18', accent: '#47c9ff', gold: '#ffd166', light: false, alpha: .84 } },
   { id: 'pixel', n: 'Pixel Quest', d: '8-bit RPG menus: pixel frames, pixel fonts and a menu cursor.', pal: { card: '#1d2b8f', bg: '#0b1240', accent: '#ffd84a', gold: '#ffd84a', light: false, alpha: .95, extra: { tx: '#f4f4f4', mu: '#c3c8f0', mu2: '#8f97d6' } } },
-  { id: 'otome', n: 'Otome', d: 'Romance-game elegance: a script serif, framed cards and a little sparkle.', pal: { card: '#fff6f4', bg: '#ecd9da', accent: '#b4566f', gold: '#a87d52', light: true, alpha: .9 } },
+  { id: 'rosewood', n: 'Rosewood', d: 'Quiet elegance: a script serif, rose-gold framed cards and a little sparkle.', pal: { card: '#fff6f4', bg: '#ecd9da', accent: '#b4566f', gold: '#a87d52', light: true, alpha: .9 } },
   { id: 'pastel', n: 'Pastel Pop', d: 'Bubbly sticker cards, rounded type and candy colors.', pal: { card: '#ffffff', bg: '#fde6f1', accent: '#f0609f', gold: '#f08a1c', light: true, alpha: .93, extra: { line: '#f8d3e4', line2: '#f0acc9' } } },
   { id: 'minimal', n: 'Minimal', d: 'Flat, solid cards with no blur. Easiest to read and lightest on battery.' },
   { id: 'web1', n: 'Web 1.0', d: 'Just for laughs: Comic Neue, WordArt, beveled buttons and a visitor counter.', joke: true, pal: { card: '#c0c0c0', bg: '#008080', accent: '#000080', gold: '#b000b0', light: true, alpha: 1, extra: { tx: '#000000', mu: '#303030', mu2: '#505050', line: '#808080', line2: '#404040' } } },
@@ -406,8 +418,21 @@ const SZ_CFG = {
     lang: { hj: 'ja', ja: 'ja', jm: 'ja' }, order: () => ['hj', 'ja', 'rom', 'en'],
     rows: [['Kanji 漢字', [['hj', 'Characters']]], ['Japanese 日本語', [['ja', 'Reading 読み']]], ['English', [['rom', 'Sound (romaji)'], ['en', 'Meaning']]]],
     terms: '二十四節気', term: '節気', note: 'The kō are classical, so wherever the Japanese reading sits under the main text, a modern-Japanese meaning (意味) comes with it.' },
+  /* v14 Chinese: hz = the characters in your script (简体 simplified by default, or 繁體 traditional), alt = the other script, py = pinyin, en = English */
+  zh: { key: 'szViewZh', get mains() { return [['hz', zhTrad() ? '漢字' : '汉字'], ['py', 'Pinyin'], ['en', 'English']]; }, gloss: { hz: 'py', py: 'hz', en: 'py' },
+    def: { season: { hz: 1, alt: 0, py: 1, en: 0 }, term: { hz: 1, alt: 0, py: 1, en: 1 }, hu: { hz: 1, alt: 0, py: 1, en: 1 } },
+    get lang() { return zhTrad() ? { hz: 'zh-Hant', alt: 'zh-Hans' } : { hz: 'zh-Hans', alt: 'zh-Hant' }; }, order: () => ['hz', 'alt', 'py', 'en'],
+    get rows() { return [['Chinese 中文', [['hz', zhTrad() ? 'Characters 繁體' : 'Characters 简体'], ['alt', zhTrad() ? 'Simplified 简体' : 'Traditional 繁體']]], ['English', [['py', 'Sound (pinyin)'], ['en', 'Meaning']]]]; },
+    get terms() { return zhTrad() ? '二十四節氣' : '二十四节气'; }, get term() { return zhTrad() ? '節氣' : '节气'; },
+    note: 'The same 72 as the Korean set (the original Chinese one). Switch between simplified and traditional characters above; the other script can show as well.' },
 };
-const calSet = () => S.cal === 'ja' ? 'ja' : 'ko';
+const calSet = () => S.cal === 'ja' ? 'ja' : S.cal === 'zh' ? 'zh' : 'ko';
+const zhTrad = () => S.zhScript === 'trad'; // v14: Chinese names in traditional characters (simplified by default)
+const calLang = () => calSet() === 'zh' ? (zhTrad() ? 'zh-Hant' : 'zh-Hans') : calSet(); // the lang attribute for the set's own words
+const artCal = () => calSet() === 'ja' ? 'ja' : 'ko'; // the 72 scenes: the Chinese set uses the Korean scenes (the same 72)
+// the solar-term pictures: Chinese gets its own (mainland for simplified, Hong Kong for traditional) once the art is in
+const themeCal = () => calSet() === 'zh' ? (zhTrad() ? 'zht' : 'zhs') : calSet();
+const LATIN_PARTS = ['en', 'rom', 'py'];
 const SZC = () => SZ_CFG[calSet()];
 function szOpts() {
   const C = SZC(), o = S[C.key] || {}, sh = o.show || {};
@@ -416,6 +441,12 @@ function szOpts() {
 }
 function szSet(fn) { const o = szOpts(); fn(o); S[SZC().key] = o; save(); }
 function szText(lv, x) { // x: a seasonOf() result, or { season } | { j, ji } | { h, idx }
+  if (calSet() === 'zh') {
+    const Z = SEASONS.ZH, tr = zhTrad(), pk = a => ({ hz: a[tr ? 1 : 0], alt: a[tr ? 0 : 1] });
+    if (lv === 'season') { const n = Z.NAMES[x.season]; return Object.assign(pk(n), { py: n[2], en: n[3] }); }
+    if (lv === 'term') { const t = Z.TERMS[x.ji]; return Object.assign(pk(t), { py: t[2], en: SEASONS.JEOLGI[x.ji][2] }); }
+    const h = Z.HU[x.idx]; return Object.assign(pk(h), { py: h[2], en: SEASONS.JEOLGI[Math.floor(x.idx / 3)][6][x.idx % 3][2] });
+  }
   if (calSet() === 'ja') {
     const J = SEASONS.JA;
     if (lv === 'season') { const n = J.NAMES[x.season]; return { hj: n[0], ja: n[1], rom: n[2], en: n[3] }; }
@@ -435,7 +466,7 @@ function seasonHero(si, preview) {
   if (!si) return '';
   const C = SZC(), o = szOpts(), L = o.level, mi = SZ_LV.indexOf(L), gl = C.gloss[o.main], T = lv => szText(lv, si);
   const top = SZ_LV.slice(0, mi).map(lv => { const t = T(lv); return szVisible(o, lv).map(p => szSpan(p, t[p])).join('<i class="ps"></i>'); }).filter(Boolean);
-  const mt = T(L), latin = o.main === 'en' || o.main === 'rom', kana = o.main === 'ja';
+  const mt = T(L), latin = LATIN_PARTS.includes(o.main), kana = o.main === 'ja';
   // Japanese: the kana reading sits under the kanji, and the classical kō bring their modern meaning (jm) with it
   const glossOn = gl && (gl === 'jm' ? !!mt.jm : o.show[L][gl] && mt[gl]);
   const gloss = glossOn ? szSpan(gl, mt[gl]) + (gl === 'ja' && mt.jm ? `<div class="sz-x" lang="ja">${esc(mt.jm)}</div>` : '') : '';
@@ -452,8 +483,10 @@ function seasonHero(si, preview) {
   </div>${!preview && ui.previewHu != null ? `<div class="preview row"><span class="sp small">Previewing another micro-season</span><button class="btn-s" data-a="seasonReset">Back to today</button></div>` : ''}`;
 }
 /* ---------- Home text (v11): season names, the date & time, or your own words; works with every theme ----------
-   S.homeText = null (season names) | { mode 'season'|'clock'|'custom', main, sub, time '12'|'24'|'off', date (HT_DATES id) } */
-const htOpts = () => Object.assign({ mode: 'season', main: '', sub: '', time: '12', date: 'long' }, S.homeText || {});
+   S.homeText = null (season names) | { mode 'season'|'clock'|'custom' (the main text), main, sub, time '12'|'24'|'off', date (HT_DATES id),
+     extra: { season|clock|custom: null | 'above'|'below'|'left'|'right' } }  (v14: the other two can show as smaller subtexts) */
+const HT_POS = [['', 'Off'], ['above', 'Above'], ['below', 'Below'], ['left', 'Left'], ['right', 'Right']];
+const htOpts = () => { const o = Object.assign({ mode: 'season', main: '', sub: '', time: '12', date: 'long' }, S.homeText || {}); o.extra = Object.assign({ season: null, clock: null, custom: null }, o.extra || {}); return o; };
 const HT_MODES = [['season', 'Season names'], ['clock', 'Date & time'], ['custom', 'My own words']];
 const HT_TIMES = [['12', '12-hour'], ['24', '24-hour'], ['off', 'No time']];
 const HT_DATES = ['long', 'med', 'short', 'us', 'eu', 'iso', 'ko', 'ja', 'off'];
@@ -478,17 +511,43 @@ function htTime(d, f) {
   if (f === '12') return `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
   return '';
 }
-function homeHero(preview) { // the big text at the top of Home
-  const o = htOpts();
+const HT_EX = 'Carpe Diem';
+// the smaller custom line keeps at most three line breaks (four short lines)
+const htLines = v => { const ls = String(v || '').replace(/\r/g, '').split('\n'); return ls.length > 4 ? ls.slice(0, 3).concat(ls.slice(3).join(' ')).join('\n') : ls.join('\n'); };
+function htMainHtml(o, preview) { // the main (big) text
   if (o.mode === 'clock') {
     const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date), big = t || dt, small = t ? dt : '';
     return `<div class="season ht clock${preview ? ' prev' : ''}"><div class="sz-h lat" data-clk="${t ? 't' : 'd'}">${esc(big || ' ')}</div>${small ? `<div class="sz-g" data-clk="d"${/^(ko|ja)$/.test(o.date) ? ` lang="${o.date}"` : ''}>${esc(small)}</div>` : ''}</div>`;
   }
   if (o.mode === 'custom') {
-    const main = (o.main || '').trim() || (preview ? 'Your words here' : '');
-    return `<div class="season ht custom${preview ? ' prev' : ''}"><div class="sz-h lat${o.main ? '' : ' ph'}">${esc(main)}</div>${(o.sub || '').trim() ? `<div class="sz-g">${esc(o.sub.trim())}</div>` : ''}</div>`;
+    const main = (o.main || '').trim() || (preview ? HT_EX : ''), sub = htLines(o.sub).trim();
+    return `<div class="season ht custom${preview ? ' prev' : ''}"><div class="sz-h lat${o.main ? '' : ' ph'}">${esc(main)}</div>${sub ? `<div class="sz-g ml">${esc(sub)}</div>` : ''}</div>`;
   }
   return seasonHero(ui.season, preview);
+}
+function htSubHtml(m, o, preview) { // one of the other two, small
+  if (m === 'clock') {
+    const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date); if (!t && !dt) return '';
+    const dl = /^(ko|ja)$/.test(o.date) ? ` lang="${o.date}"` : '';
+    return `<div class="hts hts-clock">${t ? `<div class="hts-m" data-clk="t">${esc(t)}</div>` : ''}${dt ? `<div class="${t ? 'hts-s' : 'hts-m'}" data-clk="d"${dl}>${esc(dt)}</div>` : ''}</div>`;
+  }
+  if (m === 'custom') {
+    const main = (o.main || '').trim(), sub = htLines(o.sub).trim(); if (!main && !sub && !preview) return '';
+    return `<div class="hts hts-custom">${main || !sub ? `<div class="hts-m${main ? '' : ' ph'}">${esc(main || HT_EX)}</div>` : ''}${sub ? `<div class="hts-s ml">${esc(sub)}</div>` : ''}</div>`;
+  }
+  const si = ui.season; if (!si) return '';
+  const C = SZC(), so = szOpts(), mt = szText(so.level, si), gl = C.gloss[so.main], lat = LATIN_PARTS.includes(so.main);
+  const g2 = gl && mt[gl] ? gl : so.main !== 'en' && mt.en ? 'en' : null, g = g2 ? szSpan(g2, mt[g2]) : ''; // hanja main: its English meaning under it
+  return `<div class="hts hts-season"${preview ? '' : ' data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"'}><div class="hts-m${lat ? ' lat' : ''}"${lat ? '' : ` lang="${C.lang[so.main] || 'ko'}"`}>${szSpan(so.main, mt[so.main])}</div>${g ? `<div class="hts-s">${g}</div>` : ''}</div>`;
+}
+function homeHero(preview) { // the big text at the top of Home, with any subtexts around it
+  const o = htOpts(), main = htMainHtml(o, preview);
+  const ex = HT_MODES.map(m => m[0]).filter(m => m !== o.mode && o.extra[m]);
+  if (!ex.length) return main;
+  const at = pos => ex.filter(m => o.extra[m] === pos).map(m => htSubHtml(m, o, preview)).join('');
+  const above = at('above'), below = at('below'), left = at('left'), right = at('right');
+  if (!above && !below && !left && !right) return main;
+  return `<div class="ht-wrap${preview ? ' prev' : ''}">${above ? `<div class="ht-ab top">${above}</div>` : ''}${left || right ? `<div class="ht-row">${left ? `<div class="ht-side l">${left}</div>` : ''}<div class="ht-main">${main}</div>${right ? `<div class="ht-side r">${right}</div>` : ''}</div>` : main}${below ? `<div class="ht-ab bot">${below}</div>` : ''}</div>`;
 }
 function tickClock() { // keeps the clock on Home (and its preview) current
   const els = document.querySelectorAll('[data-clk]'); if (!els.length) return;
@@ -496,24 +555,31 @@ function tickClock() { // keeps the clock on Home (and its preview) current
   els.forEach(el => { const v = el.dataset.clk === 't' ? htTime(now, o.time) : htDate(now, o.date); if (el.textContent !== v) el.textContent = v; });
 }
 setInterval(tickClock, 1000);
-function htFields(setup) { // the controls for the Home text (Settings card and setup)
-  const o = htOpts(), modes = setup === 'own' ? HT_MODES.filter(m => m[0] !== 'season') : HT_MODES, now = new Date();
-  let h = `<div class="seg tight">${modes.map(([v, n]) => `<button class="${o.mode === v ? 'on' : ''}" data-a="htMode" data-id="${v}">${n}</button>`).join('')}</div>`;
-  if (o.mode === 'clock') h += `<label>Time</label><div class="seg tight">${HT_TIMES.map(([v, n]) => `<button class="${o.time === v ? 'on' : ''}" data-a="htTime" data-id="${v}">${n}</button>`).join('')}</div>
+function htCtl(m, o, setup) { // the settings for one kind of text
+  const now = new Date();
+  if (m === 'clock') return `<label>Time</label><div class="seg tight">${HT_TIMES.map(([v, n]) => `<button class="${o.time === v ? 'on' : ''}" data-a="htTime" data-id="${v}">${n}</button>`).join('')}</div>
     <label>Date</label><select data-c="htDate" aria-label="Date format">${HT_DATES.map(v => `<option value="${v}" ${o.date === v ? 'selected' : ''}>${v === 'off' ? 'No date' : esc(htDate(now, v))}</option>`).join('')}</select>
     ${o.time === 'off' && o.date === 'off' ? '<div class="bad small" style="margin-top:6px">Pick a time or a date to show.</div>' : ''}`;
-  if (o.mode === 'custom') h += `<label>Big text</label><input data-i="ht" data-k="main" value="${esc(o.main)}" maxlength="40" placeholder="e.g. One day at a time">
-    <label>Smaller line (optional)</label><input data-i="ht" data-k="sub" value="${esc(o.sub)}" maxlength="80" placeholder="e.g. 2 Cor 3:18">`;
-  if (o.mode === 'season' && !setup) h += '<p class="mu2 small">Choose which names the season header shows in Season display below.</p>';
+  if (m === 'custom') return `<label>${o.mode === 'custom' ? 'Big text' : 'Your words'}</label><input data-i="ht" data-k="main" value="${esc(o.main)}" maxlength="40" placeholder="e.g. ${HT_EX}">
+    <label>Smaller line (optional, up to 4 lines)</label><textarea data-i="ht" data-k="sub" rows="2" maxlength="160" placeholder="e.g. 2 Cor 3:18">${esc(o.sub)}</textarea>`;
+  return setup ? '' : `<p class="mu2 small">${o.mode === 'season' ? 'Choose which names the season header shows' : 'The season names use your choices'} in Season display below.</p>`;
+}
+function htFields(setup) { // the controls for the Home text (Settings card and setup)
+  const o = htOpts();
+  let h = `<div class="seg tight">${HT_MODES.map(([v, n]) => `<button class="${o.mode === v ? 'on' : ''}" data-a="htMode" data-id="${v}">${n}</button>`).join('')}</div>${htCtl(o.mode, o, setup)}`;
+  const others = HT_MODES.filter(m => m[0] !== o.mode);
+  h += `<div class="ht-also"><label>Also show, smaller (optional)</label>${others.map(([m, n]) => `<div class="ht-ex"><span class="ht-exn">${n}</span><div class="seg tight mini">${HT_POS.map(([v, pn]) => `<button class="${(o.extra[m] || '') === v ? 'on' : ''}" data-a="htExtra" data-id="${m}:${v}">${pn}</button>`).join('')}</div></div>${o.extra[m] ? `<div class="ht-exc">${htCtl(m, o, setup)}</div>` : ''}`).join('')}</div>`;
   return h;
 }
 function htCard() {
-  return `<div class="card" id="htCard"><h3>Home text</h3><p class="mu small" style="margin-top:2px">The big text at the top of Home. Works with every theme.</p>
-    <div class="ht-prev" data-ns="1"${htOpts().mode === 'season' ? ' hidden' : ''}>${htOpts().mode === 'season' ? '' : homeHero(true)}</div><div id="htF">${htFields()}</div></div>`;
+  const o = htOpts(), simple = o.mode === 'season' && !HT_MODES.some(m => m[0] !== o.mode && o.extra[m]);
+  return `<div class="card" id="htCard"><h3>Home text</h3><p class="mu small" style="margin-top:2px">The big text at the top of Home, and up to two smaller ones around it. Works with every theme.</p>
+    <div class="ht-prev" data-ns="1"${simple ? ' hidden' : ''}>${simple ? '' : homeHero(true)}</div><div id="htF">${htFields()}</div></div>`;
 }
 function htSet(fn) { const o = htOpts(); fn(o); S.homeText = o; save(); }
 function htRefresh(fields) { // fields: re-draw the controls too (not while typing in them)
-  const o = htOpts(); $$('.ht-prev').forEach(p => { p.innerHTML = p.dataset.ns && o.mode === 'season' ? '' : homeHero(true); p.hidden = !p.innerHTML; }); // Settings: the season preview lives in Season display
+  const o = htOpts(), simple = o.mode === 'season' && !HT_MODES.some(m => m[0] !== o.mode && o.extra[m]);
+  $$('.ht-prev').forEach(p => { p.innerHTML = p.dataset.ns && simple ? '' : homeHero(true); p.hidden = !p.innerHTML; }); // Settings: the plain season preview lives in Season display
   if (fields) { const f = $('#htF'); if (f) f.innerHTML = htFields(f.dataset.setup); }
   fitSeason();
 }
@@ -535,21 +601,22 @@ function szCard() {
   return `<div class="card" id="szCard"><h3>Season display</h3>
     <p class="mu small" style="margin-top:2px">Choose what the season header on Home shows. Changes apply right away.</p>
     <label>Season names</label>
-    <div class="seg tight cal-seg">${[['ko', '한국', 'Korean 七十二候'], ['ja', '日本', 'Japanese 七十二候']].map(([v, a, n]) => `<button class="${calSet() === v ? 'on' : ''}" data-a="calSet" data-id="${v}"><b lang="${v}">${a}</b> ${n}</button>`).join('')}</div>
+    <div class="seg tight cal-seg">${[['ko', '한국', 'Korean'], ['ja', '日本', 'Japanese'], ['zh', zhTrad() ? '中國' : '中国', 'Chinese']].map(([v, a, n]) => `<button class="${calSet() === v ? 'on' : ''}" data-a="calSet" data-id="${v}"><b lang="${v === 'zh' ? calLang() : v}">${a}</b> ${n}</button>`).join('')}</div>
+    ${calSet() === 'zh' ? `<div class="seg tight">${[['simp', '简体', 'Simplified'], ['trad', '繁體', 'Traditional']].map(([v, a, n]) => `<button class="${(zhTrad() ? 'trad' : 'simp') === v ? 'on' : ''}" data-a="zhScript" data-id="${v}"><b lang="${v === 'trad' ? 'zh-Hant' : 'zh-Hans'}">${a}</b> ${n}</button>`).join('')}</div>` : ''}
     <div class="sz-prev">${seasonHero(si, true)}</div>
     <label>Large main text</label>
     <div class="seg tight">${[['hu', 'Micro-season 候'], ['term', 'Minor season ' + C.term]].map(([v, n]) => `<button class="${o.level === v ? 'on' : ''}" data-a="szLevel" data-id="${v}">${n}</button>`).join('')}</div>
     <div class="seg tight">${C.mains.map(([v, n]) => `<button class="${o.main === v ? 'on' : ''}" data-a="szMain" data-id="${v}"${C.lang[v] ? ` lang="${C.lang[v]}"` : ''}>${n}</button>`).join('')}</div>
     <div class="szg">
-      <div></div>${SZ_LV.map(lv => `<div class="ch">${{ season: 'Major', term: 'Minor', hu: 'Micro' }[lv]}<small lang="${calSet()}">${{ season: '四季', term: C.term, hu: '候' }[lv]}</small></div>`).join('')}
-      ${rows.map(([g, parts]) => `<div class="gh" lang="${calSet()}">${g}</div>` + parts.map(([p, n]) => `<div class="lab"><div lang="${calSet()}">${n}</div><div class="smp"${C.lang[p] ? ` lang="${C.lang[p]}"` : ''}>${esc(SZ_LV.map((lv, i) => ex[i][p]).join(' · '))}</div></div>${SZ_LV.map(lv => cell(lv, p)).join('')}`).join('')).join('')}
+      <div></div>${SZ_LV.map(lv => `<div class="ch">${{ season: 'Major', term: 'Minor', hu: 'Micro' }[lv]}<small lang="${calLang()}">${{ season: '四季', term: C.term, hu: '候' }[lv]}</small></div>`).join('')}
+      ${rows.map(([g, parts]) => `<div class="gh" lang="${calLang()}">${g}</div>` + parts.map(([p, n]) => `<div class="lab"><div lang="${calLang()}">${n}</div><div class="smp"${C.lang[p] ? ` lang="${C.lang[p]}"` : ''}>${esc(SZ_LV.map((lv, i) => ex[i][p]).join(' · '))}</div></div>${SZ_LV.map(lv => cell(lv, p)).join('')}`).join('')).join('')}
     </div>
     <p class="mu2 small">The main text is always shown. Your other parts for that season go in the row beneath it. ${esc(C.note)}</p>
     <button class="btn-s" data-a="szReset">Reset to default</button></div>`;
 }
 function themeCard() {
   const id = themeId(), o = custOpts(), cur = S.theme && S.theme.id;
-  const tile = ([tid, n, d, soon]) => `<button class="th-tile ${id === tid ? 'on' : ''}${soon ? ' soon' : ''}" data-a="themePick" data-id="${tid}" ${soon ? 'aria-disabled="true"' : ''}><span class="th-sw th-${tid}"${termTheme(tid) ? ` style="background-image:url(${THEMEFX.thumb(tid, calSet())})"` : ''}></span><b>${esc(n)}</b><small>${esc(soon ? 'Art coming soon' : d)}</small></button>`;
+  const tile = ([tid, n, d, soon]) => `<button class="th-tile ${id === tid ? 'on' : ''}${soon ? ' soon' : ''}" data-a="themePick" data-id="${tid}" ${soon ? 'aria-disabled="true"' : ''}><span class="th-sw th-${tid}"${termTheme(tid) ? ` style="background-image:url(${THEMEFX.thumb(tid, themeCal())})"` : ''}></span><b>${esc(n)}</b><small>${esc(soon ? 'Art coming soon' : d)}</small></button>`;
   let ed = '';
   if (id === 'custom') {
     ed = `<div class="th-ed">
@@ -559,7 +626,7 @@ function themeCard() {
       : `<label>Background color</label>${wheelHtml('cust', o.bg)}`}
       <p class="mu2 small">Cards, buttons and icons are set in Colors below. Your photo stays on this phone and is included in backups.</p></div>`;
   }
-  if (termTheme(id)) ed = `<p class="mu2 small" style="margin-top:10px">Changes with each of the 24 solar terms: the light, the weather and what's in the air${id === 'cyber' ? ', and the shop signs' : ''}. The ${calSet() === 'ja' ? 'Japanese' : 'Korean'} picture follows your season names (Season display). Tap the season header on Home and pick another micro-season to preview other terms.</p>`;
+  if (termTheme(id)) ed = `<p class="mu2 small" style="margin-top:10px">Changes with each of the 24 solar terms: the light, the weather and what's in the air${id === 'cyber' ? ', and the shop signs' : ''}. The ${{ ja: 'Japanese', ko: 'Korean', zh: 'Chinese' }[calSet()]} picture follows your season names (Season display)${calSet() === 'zh' && id === 'cyber' ? `: ${zhTrad() ? 'Hong Kong for traditional characters' : 'the mainland for simplified characters'}` : ''}${id === 'cyber' ? '' : ', with its own pictures for the seasons'}${calSet() === 'zh' && !THEMEFX.hasArt(id, themeCal()) ? '; until the Chinese pictures arrive it uses the Korean one' : ''}. Tap the season header on Home and pick another micro-season to preview other terms.</p>`;
   return `<div class="card" id="themeCard"><h3>Background</h3><p class="mu small" style="margin-top:2px">The picture behind your cards. Any background works with any UI style.</p>
     <div class="th-grid">${THEME_LIST.map(tile).join('')}</div>${ed}</div>`;
 }
@@ -636,7 +703,7 @@ function wheelSet(id, hex, done) { // live preview while dragging; saved when yo
 }
 function szRefresh() { const c = $('#szCard'); if (!c) return; c.outerHTML = szCard(); fitSeason($('#szCard')); }
 function seasonListModal() {
-  const C = SZC(), o = szOpts(), cur = seasonOf(todayKey()).idx, order = [...Array(24).keys()].map(i => (i + 2) % 24), pm = o.main, lat = pm === 'en' || pm === 'rom', lg = lat ? '' : ` lang="${C.lang[pm] || 'ko'}"`;
+  const C = SZC(), o = szOpts(), cur = seasonOf(todayKey()).idx, order = [...Array(24).keys()].map(i => (i + 2) % 24), pm = o.main, lat = LATIN_PARTS.includes(pm), lg = lat ? '' : ` lang="${C.lang[pm] || 'ko'}"`;
   const extras = (lv, t, tag) => szVisible(o, lv).filter(p => p !== pm).map(p => szSpan(p, t[p], tag)).join(tag === 'small' ? '' : ' ');
   openModal(`<div class="row"><h3 class="sp">七十二候 · The 72 micro-seasons</h3><button class="btn-s" data-a="szOpts">Display</button></div>
   <p class="mu small">Each of the 24 solar terms (${C.term}) has three five-day pentads. Tap one to preview its scene and colors.</p>
@@ -826,14 +893,55 @@ function generate(k) {
   if (pi) q = pi.all ? [] : q.filter(x => !pi.lists.has(x.list) && !(x.skill && pi.skills.has(x.skill)) && !(x.task && pi.tasks.has(x.task)));
   return q;
 }
-function penaltyQuests(tier) {
-  const mult = 1 + overall().L / 40;
-  return PENALTY[tier].ex.map(([n, amt, u], i) => ({ key: 'pen:' + i, title: n, list: 'Penalty', unit: u, target: roundUnit(amt * mult, u), progress: 0, done: false, xp: 10, pen: true }));
+// owed fixed penalties: older saves (and backups) list just the day ("2026-01-01" = the $5 donation)
+function owedFix() { if (!Array.isArray(S.owed)) S.owed = []; S.owed = S.owed.map(o => typeof o === 'string' ? { k: o, f: 'don', t: 'Donate to a charity of your choice', amt: 5, sym: '$', at: 0 } : o); return S.owed; }
+/* ---------- penalties (v14: your own) ----------
+   S.pen = null (the defaults below) | { tiers: [{ name, below }], items: [...], fixed: [...] }
+   tiers: scalable levels, top to bottom; a day under tiers[i].below % gets tier i+1 (the strongest that applies).
+     Tier 1 is always "below 100%"; the last tier is the Hell level.
+   items: scalable penalties { id, name, unit 'reps'|'sec'|'min'|'km'|'mi'|'money'|'other', sym (money symbol), cu (other unit),
+     amts: [amount per tier] (null/0 = not in that tier), grow: grows with your level (× 1 + level/40) }
+   fixed: one set penalty when a day is at or below at % { id, text, amt (optional), sym (e.g. $ or "hours"), at, how 'sheet'|'quest' }
+     sheet = a locked sheet you confirm before going on (the donation); quest = a check-off on the next day's quests */
+const PEN_DEF = () => ({
+  tiers: PENALTY.slice(1).map((t, i) => ({ name: t.name, below: [100, 75, 50][i] })),
+  items: [['pu', 'Push-ups', 'reps'], ['sq', 'Squats', 'reps'], ['bu', 'Burpees', 'reps'], ['run', 'Run', 'km'], ['pl', 'Plank', 'sec']].map(([id, n, u]) =>
+    ({ id, name: n, unit: u, grow: true, amts: PENALTY.slice(1).map(t => { const e = t.ex.find(x => x[0] === n); return e ? e[1] : null; }) })),
+  fixed: [{ id: 'don', text: 'Donate to a charity of your choice', amt: 5, sym: '$', at: 0, how: 'sheet' }],
+});
+const penCfg = () => S.pen && Array.isArray(S.pen.tiers) && S.pen.tiers.length ? S.pen : PEN_DEF();
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+const penTierName = t => { const T = penCfg().tiers[t - 1]; return T ? T.name : 'Tier ' + (ROMAN[t - 1] || t); };
+const penPrefix = sym => /^[^\p{L}\d\s]{1,3}$/u.test(sym || ''); // $, €, ₩ go in front; words ("hours") after
+const penAmt = (n, sym) => { const v = Math.round(n * 100) / 100; return !sym ? String(v) : penPrefix(sym) ? sym + v : v + ' ' + sym; };
+const fixedTitle = f => f.amt > 0 ? `${f.text} · ${penAmt(f.amt, f.sym)}` : f.text;
+const PEN_UNITS = [['reps', 'Reps'], ['sec', 'Seconds'], ['min', 'Minutes'], ['km', 'Kilometers'], ['mi', 'Miles'], ['money', 'Money'], ['other', 'Other (type it)']];
+function penTierOf(pct) { let t = 0; penCfg().tiers.forEach((T, i) => { if (pct * 100 < T.below) t = i + 1; }); return t; }
+const penFixedOf = pct => pct >= 1 ? [] : penCfg().fixed.filter(f => pct * 100 <= f.at);
+function penQuest(it, amt) { // one scalable penalty as a quest: units the app can log keep their + button
+  const base = { key: 'pen:' + it.id, list: 'Penalty', progress: 0, done: false, xp: 10, pen: true };
+  if (['reps', 'sec', 'min', 'km'].includes(it.unit)) return Object.assign(base, { title: it.name, unit: it.unit, target: roundUnit(amt, it.unit) });
+  if (it.unit === 'mi') return Object.assign(base, { title: it.name, unit: 'km', target: roundUnit(amt * 1.609344, 'km') });
+  const sym = it.unit === 'money' ? (it.sym || '$') : (it.cu || ''), v = it.unit === 'money' ? Math.round(amt * 100) / 100 : Math.max(1, Math.round(amt));
+  return Object.assign(base, { title: `${it.name} · ${penAmt(v, sym)}`, unit: '', target: 0 });
 }
+function penaltyQuests(pp) { // pp: { tier, fixed: [ids of fixed penalties done as quests] } (or a plain tier number)
+  if (typeof pp === 'number') pp = { tier: pp };
+  const P = penCfg(), tier = Math.min(pp.tier || 0, P.tiers.length), L = overall().L, out = [];
+  if (tier) P.items.forEach(it => { const a = (it.amts || [])[tier - 1]; if (a > 0) out.push(penQuest(it, a * (it.grow ? 1 + L / 40 : 1))); });
+  (pp.fixed || []).forEach(id => { const f = P.fixed.find(x => x.id === id); if (f) out.push({ key: 'pf:' + id, title: fixedTitle(f), list: 'Penalty', unit: '', target: 0, progress: 0, done: false, xp: 10, pen: true }); });
+  return out;
+}
+function penRulesTxt() { // the rules in one sentence (Quests tab note)
+  const P = penCfg(), t = P.tiers.map((T, i) => `${i ? 'under' : 'Under'} ${T.below}% ${i ? '' : 'means '}${T.name}`).join(', ');
+  const f = P.fixed.map(x => `${x.at ? `at or below ${x.at}%` : 'at 0%'}: ${fixedTitle(x)}${x.how === 'quest' ? ' (a quest)' : ''}`).join('; ');
+  return `${t} tomorrow${f ? `; ${f}` : ''}.`;
+}
+const dayPenTxt = d => [d.tier ? (d.tn || penTierName(d.tier)) : '', ...(d.fn || [])].filter(Boolean).join(' + ');
 function ensureDay(k) { if (!S.days[k]) S.days[k] = { q: generate(k), ev: false }; return S.days[k]; }
 function ensureToday() {
   const k = todayKey(); curDay = k; const d = ensureDay(k), pi = pauseInfo(k);
-  if (S.pendingPen && !(pi && pi.all)) { d.q = d.q.filter(q => !q.pen).concat(penaltyQuests(S.pendingPen.tier)); d.penTier = S.pendingPen.tier; S.pendingPen = null; }
+  if (S.pendingPen && !(pi && pi.all)) { d.q = d.q.filter(q => !q.pen).concat(penaltyQuests(S.pendingPen)); d.penTier = S.pendingPen.tier; if ((S.pendingPen.fixed || []).length) d.penFixed = S.pendingPen.fixed; S.pendingPen = null; }
   const dq = d.q.find(q => q.key === 'diet'), want = dietWanted(k);
   if ((want && !dq) || (!want && dq && (!dq.done || fastOn(k)))) regenToday();
   syncDiet(k, true); syncSide(k);
@@ -857,7 +965,7 @@ function regenToday() {
 function evaluate() {
   const today = todayKey();
   if (!S.lastEval) S.lastEval = addDays(S.profile.start || today, -1);
-  let k = addDays(S.lastEval, 1), n = 0, maxTier = 0;
+  let k = addDays(S.lastEval, 1), n = 0, maxTier = 0; const fixQ = new Set();
   while (k < today && n < 60) {
     const d = ensureDay(k);
     if (!d.ev) {
@@ -886,15 +994,17 @@ function evaluate() {
           }
           s.load = clamp(q.done ? s.load * (1 + 0.08 / f) : s.load * 0.94, 0.4, 6);
         }
-        const tier = pct >= 1 ? 0 : pct >= 0.75 ? 1 : pct >= 0.5 ? 2 : pct > 0 ? 3 : 4;
-        d.tier = tier;
-        if (tier) { S.stats.penalties++; maxTier = Math.max(maxTier, tier); if (tier === 4) S.owed.push(k); }
+        const tier = pct >= 1 ? 0 : penTierOf(pct), fx = penFixedOf(pct); // v14: your penalty rules
+        d.tier = tier; if (tier) d.tn = penTierName(tier); if (fx.length) d.fn = fx.map(fixedTitle);
+        if (tier || fx.length) { S.stats.penalties++; maxTier = Math.max(maxTier, tier);
+          fx.forEach(f => { if (f.how === 'quest') fixQ.add(f.id); else S.owed.push({ k, f: f.id, t: f.text, amt: f.amt || null, sym: f.sym || '', at: f.at }); }); }
       }
     }
     S.lastEval = k; k = addDays(k, 1); n++;
   }
   if (k < today) S.lastEval = addDays(today, -1);
-  if (maxTier) S.pendingPen = { tier: Math.min(3, Math.max(maxTier, S.pendingPen ? S.pendingPen.tier : 0)) };
+  if (maxTier || fixQ.size) { const pp = S.pendingPen || {};
+    S.pendingPen = { tier: Math.min(penCfg().tiers.length, Math.max(maxTier, pp.tier || 0)), fixed: [...new Set([...(pp.fixed || []), ...fixQ])] }; }
 }
 
 /* ---------- xp, quests, practice ---------- */
@@ -1135,7 +1245,7 @@ function titleTracks() {
   add('Side quests', sideN, [[1, 'Adventurer'], [5, 'Quester'], [10, 'Seasoned Quester'], [25, 'Saga Keeper'], [50, 'Living Legend']].map(([n, nm]) => stp(n, 'side' + n, nm, `Finish ${n} one-time or time-limited quest${n > 1 ? 's' : ''}`)),
     k => { const n = 100 + k * 50; return stp(n, 'side' + n, 'Living Legend ' + roman(k + 2), `Finish ${n} side quests`); }, v => v + ' done', { hidden: !(S.side || []).length });
   // penance
-  add('Penance', S.stats.donated, [stp(1, 'paid', 'Paid the Price', 'Make your first penalty donation')], null, v => v + ' paid');
+  add('Penance', S.stats.donated, [stp(1, 'paid', 'Paid the Price', 'Pay off your first fixed penalty (the donation, or your own)')], null, v => v + ' paid');
   add('Penance', S.stats.penCleared, [stp(1, 'redeemed', 'Redeemed', 'Clear a penalty set'), stp(10, 'redeemed10', 'Forged in Penance', 'Clear 10 penalty sets')], null, v => v + ' cleared');
   // discovery (hidden easter egg)
   add('Discovery', S.customSkills.length, [stp(1, 'pioneer', 'Pathfinder', 'Create your own skill')], null, num0, { hidden: true });
@@ -1197,18 +1307,20 @@ function statValue(id, st) {
    Custom: target ± margin, range, limit (max only) or minimum (min only); workout kcal optional.
    Fasts: up to 40 days with no diet quest and calorie tracking hidden (no penalty). */
 const DIET_DEF = { maint: null, rule: 'target', kcal: 2000, tol: 150, lo: 1800, hi: 2200, burn: false };
-const GOAL_NAME = { cut: 'Lose fat', maintain: 'Maintain', bulk: 'Build muscle', custom: 'Custom' };
-const GOAL_ADJ = { cut: -500, maintain: 0, bulk: 300 };
+const GOAL_NAME = { cut: 'Lose fat', maintain: 'Maintain', bulk: 'Build muscle', custom: 'Custom', none: 'No goal' };
+const GOAL_ADJ = { cut: -500, maintain: 0, bulk: 300, none: 0 };
 const RULES = [['target', 'Target'], ['range', 'Range'], ['limit', 'Limit'], ['min', 'Minimum']];
 const RULE_NAME = { target: 'Custom target', range: 'Custom range', limit: 'Custom limit', min: 'Custom minimum' };
 const KCAL_FLOOR = 1200, FAST_MAX = 40;
 const fmtK = n => Math.round(n).toLocaleString();
 const dietCfg = (p = S.profile) => Object.assign({}, DIET_DEF, p.diet || {});
-const bmrOf = () => { const p = S.profile; return 10 * latestWeightKg() + 6.25 * p.heightCm - 5 * age() + (p.sex === 'F' ? -161 : 5); };
+const heightOr = () => S.profile.heightCm || (S.profile.sex === 'F' ? 163 : 176); // v14: height is optional (an average stands in)
+const bmrOf = () => { const p = S.profile; return 10 * latestWeightKg() + 6.25 * heightOr() - 5 * age() + (p.sex === 'F' ? -161 : 5); };
 const estMaint = () => Math.round(bmrOf() * 1.25);
 const burnedOn = k => S.workouts.filter(x => x.date === k).reduce((a, x) => a + (x.kcal || 0), 0);
 function dietAim(k, p = S.profile) {
   const c = dietCfg(p), burned = Math.round(burnedOn(k)), goal = GOAL_NAME[p.goal] ? p.goal : 'maintain';
+  if (goal === 'none') return { goal, burned, add: 0, lo: null, hi: null, none: true }; // v14: just logging, no aim
   if (goal === 'custom') {
     const add = c.burn ? burned : 0, R = v => v == null ? null : Math.round(v + add);
     const r = c.rule === 'range' ? [c.lo, c.hi] : c.rule === 'limit' ? [null, c.kcal] : c.rule === 'min' ? [c.kcal, null] : [c.kcal - c.tol, c.kcal + c.tol];
@@ -1218,9 +1330,10 @@ function dietAim(k, p = S.profile) {
   return { goal, burned, add: burned, maint, own: !!c.maint, t: Math.round(t), lo: Math.round(t * a), hi: Math.round(t * b) };
 }
 const aimFor = k => { const d = S.days[k]; return d && d.ev && d.aim ? d.aim : dietAim(k); };
-const aimTxt = a => a.lo != null && a.hi != null ? `${fmtK(a.lo)}–${fmtK(a.hi)}` : a.hi != null ? `≤ ${fmtK(a.hi)}` : `≥ ${fmtK(a.lo)}`;
+const aimTxt = a => a.none ? 'no aim' : a.lo != null && a.hi != null ? `${fmtK(a.lo)}–${fmtK(a.hi)}` : a.hi != null ? `≤ ${fmtK(a.hi)}` : `≥ ${fmtK(a.lo)}`;
 const goalDesc = a => a.goal === 'custom' ? RULE_NAME[a.rule] : GOAL_NAME[a.goal];
 function aimBreakdown(a) {
+  if (a.none) return 'Food is logged with no daily aim and no diet quest';
   if (a.goal === 'custom') return a.burned ? (a.add ? `Includes ${fmtK(a.burned)} kcal burned in workouts` : 'Workout calories not added') : 'Fixed daily number';
   const adj = GOAL_ADJ[a.goal];
   return `${a.own ? 'Your maintenance' : 'Est. maintenance'} ${fmtK(a.maint)}${adj ? ` ${adj < 0 ? '−' : '+'} ${Math.abs(adj)}` : ''}${a.burned ? ` + ${fmtK(a.burned)} burned` : ''}`;
@@ -1229,7 +1342,7 @@ const fastOn = k => (S.fasts || []).find(f => k >= f.start && k <= f.end) || nul
 const fastNext = () => (S.fasts || []).filter(f => f.end >= todayKey()).sort((a, b) => a.start < b.start ? -1 : 1)[0] || null;
 const fastLen = f => daysBetween(f.start, f.end) + 1;
 const fastDay = (f, k) => daysBetween(f.start, k) + 1;
-const dietWanted = k => S.profile.dietQuest !== false && !fastOn(k);
+const dietWanted = k => S.profile.goal !== 'none' && S.profile.dietQuest !== false && !fastOn(k);
 function dietStatus(k) {
   const a = aimFor(k), items = S.food.filter(f => f.date === k);
   const eaten = Math.round(items.reduce((s, f) => s + f.kcal, 0));
@@ -1250,6 +1363,7 @@ function dietSub(k) {
   return s.logged ? `${fmtK(s.eaten)} kcal · aim ${aimTxt(s)} · auto` : `Log food to verify · aim ${aimTxt(s)} kcal`;
 }
 function dietMsg(s) {
+  if (s.none) return s.logged ? 'Logged' : 'Nothing logged yet';
   if (!s.logged) return 'Log food to verify';
   if (s.ok) return s.hi != null ? `On track · ${fmtK(s.hi - s.eaten)} left` : 'On track ✓';
   return s.lo != null && s.eaten < s.lo ? `${fmtK(s.lo - s.eaten)} kcal to go` : `${fmtK(s.eaten - s.hi)} kcal over`;
@@ -1257,11 +1371,13 @@ function dietMsg(s) {
 function dietSummary() {
   const tk = todayKey(), f = fastOn(tk), a = dietAim(tk);
   if (f) return `Fasting until ${fmtDate(f.end)} · diet quest paused`;
+  if (a.none) return 'No goal · food is just logged';
   return `${goalDesc(a)} · aim ${aimTxt(a)} kcal today · quest ${S.profile.dietQuest !== false ? 'on' : 'off'}`;
 }
 function nutritionAdherence() {
   const days = [...new Set(S.food.map(f => f.date))].sort().filter(k => k !== todayKey() && !fastOn(k)).slice(-14);
   if (!days.length) return null;
+  if (S.profile.goal === 'none') return null; // no aim to meet
   const ok = days.filter(k => dietStatus(k).ok).length;
   return Math.round(ok / days.length * 100);
 }
@@ -1338,14 +1454,16 @@ let modalLocked = false;
 function openModal(html, opts = {}) { const m = $('#modal'); m.innerHTML = `<div class="sheet ${opts.cls || ''}">${html}</div>`; m.hidden = false; modalLocked = !!opts.lock; }
 function closeModal(force) { if (modalLocked && !force) return; modalLocked = false; $('#modal').hidden = true; $('#modal').innerHTML = ''; }
 $('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
-function showDonation() {
-  if (!S.owed.length || !$('#modal').hidden && modalLocked) return;
-  const n = S.owed.length;
-  openModal(`<h3 class="bad">Penalty: donation owed</h3>
-    <p class="mu">You missed <b>every</b> quest on ${S.owed.map(fmtDate).map(esc).join(', ')}.</p>
-    <p>Donate <b class="num">$${n * 5}</b> to a charity of your choice. Penalty exercises have been added to your quests.</p>
-    <label class="check"><input type="checkbox" id="donchk"> I have made the donation</label>
-    <div class="actions"><button class="btn-bad" data-a="donated">Yes, I donated</button></div>`, { lock: true, cls: 'danger' });
+function showDonation() { // the locked sheet for fixed penalties you owe (v14: any of yours, the $5 donation by default)
+  if (!owedFix().length || !$('#modal').hidden && modalLocked) return;
+  const groups = {}; S.owed.forEach(o => { const g = groups[o.f + '|' + o.t + '|' + (o.sym || '')] = groups[o.f + '|' + o.t + '|' + (o.sym || '')] || { t: o.t, sym: o.sym, amt: 0, has: false, days: [] }; g.days.push(o.k); if (o.amt > 0) { g.amt += o.amt; g.has = true; } });
+  const gs = Object.values(groups), allDon = gs.every(g => /donat/i.test(g.t));
+  openModal(`<h3 class="bad">Penalty: ${allDon ? 'donation' : 'fixed penalty'} owed</h3>
+    <p class="mu">${S.owed.every(o => !o.at) ? 'You missed <b>every</b> quest on' : 'Your day fell to your fixed-penalty line on'} ${[...new Set(S.owed.map(o => o.k))].sort().map(fmtDate).map(esc).join(', ')}.</p>
+    ${gs.map(g => `<div class="owed"><b>${esc(g.t)}</b>${g.has ? ` <b class="num bad">${esc(penAmt(g.amt, g.sym))}</b>` : ''}${g.days.length > 1 ? `<span class="mu small"> · ${g.days.length} days</span>` : ''}</div>`).join('')}
+    <p class="small mu">Any penalty quests have been added to your Quests.</p>
+    <label class="check"><input type="checkbox" id="donchk"> ${allDon ? 'I have made the donation' : 'I have done it'}</label>
+    <div class="actions"><button class="btn-bad" data-a="donated">${allDon ? 'Yes, I donated' : 'Yes, done'}</button></div>`, { lock: true, cls: 'danger' });
 }
 function focusModal(q, c) {
   openModal(`<h3>${esc(q.title)}</h3><p class="mu small">What did you work on? The time is split across the parts you pick and grows those sides of the hexagon.</p>
@@ -1466,15 +1584,18 @@ function renderSetup() {
     <div class="grid2"><div><label>Sex (for norms)</label><select name="sex"><option value="M">Male</option><option value="F">Female</option></select></div>
     <div><label>Birth year</label><input name="birthYear" type="number" inputmode="numeric" value="2003"></div></div>
     <label>Units</label><select name="units" data-c="setupUnits"><option value="imperial">Imperial (lb, ft, mi)</option><option value="metric">Metric (kg, cm, km)</option></select>
-    <div class="grid2" id="hw"><div><label>Height (ft)</label><input name="ft" type="number" value="5"></div><div><label>Height (in)</label><input name="in" type="number" value="10"></div></div>
-    <div class="grid2"><div><label id="wlab">Weight (lb)</label><input name="weight" type="number" step="0.1" inputmode="decimal"></div><div><label>Body fat % (optional)</label><input name="bf" type="number" step="0.1" inputmode="decimal"></div></div>
-    <label>Goal</label><select name="goal"><option value="cut">Lose fat (−500 kcal)</option><option value="maintain" selected>Maintain</option><option value="bulk">Build muscle (+300 kcal)</option></select>
+    <p class="mu2 small" style="margin:12px 0 0">Height, weight and the goal are optional. They're only used for calorie estimates (the diet goal and workout calories), so skip them if you don't want the health tracking.</p>
+    <div class="grid2" id="hw">${SU_HW.imperial}</div>
+    <div class="grid2"><div><label id="wlab">Weight (lb, optional)</label><input name="weight" type="number" step="0.1" inputmode="decimal"></div><div><label>Body fat % (optional)</label><input name="bf" type="number" step="0.1" inputmode="decimal"></div></div>
+    <label>Weight goal</label><select name="goal"><option value="none" selected>No goal</option><option value="cut">Lose fat (−500 kcal)</option><option value="maintain">Maintain</option><option value="bulk">Build muscle (+300 kcal)</option></select>
   </div>
-  <div class="card" id="suLook"><h3>Look</h3><p class="mu small">The app can follow the 72 micro-seasons (七十二候): pick whose names and scenes you want, or use your own look. You can switch later in Profile → Settings.</p>
-    <div class="cal-pick">${[['ko', '한국 칠십이후', 'Korean', 'The original Chinese set read in Korean, with hangul, 뜻풀이 and romanization.', '東風解凍 · 동풍해동'], ['ja', '日本の七十二候', 'Japanese', "Japan's own version (本朝七十二候) with kana readings, modern meanings and romaji.", '東風解凍 · はるかぜこおりをとく'],
-      ['own', 'My own theming', 'Your own look', 'No season names or scenes: a color you pick, and the date & time or your own words on Home.', '']]
-      .map(([v, a, n, d, ex]) => `<label class="cal-opt"><input type="radio" name="cal" value="${v}" data-c="calPick" ${ui.suLook === v ? 'checked' : ''}><span><b${v === 'own' ? '' : ` lang="${v}"`}>${a}</b> <span class="mu small">${n}</span><span class="mu2 small">${d}</span>${ex ? `<span class="small" lang="${v}">${ex}</span>` : ''}</span></label>`).join('')}</div>
+  <div class="card" id="suLook"><h3>Look</h3><p class="mu small">The app can follow the 72 micro-seasons (七十二候): pick whose names and scenes you want, or use your own look.</p>
+    <div class="cal-pick">${[['ko', '한국 칠십이후', 'Korean', 'The original Chinese set read in Korean, with hangul, 뜻풀이 and romanization.', '東風解凍 · 동풍해동', 'ko'], ['ja', '日本の七十二候', 'Japanese', "Japan's own version (本朝七十二候) with kana readings, modern meanings and romaji.", '東風解凍 · はるかぜこおりをとく', 'ja'],
+      ['zh', '中国七十二候', 'Chinese', 'The original 72 in Chinese: simplified characters (简体) or traditional (繁體), with pinyin.', '东风解冻 · Dōng fēng jiě dòng', 'zh-Hans'],
+      ['own', 'My own theming', 'Your own look', 'A color or your own photo (or the seasonal scenes), with the date & time, your own words or the season names on Home.', '', '']]
+      .map(([v, a, n, d, ex, lg]) => `<label class="cal-opt"><input type="radio" name="cal" value="${v}" data-c="calPick" ${ui.suLook === v ? 'checked' : ''}><span><b${lg ? ` lang="${lg}"` : ''}>${a}</b> <span class="mu small">${n}</span><span class="mu2 small">${d}</span>${ex ? `<span class="small" lang="${lg}">${ex}</span>` : ''}</span></label>`).join('')}</div>
     <div id="suText">${suText()}</div>
+    <div class="su-more">${ICON.sliders}<p class="small"><b>More to customize later.</b> Profile → Settings → <b>Themes &amp; display</b> has every background (the seasonal scenes, cyberpunk, cottagecore, mountain village, academia, a color or your photo), the UI styles, color wheels for cards, buttons and highlights, the Home text and how the season names show.</p></div>
   </div>
   <div class="card"><h3>Daily rhythm</h3><p class="mu small">Your day resets at wake time. "Phone away & asleep" locks 15 minutes after sleep time.</p>
     <div class="grid2"><div><label>Wake time</label><input name="wake" type="time" value="07:00"></div><div><label>Sleep time</label><input name="sleep" type="time" value="23:00"></div></div>
@@ -1489,34 +1610,48 @@ function renderSetup() {
   </form>
   <p class="mu2 small" style="text-align:center;margin-top:14px">Have a backup? <a href="#" data-a="importOpen">Restore it</a><input type="file" id="importFile" accept="application/json,.json,text/plain,.txt" hidden></p>`;
 }
-function suText() { // setup: Home text (+ background color for your own look), shown once a look is picked
+const SU_HW = { // setup: height (optional)
+  imperial: '<div><label>Height (ft, optional)</label><input name="ft" type="number" inputmode="numeric" placeholder="5"></div><div><label>Height (in)</label><input name="in" type="number" inputmode="numeric" placeholder="10"></div>',
+  metric: '<div><label>Height (cm, optional)</label><input name="cm" type="number" inputmode="numeric" placeholder="178"></div><div></div>' };
+function suBgMode() { const t = S.theme || {}; return t.id === 'seasonal' ? 'scenes' : t.id === 'custom' && custOpts().mode === 'photo' && custPhoto.url ? 'photo' : 'color'; }
+function suText() { // setup: Home text (+ the background for your own look), shown once a look is picked
   const look = ui.suLook; if (!look) return '';
-  const bg = custOpts().bg;
-  return `<label>Home text</label><div id="htF" data-setup="${look === 'own' ? 'own' : 'season'}">${htFields(look === 'own' ? 'own' : 'season')}</div>
-    <div class="ht-prev">${homeHero(true)}</div>
-    ${look === 'own' ? `<label>Background color</label><div class="cw-swatches su-sw">${SWATCHES.map(c => `<button class="cw-s${c === bg ? ' on' : ''}" style="background:${c}" data-a="suBg" data-id="${c}" aria-label="${c}"></button>`).join('')}</div>
-      <p class="mu2 small">Any color, an accent color or your own photo: later in Profile → Settings → Theme.</p>` : ''}`;
+  const bg = custOpts().bg, m = suBgMode();
+  // your own look: colors on the left; your photo and the seasonal scenes on the right
+  const own = look !== 'own' ? '' : `<label>Background</label><div class="su-bg">
+      <div class="su-bgl"><div class="mu2 small">A color</div><div class="cw-swatches su-sw">${SWATCHES.map(c => `<button class="cw-s${m === 'color' && c === bg ? ' on' : ''}" style="background:${c}" data-a="suBg" data-id="${c}" aria-label="${c}"></button>`).join('')}</div></div>
+      <div class="su-bgr">
+        <button class="su-opt${m === 'photo' ? ' on' : ''}" data-a="suPhoto">${custPhoto.url ? `<img src="${custPhoto.url}" alt="">` : `<i class="su-ic">${ICON.camera}</i>`}<span><b>My photo</b><small>${custPhoto.url ? 'Tap to change' : 'From this phone'}</small></span></button>
+        <button class="su-opt${m === 'scenes' ? ' on' : ''}" data-a="suScenes"><i class="su-ic sc"></i><span><b>Seasonal scenes</b><small>The 72 micro-seasons</small></span></button>
+        <input type="file" id="suPhotoIn" accept="image/*" hidden>
+      </div></div>
+    ${m === 'scenes' ? `<label>Scenes &amp; season names</label><div class="seg tight cal-seg">${[['ko', '한국', 'Korean'], ['ja', '日本', 'Japanese'], ['zh', zhTrad() ? '中國' : '中国', 'Chinese']].map(([v, a, n]) => `<button class="${calSet() === v ? 'on' : ''}" data-a="suCal" data-id="${v}"><b lang="${v === 'zh' ? calLang() : v}">${a}</b> ${n}</button>`).join('')}</div>` : ''}`;
+  const zh = calSet() === 'zh' && (look === 'zh' || (look === 'own' && m === 'scenes')) ? `<label>Characters</label><div class="seg tight">${[['simp', '简体', 'Simplified'], ['trad', '繁體', 'Traditional']].map(([v, a, n]) => `<button class="${(zhTrad() ? 'trad' : 'simp') === v ? 'on' : ''}" data-a="suScript" data-id="${v}"><b lang="${v === 'trad' ? 'zh-Hant' : 'zh-Hans'}">${a}</b> ${n}</button>`).join('')}</div>` : '';
+  return `${own}${zh}<label>Home text</label><div id="htF" data-setup="1">${htFields(true)}</div>
+    <div class="ht-prev">${homeHero(true)}</div>`;
 }
 function suRefresh() { const el = $('#suText'); if (el) { el.innerHTML = suText(); fitSeason(el); } }
 function suLook(v) { // picking Korean / Japanese / my own theming at setup previews it right away
   const was = ui.suLook; ui.suLook = v;
   if (v === 'own') { S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color' }) }; if (htOpts().mode === 'season') htSet(o => { o.mode = 'clock'; }); }
-  else { S.cal = v === 'ja' ? 'ja' : 'ko'; if (S.theme && S.theme.id === 'custom') S.theme = null; if (was === 'own' && htOpts().mode === 'clock') htSet(o => { o.mode = 'season'; }); }
+  else { S.cal = v; if (S.theme && S.theme.id === 'custom') S.theme = null; if (was === 'own' && htOpts().mode === 'clock') htSet(o => { o.mode = 'season'; }); }
   ui.season = applySeason(); suRefresh();
 }
 function finishSetup() {
   const f = new FormData($('#setupForm')), g = k => f.get(k);
   const look = g('cal'), ho = htOpts(), stop = (m, el) => { toast(m, 'bad'); const t = el && $(el); if (t) t.scrollIntoView({ block: 'center' }); };
-  if (!look) return stop('Pick a look: Korean, Japanese or your own', '#suLook');
+  if (!look) return stop('Pick a look: Korean, Japanese, Chinese or your own', '#suLook');
   if (ho.mode === 'custom' && !(ho.main || '').trim()) return stop('Type your Home text, or pick Date & time', '#suLook');
   if (ho.mode === 'clock' && ho.time === 'off' && ho.date === 'off') return stop('Pick a time or a date for Home', '#suLook');
   if (![...f.keys()].some(x => /^(sk|tk)_/.test(x)) && !confirm('You didn’t pick any skills or daily tasks, so your quest list starts almost empty. Start anyway? You can add them any time in Board.')) return;
   const p = S.profile;
   p.name = (g('name') || '').trim(); p.sex = g('sex'); p.birthYear = +g('birthYear') || 2000; p.units = g('units');
-  p.heightCm = p.units === 'imperial' ? Math.round(((+g('ft') || 0) * 12 + (+g('in') || 0)) * 2.54) : (+g('cm') || 175);
-  const w = num(g('weight')); p.weightKg = w ? (p.units === 'imperial' ? w / 2.20462 : w) : 75;
-  p.goal = g('goal'); p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00'; S.cal = look === 'ja' ? 'ja' : 'ko';
-  if (look === 'own') S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color' }) };
+  const hIn = (+g('ft') || 0) * 12 + (+g('in') || 0); // v14: height & weight are optional (null = not given)
+  p.heightCm = p.units === 'imperial' ? (hIn > 0 ? Math.round(hIn * 2.54) : null) : (+g('cm') > 0 ? +g('cm') : null);
+  const w = num(g('weight')); p.weightKg = w ? (p.units === 'imperial' ? w / 2.20462 : w) : null;
+  p.goal = GOAL_NAME[g('goal')] ? g('goal') : 'none'; p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00';
+  if (look !== 'own') S.cal = look; // own theming keeps the names picked for its seasonal scenes (Korean unless changed)
+  if (look === 'own' && !(S.theme && ['custom', 'seasonal'].includes(S.theme.id))) S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color' }) };
   const today = todayKey(); p.start = today;
   const bf = num(g('bf')); if (w || bf != null) S.body.push({ id: uid(), date: today, w: w ? p.weightKg : null, bf });
   for (const t of TASKS) if (f.get('tk_' + t.id)) adoptTask(t.id);
@@ -1544,8 +1679,8 @@ function pauseBanner(p, tk) {
 }
 function seasonMini(si) { // one-line season label for the Quests tab (the full header lives on Home)
   if (!si || (themeId() === 'custom' && htOpts().mode !== 'season')) return ''; // your own look: no season label
-  const o = szOpts(), m = o.main, lat = m === 'en' || m === 'rom', t = szText('term', si), h = szText('hu', si), lg = SZC().lang[m] || 'ko';
-  return `<div class="sz-mini" data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"><b${lat ? '' : ` lang="${lg}"`} class="${lat ? 'lat' : ''}${m === 'ja' ? ' kana' : ''}">${esc(h[m])}</b><span class="mu small">${esc(m === 'en' ? t.en : t[m] + (m === 'hj' || m === 'ko' || m === 'ja' ? ' · ' + h.en : ''))}</span></div>`;
+  const o = szOpts(), m = o.main, lat = LATIN_PARTS.includes(m), t = szText('term', si), h = szText('hu', si), lg = SZC().lang[m] || 'ko';
+  return `<div class="sz-mini" data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"><b${lat ? '' : ` lang="${lg}"`} class="${lat ? 'lat' : ''}${m === 'ja' ? ' kana' : ''}">${esc(h[m])}</b><span class="mu small">${esc(m === 'en' ? t.en : t[m] + (m === 'hj' || m === 'ko' || m === 'ja' || m === 'hz' ? ' · ' + h.en : ''))}</span></div>`;
 }
 function viewToday() {
   const k = todayKey(), d = ensureDay(k), q = d.q, pi = pauseInfo(k);
@@ -1554,7 +1689,7 @@ function viewToday() {
   const lists = [...new Set(q.map(x => x.list))].sort((a, b) => listRank(a) - listRank(b));
   const now = Date.now(), dayN = S.profile.start ? daysBetween(S.profile.start, k) + 1 : 1;
   const fst = fastOn(k);
-  const badges = [S.rest.includes(k) ? '<span class="pill">Rest day</span>' : '', isDeload(k) ? '<span class="pill">Deload week · −25%</span>' : '', d.penTier ? `<span class="pill bad">Penalty · ${esc(PENALTY[d.penTier].name)}</span>` : '',
+  const badges = [S.rest.includes(k) ? '<span class="pill">Rest day</span>' : '', isDeload(k) ? '<span class="pill">Deload week · −25%</span>' : '', d.penTier || (d.penFixed || []).length ? `<span class="pill bad">Penalty${d.penTier ? ' · ' + esc(penTierName(d.penTier)) : ''}</span>` : '',
     fst ? `<span class="pill gold">Fasting · day ${fastDay(fst, k)}/${fastLen(fst)}</span>` : ''].filter(Boolean).join(' ');
   const qrow = x => {
     if (x.side) return dueRow(x);
@@ -1582,7 +1717,7 @@ function viewToday() {
     ${q.filter(x => x.list === l).map(qrow).join('')}</div>`).join('') : `<div class="empty">${pi && pi.emergency ? 'Nothing today. Take care of what matters.' : 'Nothing scheduled today.'}</div>`}
   ${side}
   <div class="row" style="margin-top:16px"><button class="btn-s" data-a="regen">Refresh quests</button><span class="sp"></span><button class="btn-s" data-a="goBoard" data-id="tasks">Edit quests</button></div>
-  <p class="mu2 small note">Targets adapt: finishing a skill raises it about 8% a week; missing lowers it 6%, unless you set your own target on its skill card. Every 4th week is a deload. Tap + to log reps, seconds or distance. Under 100% means penalty exercises tomorrow; 0% means a $5 donation plus Tier III. Side quests count only on their due days (deadline or checkpoint day), unless you switch that off.</p>
+  <p class="mu2 small note">Targets adapt: finishing a skill raises it about 8% a week; missing lowers it 6%, unless you set your own target on its skill card. Every 4th week is a deload. Tap + to log reps, seconds or distance. Penalties: ${esc(penRulesTxt())} Change them in Profile → Settings → Penalties. Side quests count only on their due days (deadline or checkpoint day), unless you switch that off.</p>
   ${pi && pi.emergency ? '' : '<div style="text-align:center;margin-top:6px"><button class="btn-g bad small" data-a="emNew">Extreme emergency</button></div>'}`;
 }
 /* ---------- side quests: one-time & time-limited ----------
@@ -1816,7 +1951,7 @@ const psEndTxt = (start, r) => `Paused ${r.pass.days === 1 ? '' : 'through '}<b>
 function usePass(r, start) {
   const tk = todayKey(); if (!start || start < tk) { toast("A pass can't start in the past", 'bad'); return; }
   const p = r.pass, end = addDays(start, p.days - 1), pz = { id: uid(), type: 'pass', start, end, all: p.all, lists: p.all ? [] : p.lists.slice(), skills: p.all ? [] : p.skills.slice(), tasks: p.all ? [] : p.tasks.slice(), note: r.from, reward: r.id };
-  if (start === tk && p.all) { const d = ensureDay(tk); if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || 1, (S.pendingPen || {}).tier || 0) }; delete d.penTier; } }
+  if (start === tk && p.all) { const d = ensureDay(tk); if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || (d.q.some(q => q.pen && !q.done && /^pen:/.test(q.key)) ? 1 : 0), (S.pendingPen || {}).tier || 0), fixed: [...new Set([...(d.penFixed || []), ...((S.pendingPen || {}).fixed || [])])] }; delete d.penTier; delete d.penFixed; } }
   S.pauses.push(pz); r.used = start; r.pauseId = pz.id;
   closeModal(true); if (start === tk) regenToday(); afterChange(); toast(start === tk ? 'Rest pass active · enjoy it' : 'Rest pass scheduled for ' + fmtDate(start), 'ti');
 }
@@ -1966,7 +2101,7 @@ function viewCal() {
     ${fastOn(sel) ? `<div class="small" style="margin-bottom:8px"><span class="gold">Fast${fastOn(sel).note ? ' · ' + esc(fastOn(sel).note) : ''}</span> · day ${fastDay(fastOn(sel), sel)} of ${fastLen(fastOn(sel))} · diet quest off</div>` : ''}
     ${spi ?`<div class="small" style="margin-bottom:8px">${ICON.pause} <span class="${spi.emergency ? 'bad' : 'acc'}">${spi.emergency ? 'Extreme emergency' : 'Vacation'}</span> · paused: ${esc(spi.all ? 'everything' : [...spi.lists, ...[...spi.skills].map(id => SK[id] ? SK[id].name : id)].join(', '))}</div>` : ''}
     ${evs.length ? evs.map(e => `<div class="list-item"><div class="sp"><div>${esc(e.title)}</div><div class="mu small">${esc(e.list || '')} · ${esc(repTxt(e))}${e.skill && SK[e.skill] ? ' · ' + esc(SK[e.skill].name) : ''}</div></div><button class="btn-s" data-a="evEdit" data-id="${e.id}">Edit</button></div>`).join('') : '<div class="mu small">No events this day.</div>'}
-    ${day && day.ev ? `<div class="mu small" style="margin-top:8px">Result: ${day.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(day.pct * 100)}%</span>${day.tier ? ` · <span class="bad">${day.tier === 4 ? 'Donation' : PENALTY[day.tier].name}</span>` : ''}${day.saved ? ' · <span class="gold">streak saved</span>' : ''}`}</div>` : ''}
+    ${day && day.ev ? `<div class="mu small" style="margin-top:8px">Result: ${day.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(day.pct * 100)}%</span>${dayPenTxt(day) ? ` · <span class="bad">${esc(dayPenTxt(day))}</span>` : ''}${day.saved ? ' · <span class="gold">streak saved</span>' : ''}`}</div>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn-p btn-s" data-a="evNew">+ Event</button><span class="sp"></span>
     ${sel >= tk ? `<button class="btn-s" data-a="restToggle" data-id="${sel}">${S.rest.includes(sel) ? 'Unset rest day' : 'Mark rest day'}</button>` : ''}</div>
     ${sideDue.length ? `<div class="mu small" style="margin-top:10px">${sideDue.map(q => `<div class="list-item"><span class="rw-ic">${ICON.board}</span><span class="sp">${esc(q.title)}</span><span class="mu2 small">${q.due === sel ? 'deadline' : 'checkpoint'}</span></div>`).join('')}</div>` : ''}
@@ -1984,6 +2119,39 @@ function viewCal() {
     <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}</button>`).join('')}</div></div>`).join('')}` : ''}
   </div>`;
 }
+/* v14: tap a date on the calendar → every quest that day: what was done (past), live (today) or planned (ahead) */
+function dayPreviewHtml(k) {
+  const tk = todayKey(), past = k < tk, today = k === tk, d = S.days[k], pi = pauseInfo(k), fst = fastOn(k);
+  const q = d ? d.q : past ? null : generate(k), evs = S.events.filter(e => occursOn(e, k));
+  const tag = today ? 'Today' : past ? 'Past' : 'Planned', tom = addDays(tk, 1) === k && S.pendingPen && (S.pendingPen.tier || (S.pendingPen.fixed || []).length);
+  const badges = [S.rest.includes(k) ? '<span class="pill">Rest day</span>' : '', isDeload(k) ? '<span class="pill">Deload week · −25%</span>' : '',
+    pi ? `<span class="pill ${pi.emergency ? 'bad' : ''}">${pi.emergency ? 'Extreme emergency' : 'Paused'} · ${esc(pi.all ? 'everything' : 'some lists')}</span>` : '',
+    fst ? `<span class="pill gold">Fast · day ${fastDay(fst, k)}/${fastLen(fst)}</span>` : '', d && d.penTier ? `<span class="pill bad">Penalty · ${esc(penTierName(d.penTier))}</span>` : ''].filter(Boolean).join(' ');
+  const row = x => {
+    const n = x.sessions || 1, part = x.task && n > 1 && x.progress > 0 && !x.done;
+    const st = x.done ? 'ok' : part ? 'part' : past && d && d.ev ? 'miss' : 'todo';
+    const sub = [x.side ? (x.cp ? 'checkpoint' : 'deadline') : '', x.key === 'diet' ? (dietStatus(k).none ? '' : 'aim ' + aimTxt(aimFor(k)) + ' kcal') : x.task ? (x.unit === 'min' ? fmtTarget(x.target, 'min') + (n > 1 ? ' each' : '') : '') : x.target ? (x.progress > 0 && !x.done ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit)) : '',
+      x.task && n > 1 ? `${x.progress || 0} of ${n}` : ''].filter(Boolean).join(' · ');
+    const ic = st === 'ok' ? ICON.check : st === 'miss' ? '✕' : st === 'part' ? `<span class="num">${x.progress}</span>` : '';
+    return `<div class="dp-q ${st}${x.pen ? ' pen' : ''}"><i class="dp-st">${ic}</i><div class="sp"><div class="dp-t">${esc(x.title)}</div>${sub ? `<div class="mu2 small">${esc(sub)}</div>` : ''}</div><span class="qx">+${x.xp}</span></div>`;
+  };
+  let body;
+  if (!q) body = `<div class="mu small">${S.profile.start && k < S.profile.start ? 'Before you started.' : 'Nothing was recorded this day.'}</div>`;
+  else if (!q.length) body = `<div class="mu small">${pi && pi.all ? 'Everything is paused this day.' : 'No quests this day.'}</div>`;
+  else {
+    const lists = [...new Set(q.map(x => x.list))].sort((a, b) => listRank(a) - listRank(b)), done = q.filter(x => x.done).length;
+    body = `<div class="mu small dp-sum">${past || today ? `<span class="num">${done}/${q.length}</span> done` : `<span class="num">${q.length}</span> quest${q.length === 1 ? '' : 's'}`} · <span class="gold num">${q.reduce((a, x) => a + (x.xp || 0), 0)} XP</span> on offer</div>`
+      + lists.map(l => `<div class="tg">${esc(l)}</div>${q.filter(x => x.list === l).map(row).join('')}`).join('');
+  }
+  const result = d && d.ev ? `<div class="mu small dp-res">Result: ${d.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(d.pct * 100)}%</span>${dayPenTxt(d) ? ` · <span class="bad">${esc(dayPenTxt(d))}</span>` : ''}${d.saved ? ' · <span class="gold">streak saved</span>' : ''}`}</div>` : '';
+  return `<div class="row"><h3 class="sp">${fmtDate(k)}</h3><span class="pill${today ? ' acc' : ''}">${tag}</span></div>
+    ${badges ? `<div class="badges" style="margin:6px 0 2px">${badges}</div>` : ''}${tom ? `<div class="small bad" style="margin-top:6px">A penalty${S.pendingPen.tier ? ` (${esc(penTierName(S.pendingPen.tier))})` : ''} is waiting and gets added to your next day.</div>` : ''}
+    <div class="dp-list">${body}</div>${result}
+    ${evs.length ? `<div class="tg">Events</div>${evs.map(e => `<div class="list-item"><div class="sp small">${esc(e.title)}</div><button class="btn-s" data-a="evEdit" data-id="${e.id}">Edit</button></div>`).join('')}` : ''}
+    ${!past && !today ? '<p class="mu2 small" style="margin-top:8px">Planned from your weekly plan, events and side quests; targets can still grow before then.</p>' : ''}
+    <div class="actions"><button data-a="close">Close</button><span class="sp"></span><button class="btn-s" data-a="evNew">+ Event</button>${k >= tk ? `<button class="btn-s" data-a="dpRest" data-id="${k}">${S.rest.includes(k) ? 'Unset rest day' : 'Rest day'}</button>` : ''}</div>`;
+}
+function dayPreview(k) { ui.calSel = k; openModal(`<div id="dpBody">${dayPreviewHtml(k)}</div>`); }
 function eventModal(ev) {
   const e = ev || { id: null, title: '', list: 'Training', skill: '', repeat: 'none', days: [dparse(ui.calSel || todayKey()).getDay()], start: ui.calSel || todayKey(), end: '', target: '', unit: '' };
   const lists = [...new Set([...S.lists, e.list].filter(Boolean))];
@@ -2128,6 +2296,7 @@ function logWorkout() {
   fx('tick'); toast(a.reps ? `Logged ${reps} reps · ${w.kcal} kcal` : `Logged ${min} min · ${w.kcal} kcal`); afterChange();
 }
 function kbar(s) {
+  if (s.none) return ''; // no goal: no target zone to draw
   const ref = s.hi ?? s.lo ?? 1, max = Math.max(ref * 1.25, s.eaten * 1.04, 1), P = v => +clamp(v / max * 100, 0, 100).toFixed(1);
   const zl = s.lo != null ? P(s.lo) : 0, zr = s.hi != null ? P(s.hi) : 100;
   const cls = !s.logged ? '' : s.ok ? 'ok' : s.hi != null && s.eaten > s.hi ? 'over' : 'under';
@@ -2149,7 +2318,7 @@ function viewFood() {
   else {
     const s = dietStatus(k), st = !s.logged ? 'mu' : s.ok ? 'acc' : s.hi != null && s.eaten > s.hi ? 'bad' : 'gold';
     top = `<div class="card diet-card"><div class="row"><div class="sp"><div class="mu small">Eaten today</div><div class="num big">${fmtK(sum.kcal)} <span class="mu" style="font-size:14px">kcal</span></div></div>
-      <div class="small" style="text-align:right"><div class="${st} num">${esc(dietMsg(s))}</div><div class="mu2">aim ${aimTxt(s)} kcal</div></div></div>
+      <div class="small" style="text-align:right"><div class="${s.none ? 'mu' : st} num">${esc(dietMsg(s))}</div><div class="mu2">${s.none ? 'no goal' : `aim ${aimTxt(s)} kcal`}</div></div></div>
       ${kbar(s)}
       <div class="grid3 macros"><div><span class="mu small">Protein</span><div class="num">${sum.p.toFixed(0)} g</div></div><div><span class="mu small">Carbs</span><div class="num">${sum.c.toFixed(0)} g</div></div><div><span class="mu small">Fat</span><div class="num">${sum.f.toFixed(0)} g</div></div></div>
       <div class="diet-line"><div class="sp"><div class="dl-goal">${esc(goalDesc(s))}${S.profile.dietQuest === false ? ' <span class="pill">quest off</span>' : ''}</div><div class="mu2">${esc(aimBreakdown(s))}</div></div><button class="btn-s" data-a="dietGoal">Edit goal</button></div></div>`;
@@ -2233,6 +2402,88 @@ function foodModal(f) {
   <div id="fcalc" class="num" style="margin-top:10px;font-size:18px">${f.k} kcal · P ${f.p} g</div>
   <div class="actions"><button data-a="close">Cancel</button><span class="sp"></span><button data-a="foodFav" id="foodFavBtn">☆ Favorite</button><button class="btn-p" data-a="foodAdd">Add</button></div>`);
 }
+/* ---------- penalty editor (v14) ---------- */
+const peClone = P => JSON.parse(JSON.stringify(P));
+const peFrom = it => { const i = (it.amts || []).findIndex(a => a > 0); return i < 0 ? 0 : i; };
+const peUnitTxt = it => ({ reps: 'reps', sec: 'sec', min: 'min', km: 'km', mi: 'mi', money: it.sym || '$', other: it.cu || '' })[it.unit] || '';
+const peRound = v => v >= 20 ? Math.round(v / 5) * 5 : v >= 3 ? Math.round(v) : Math.round(v * 10) / 10;
+function peFill(it, N) { // the middle tiers sit evenly between the smallest and the Hell amounts
+  const a = it.amts, s = peFrom(it), lo = a[s], hi = a[N - 1];
+  if (!(lo > 0) || !(hi > 0)) return;
+  for (let t = s + 1; t < N - 1; t++) a[t] = peRound(lo + (hi - lo) * (t - s) / (N - 1 - s));
+}
+function peRenumber(P) { // default-style names follow their place ("Tier II", the last one "… — Hell")
+  const N = P.tiers.length;
+  P.tiers.forEach((t, i) => { if (/^Tier [IVX]+( — Hell)?$/.test(t.name)) t.name = 'Tier ' + (ROMAN[i] || i + 1) + (i === N - 1 && N > 1 ? ' — Hell' : ''); });
+}
+function penModal() {
+  ui.pe = peClone(penCfg());
+  openModal(`<h3>Penalties</h3><p class="mu small">What a day under 100% costs. Scalable penalties grow tier by tier as the day gets worse; fixed penalties are one set thing at or below a line.</p><div id="peBody">${peBody()}</div>
+    <div class="actions"><button data-a="peReset">Reset to default</button><span class="sp"></span><button data-a="close">Cancel</button><button class="btn-p" data-a="peSave">Save</button></div>`, { cls: 'wide' });
+}
+function peBody() {
+  const P = ui.pe, N = P.tiers.length, tn = i => P.tiers[i] ? P.tiers[i].name : '';
+  const tiers = P.tiers.map((t, i) => `<div class="pe-tier"><span class="pe-n num">${i + 1}</span><input data-i="pe" data-g="tier" data-n="${i}" data-k="name" value="${esc(t.name)}" maxlength="28" aria-label="Tier ${i + 1} name">
+      <span class="pe-th">under ${i ? `<input type="number" inputmode="numeric" data-i="pe" data-g="tier" data-n="${i}" data-k="below" value="${t.below}" aria-label="Tier ${i + 1} starts under this %">` : '<b class="num">100</b>'}%</span>
+      ${i ? `<button class="btn-g x" data-a="peDel" data-g="tier" data-n="${i}" aria-label="Remove this tier">✕</button>` : '<span class="pe-fix" title="The smallest penalty always applies under 100%">always</span>'}</div>`).join('');
+  const amt = (i, it, t, lab) => `<div><label>${lab}</label><div class="pe-amt"><input type="number" inputmode="decimal" step="any" data-i="pe" data-g="amt" data-n="${i}" data-t="${t}" value="${it.amts[t] ?? ''}"><span class="mu2 small">${esc(peUnitTxt(it))}</span></div></div>`;
+  const items = P.items.map((it, i) => { const s = peFrom(it), mid = [];
+    for (let t = s + 1; t < N - 1; t++) mid.push(`<span class="pe-midc"><small>${esc(tn(t))}</small><input type="number" inputmode="decimal" step="any" data-i="pe" data-g="amt" data-n="${i}" data-t="${t}" value="${it.amts[t] ?? ''}" aria-label="${esc(tn(t))}"></span>`);
+    return `<div class="pe-item"><div class="grid2"><div><label>Penalty</label><input data-i="pe" data-g="item" data-n="${i}" data-k="name" value="${esc(it.name)}" maxlength="40" placeholder="e.g. Push-ups"></div>
+      <div><label>Measured in</label><select data-c="peUnit" data-n="${i}">${PEN_UNITS.map(([v, n]) => `<option value="${v}" ${it.unit === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div>
+      ${it.unit === 'money' ? `<label>Currency symbol</label><input data-i="pe" data-g="item" data-n="${i}" data-k="sym" value="${esc(it.sym || '$')}" maxlength="3" placeholder="$">` : it.unit === 'other' ? `<label>Unit</label><input data-i="pe" data-g="item" data-n="${i}" data-k="cu" value="${esc(it.cu || '')}" maxlength="16" placeholder="e.g. laps, pages, cold showers">` : ''}
+      ${N > 1 ? `<label>Starts at</label><select data-c="peFrom" data-n="${i}">${P.tiers.map((t, ti) => `<option value="${ti}" ${s === ti ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>` : ''}
+      <div class="grid2">${s < N - 1 ? amt(i, it, s, `Smallest · ${esc(tn(s))}`) + amt(i, it, N - 1, `Hell · ${esc(tn(N - 1))}`) : amt(i, it, N - 1, `Amount · ${esc(tn(N - 1))}`)}</div>
+      ${mid.length ? `<div class="pe-mid"><span class="mu2 small">In between (filled in for you, change any):</span>${mid.join('')}</div>` : ''}
+      <div class="row" style="margin-top:6px"><label class="check sp"><input type="checkbox" data-c="peGrow" data-n="${i}" ${it.grow ? 'checked' : ''}> Grows with your level</label><button class="btn-g small" data-a="peDel" data-g="item" data-n="${i}">Remove</button></div></div>`; }).join('');
+  const fixed = P.fixed.map((f, i) => `<div class="pe-item"><label>Penalty</label><input data-i="pe" data-g="fixed" data-n="${i}" data-k="text" value="${esc(f.text)}" maxlength="60" placeholder="e.g. Donate to a charity of your choice">
+      <div class="grid3"><div><label>Amount <small class="mu2">optional</small></label><input type="number" inputmode="decimal" step="any" data-i="pe" data-g="fixed" data-n="${i}" data-k="amt" value="${f.amt ?? ''}"></div>
+        <div><label>Unit / symbol</label><input data-i="pe" data-g="fixed" data-n="${i}" data-k="sym" value="${esc(f.sym || '')}" maxlength="12" placeholder="$"></div>
+        <div><label>At or below</label><div class="pe-amt"><input type="number" inputmode="numeric" data-i="pe" data-g="fixed" data-n="${i}" data-k="at" value="${f.at}"><span class="mu2 small">%</span></div></div></div>
+      <label>How</label><div class="seg tight">${[['sheet', 'Confirm before going on'], ['quest', "A quest the next day"]].map(([v, n]) => `<button class="${(f.how || 'sheet') === v ? 'on' : ''}" data-a="peHow" data-n="${i}" data-id="${v}">${n}</button>`).join('')}</div>
+      <div class="row"><span class="sp"></span><button class="btn-g small" data-a="peDel" data-g="fixed" data-n="${i}">Remove</button></div></div>`).join('');
+  return `<div class="tg">Tiers</div><p class="mu2 small" style="margin:2px 0 6px">The smallest tier always applies under 100%; the last one is the Hell level. A day gets the strongest tier it falls under.</p>
+    <div class="pe-tiers">${tiers}</div><button class="btn-s" data-a="peAddTier">${ICON.plus} Add a tier</button>
+    <div class="tg">Scalable penalties</div><p class="mu2 small" style="margin:2px 0 6px">Type the penalty and what it's measured in, then the smallest and the Hell amounts.</p>
+    ${items || '<div class="mu small">None. Add one, or rely on fixed penalties.</div>'}<button class="btn-s" data-a="peAddItem">${ICON.plus} Add a scalable penalty</button>
+    <div class="tg">Fixed penalties</div><p class="mu2 small" style="margin:2px 0 6px">One set penalty when the day is at or below a line (0% = you missed everything).</p>
+    ${fixed || '<div class="mu small">None.</div>'}<button class="btn-s" data-a="peAddFixed">${ICON.plus} Add a fixed penalty</button>`;
+}
+function peRefresh() { const b = $('#peBody'); if (!b) return; const sc = b.closest('.sheet'), y = sc ? sc.scrollTop : 0; b.innerHTML = peBody(); if (sc) sc.scrollTop = y; }
+function peInput(el) {
+  const P = ui.pe, g = el.dataset.g, i = +el.dataset.n, k = el.dataset.k, v = el.value;
+  if (g === 'tier') { if (k === 'below') P.tiers[i].below = num(v); else P.tiers[i].name = v; return; }
+  if (g === 'item') { P.items[i][k] = v; return; }
+  if (g === 'fixed') { P.fixed[i][k] = k === 'amt' || k === 'at' ? num(v) : v; return; }
+  if (g === 'amt') {
+    const it = P.items[i], t = +el.dataset.t, N = P.tiers.length; it.amts[t] = num(v);
+    if (t === peFrom(it) || t === N - 1) { peFill(it, N); $$(`#peBody [data-g=amt][data-n="${i}"]`).forEach(x => { const tt = +x.dataset.t; if (tt !== t && tt !== N - 1 && tt !== peFrom(it)) x.value = it.amts[tt] ?? ''; }); }
+  }
+}
+function peSave() {
+  const P = peClone(ui.pe), bad = m => { toast(m, 'bad'); return false; }, ok = v => typeof v === 'number' && isFinite(v);
+  P.tiers.forEach(t => { t.name = (t.name || '').trim(); }); P.tiers[0].below = 100;
+  for (let i = 0; i < P.tiers.length; i++) {
+    const t = P.tiers[i]; if (!t.name) return bad(`Name tier ${i + 1}`);
+    if (i && (!ok(t.below) || t.below < 1 || t.below > 99 || Math.round(t.below) !== t.below)) return bad(`Tier ${i + 1}: pick a whole % between 1 and 99`);
+    if (i && t.below >= P.tiers[i - 1].below) return bad(`Each tier starts lower than the one above it (tier ${i + 1})`);
+  }
+  for (const it of P.items) {
+    it.name = (it.name || '').trim(); if (!it.name) return bad('Type a name for each scalable penalty');
+    if (it.unit === 'other' && !(it.cu || '').trim()) return bad(`Type the unit for ${it.name}`);
+    const s = peFrom(it); for (let t = 0; t < P.tiers.length; t++) { if (t < s) { it.amts[t] = null; continue; } if (!ok(it.amts[t]) || it.amts[t] <= 0) return bad(`${it.name}: fill in every amount from ${P.tiers[s].name} down`); }
+  }
+  for (const f of P.fixed) {
+    f.text = (f.text || '').trim(); if (!f.text) return bad('Type what each fixed penalty is');
+    if (!ok(f.at) || f.at < 0 || f.at > 99 || Math.round(f.at) !== f.at) return bad(`${f.text}: pick a whole % between 0 and 99`);
+    if (f.amt != null && (!ok(f.amt) || f.amt < 0)) return bad(`${f.text}: the amount can't be negative`);
+    if (!(f.amt > 0)) f.amt = null; f.sym = (f.sym || '').trim(); f.how = f.how === 'quest' ? 'quest' : 'sheet';
+  }
+  S.pen = JSON.stringify(P) === JSON.stringify(PEN_DEF()) ? null : P;
+  if (S.pendingPen) S.pendingPen.tier = Math.min(S.pendingPen.tier || 0, P.tiers.length);
+  closeModal(true); afterChange(); toast(S.pen ? 'Your penalties are saved' : 'Penalties back to default', 'ti');
+  return true;
+}
 /* ---------- diet goal sheet ---------- */
 function dietModal(keep) {
   if (!keep || !ui.dg) { const c = dietCfg(); ui.dg = Object.assign({ goal: GOAL_NAME[S.profile.goal] ? S.profile.goal : 'maintain', quest: S.profile.dietQuest !== false, own: !!c.maint }, c, { maint: c.maint || estMaint() }); }
@@ -2241,7 +2492,7 @@ function dietModal(keep) {
 }
 const dgDraft = () => { const d = ui.dg; return { goal: d.goal, diet: { maint: d.own ? d.maint : null, rule: d.rule, kcal: d.kcal, tol: d.tol, lo: d.lo, hi: d.hi, burn: d.burn } }; };
 function dgAimTxt() {
-  const d = ui.dg, need = d.goal !== 'custom' ? (d.own ? ['maint'] : []) : d.rule === 'range' ? ['lo', 'hi'] : d.rule === 'target' ? ['kcal', 'tol'] : ['kcal'];
+  const d = ui.dg, need = d.goal === 'none' ? [] : d.goal !== 'custom' ? (d.own ? ['maint'] : []) : d.rule === 'range' ? ['lo', 'hi'] : d.rule === 'target' ? ['kcal', 'tol'] : ['kcal'];
   if (need.some(k => typeof d[k] !== 'number' || !isFinite(d[k]))) return '<span class="mu">Fill in the numbers to see today\'s aim.</span>';
   const a = dietAim(todayKey(), dgDraft());
   return `Today's aim <b class="num">${aimTxt(a)} kcal</b><div class="mu2 small">${esc(aimBreakdown(a))}</div>`;
@@ -2249,8 +2500,9 @@ function dgAimTxt() {
 function dgBody() {
   const d = ui.dg, tk = todayKey();
   const inp = (key, lab) => `<div><label>${lab}</label><input type="number" inputmode="numeric" data-i="dg" data-k="${key}" value="${d[key] ?? ''}"></div>`;
-  let h = `<div class="seg goal4">${['cut', 'maintain', 'bulk', 'custom'].map(g => `<button class="${d.goal === g ? 'on' : ''}" data-a="dgGoal" data-id="${g}">${GOAL_NAME[g]}</button>`).join('')}</div>`;
-  if (d.goal !== 'custom') {
+  let h = `<div class="seg goal4">${['none', 'cut', 'maintain', 'bulk', 'custom'].map(g => `<button class="${d.goal === g ? 'on' : ''}" data-a="dgGoal" data-id="${g}">${GOAL_NAME[g]}</button>`).join('')}</div>`;
+  if (d.goal === 'none') h += '<p class="mu small" style="margin-top:12px">No calorie aim and no diet quest. Food you log still counts up, and you can pick a goal any time.</p>';
+  else if (d.goal !== 'custom') {
     const [a, b] = DIET_BAND[d.goal], adj = GOAL_ADJ[d.goal];
     h += `<label>Maintenance calories</label><div class="seg tight"><button class="${!d.own ? 'on' : ''}" data-a="dgOwn" data-id="0">Estimate · ${fmtK(estMaint())}</button><button class="${d.own ? 'on' : ''}" data-a="dgOwn" data-id="1">My own number</button></div>
       ${d.own ? `<input type="number" inputmode="numeric" data-i="dg" data-k="maint" value="${d.maint ?? ''}" aria-label="Your maintenance calories">` : ''}
@@ -2262,7 +2514,7 @@ function dgBody() {
       ${d.rule === 'target' ? `<div class="grid2">${inp('kcal', 'Calories per day')}${inp('tol', 'Margin (± kcal)')}</div>` : d.rule === 'range' ? `<div class="grid2">${inp('lo', 'At least (kcal)')}${inp('hi', 'At most (kcal)')}</div>` : inp('kcal', d.rule === 'limit' ? 'Stay under (kcal)' : 'Eat at least (kcal)')}
       <label class="check"><input type="checkbox" data-c="dgBurn" ${d.burn ? 'checked' : ''}> Add calories burned in logged workouts</label>`;
   }
-  h += `<div class="dg-aim" id="dgAim">${dgAimTxt()}</div>
+  if (d.goal !== 'none') h += `<div class="dg-aim" id="dgAim">${dgAimTxt()}</div>
     <label class="check"><input type="checkbox" data-c="dgQuest" ${d.quest ? 'checked' : ''}> Daily "Met diet requirements" quest</label>`;
   const f = fastNext();
   h += `<hr><div class="row fast-row">${ICON.plate}<div class="sp">${f ? `<b>${f.start <= tk ? 'Fasting' : 'Fast planned'}${f.note ? ' · ' + esc(f.note) : ''}</b><div class="mu small">${fmtDate(f.start)} – ${fmtDate(f.end)} · ${f.start <= tk ? `day ${fastDay(f, tk)} of ${fastLen(f)}` : fastLen(f) + ' days'}</div>`
@@ -2275,7 +2527,7 @@ function saveDiet() {
   const d = ui.dg, bad = m => { toast(m, 'bad'); return false; };
   const ok = v => typeof v === 'number' && isFinite(v);
   const floorMsg = `Custom goals can't go below ${fmtK(KCAL_FLOOR)} kcal a day. Very-low-calorie plans need a doctor's guidance.`;
-  if (d.goal !== 'custom' && d.own) { if (!ok(d.maint) || d.maint < KCAL_FLOOR || d.maint > 8000) return bad(`Maintenance should be between ${fmtK(KCAL_FLOOR)} and 8,000 kcal`); }
+  if (d.goal !== 'custom' && d.goal !== 'none' && d.own) { if (!ok(d.maint) || d.maint < KCAL_FLOOR || d.maint > 8000) return bad(`Maintenance should be between ${fmtK(KCAL_FLOOR)} and 8,000 kcal`); }
   if (d.goal === 'custom') {
     if (d.rule === 'range') { if (!ok(d.lo) || !ok(d.hi)) return bad('Enter both numbers'); if (d.lo < KCAL_FLOOR) return bad(floorMsg); if (d.hi <= d.lo) return bad('"At most" must be above "At least"'); }
     else if (!ok(d.kcal) || d.kcal <= 0) return bad('Enter a calorie number');
@@ -2360,7 +2612,7 @@ function meOverview() {
   <div class="grid3">${tile(S.streak.cur, 'Streak')}${tile(S.streak.best, 'Best streak')}${tile(S.stats.perfect, 'Perfect days')}
     ${tile(S.stats.qdone, 'Quests done')}${tile(S.workouts.length, 'Workouts')}${tile(kc.toLocaleString(), 'kcal burned')}
     ${tile(hours.toFixed(0), 'Hours trained')}${tile(fb.length, 'Books read')}${tile(titles.length + S.titles.claimed.length, 'Titles')}
-    ${tile(S.stats.penalties, 'Penalties')}${tile(S.stats.penCleared, 'Cleared')}${tile('$' + S.stats.donated * 5, 'Donated')}</div>
+    ${tile(S.stats.penalties, 'Penalties')}${tile(S.stats.penCleared, 'Cleared')}${tile(Object.entries(S.stats.paid || {}).filter(([, v]) => v > 0).map(([k, v]) => penAmt(v, k)).join(' · ') || S.stats.donated || 0, 'Paid off')}</div>
   <h2>Health</h2><div class="card"><div class="hex-wrap">${radar(healthAxes())}</div></div>
   <h2>Discipline · Lv ${skLevel('discipline').L}</h2><div class="card"><div class="hex-wrap">${radar(SK.discipline.stats.map(st => ({ n: st.n, v: statValue('discipline', st) })))}</div></div>
   <h2>Top skills</h2><div class="card">${top.length ? top.map(s => { const l = skLevel(s.id); return `<div class="list-item"><span class="sp">${esc(s.name)} <span class="gold small">${esc(skillRank(s.id))}</span></span><span class="mu small num">Lv ${l.L}</span><div style="width:80px" class="bar"><i style="width:${l.into / l.need * 100}%"></i></div></div>`; }).join('') : '<div class="mu small">Complete quests to level up skills.</div>'}</div>`;
@@ -2592,17 +2844,17 @@ function meBooks() {
     ${b.finished ? '' : `<div class="bar"><i style="width:${Math.min(100, (b.read || 0) / b.pages * 100)}%"></i></div><div class="row" style="margin-top:10px"><input type="number" inputmode="numeric" placeholder="Current page" id="bkr_${b.id}" style="flex:1"><button class="btn-s" data-a="bkPage" data-id="${b.id}">Update</button><button class="btn-s btn-p" data-a="bkFin" data-id="${b.id}">Finished</button></div>`}</div>`).join('')}`;
 }
 function meSettings() {
-  const p = S.profile, ft = Math.floor(p.heightCm / 2.54 / 12), inch = Math.round(p.heightCm / 2.54 - ft * 12), seg = ui.setSeg === 'look' ? 'look' : 'gen';
+  const p = S.profile, ft = Math.floor((p.heightCm || 0) / 2.54 / 12), inch = Math.round((p.heightCm || 0) / 2.54 - ft * 12), seg = ui.setSeg === 'look' ? 'look' : 'gen';
   const tabs = `<div class="seg set-seg">${[['gen', 'General'], ['look', 'Themes & display']].map(([v, n]) => `<button class="${seg === v ? 'on' : ''}" data-a="setSeg" data-id="${v}">${n}</button>`).join('')}</div>`;
   if (seg === 'look') return tabs + themeCard() + styleCard() + colorCard() + htCard() + szCard(); // v13: everything about the look in one tab
   return `${tabs}<div class="card"><h3>Profile</h3><form id="setForm" onsubmit="return false">
     <label>Name</label><input name="name" value="${esc(p.name)}">
     <div class="grid2"><div><label>Sex</label><select name="sex"><option value="M" ${p.sex === 'M' ? 'selected' : ''}>Male</option><option value="F" ${p.sex === 'F' ? 'selected' : ''}>Female</option></select></div><div><label>Birth year</label><input name="birthYear" type="number" value="${p.birthYear}"></div></div>
-    <div class="grid2"><div><label>Height (${imperial() ? 'total in' : 'cm'})</label><input name="height" type="number" value="${imperial() ? Math.round(p.heightCm / 2.54) : p.heightCm}"></div><div><label>Units</label><select name="units"><option value="imperial" ${imperial() ? 'selected' : ''}>Imperial</option><option value="metric" ${!imperial() ? 'selected' : ''}>Metric</option></select></div></div>
+    <div class="grid2"><div><label>Height (${imperial() ? 'total in' : 'cm'}, optional)</label><input name="height" type="number" value="${p.heightCm ? (imperial() ? Math.round(p.heightCm / 2.54) : p.heightCm) : ''}" placeholder="—"></div><div><label>Units</label><select name="units"><option value="imperial" ${imperial() ? 'selected' : ''}>Imperial</option><option value="metric" ${!imperial() ? 'selected' : ''}>Metric</option></select></div></div>
     <div class="grid2"><div><label>Wake (day reset)</label><input name="wake" type="time" value="${p.wake}"></div><div><label>Sleep deadline</label><input name="sleep" type="time" value="${p.sleep}"></div></div>
     <label>Diet goal</label><div class="row dg-sum"><div class="sp small">${esc(dietSummary())}</div><button type="button" class="btn-s" data-a="dietGoal">Edit</button></div>
     <button class="btn-p btn-big" data-a="setSave">Save profile</button></form>
-    <div class="mu2 small" style="margin-top:8px">${ft}′${inch}″ · started ${p.start ? fmtDate(p.start) : '—'}</div></div>
+    <div class="mu2 small" style="margin-top:8px">${p.heightCm ? `${ft}′${inch}″ · ` : ''}started ${p.start ? fmtDate(p.start) : '—'}</div></div>
   <button class="card set-link" data-a="setSeg" data-id="look"><span class="sp"><b>Themes &amp; display</b><small class="mu">Background, UI style, colors, Home text, season names</small></span>${ICON.chev}</button>
   <div class="card" id="fxCard"><h3>Feedback</h3><p class="mu small" style="margin-top:2px">What happens when you check something off.</p>
     <label class="check"><input type="checkbox" data-c="fx" data-k="sound" ${fxOpts().sound ? 'checked' : ''}> Checkmark sound</label>
@@ -2610,6 +2862,8 @@ function meSettings() {
     <label class="check"><input type="checkbox" data-c="fx" data-k="cele" ${fxOpts().cele ? 'checked' : ''}> Fireworks for streak milestones</label>
     <button class="btn-s" data-a="fxTest" style="margin-top:12px">Try it</button></div>
   ${deletedCard()}
+  <div class="card" id="penCard"><h3>Penalties</h3><p class="mu small" style="margin-top:2px">What a missed day costs. ${esc(penRulesTxt())}</p>
+    <div class="row" style="margin-top:8px"><button class="btn-s btn-p" data-a="penEdit">Edit penalties</button><span class="sp"></span>${S.pen ? '<span class="pill">Your own</span>' : '<span class="mu2 small">Default rules</span>'}</div></div>
   <div class="card"><h3>Quest lists</h3><div class="chips" style="margin:8px 0">${S.lists.map(l => `<span class="chip">${esc(l)}</span>`).join('')}</div>
     <div class="row"><input id="newList" placeholder="New list name"><button class="btn-s" data-a="listAdd">Add</button></div></div>
   <div class="card"><h3>Backup</h3><p class="mu small" style="margin-top:2px">Your data lives only on this phone. ${S.lastBackup ? 'Last backup: <b>' + fmtDate(S.lastBackup) + '</b>' : '<b>No backup yet.</b>'}</p>
@@ -2738,14 +2992,32 @@ const A = {
   histClear: el => { if (!confirm('Clear past experience for this skill?')) return; const s = skState(el.dataset.id); s.hist = 0; s.hsm = {}; afterChange(); },
   regen: () => { regenToday(); afterChange(); toast('Quests refreshed'); },
   close: () => closeModal(true),
+  penEdit: () => penModal(),
+  peSave: () => peSave(),
+  peReset: () => { ui.pe = PEN_DEF(); peRefresh(); toast('Defaults loaded · Save to keep them'); },
+  peAddTier: () => { const P = ui.pe, N = P.tiers.length;
+    if (N >= 12) return toast('That’s plenty of tiers');
+    if (N === 1) { P.tiers.push({ name: 'Tier II', below: 50 }); P.items.forEach(it => { it.amts.push(it.amts[0] > 0 ? peRound(it.amts[0] * 2) : null); }); }
+    else { const below = Math.round((P.tiers[N - 2].below + P.tiers[N - 1].below) / 2); P.tiers.splice(N - 1, 0, { name: 'Tier ' + (ROMAN[N - 1] || N), below });
+      P.items.forEach(it => { const a = it.amts[N - 2], b = it.amts[N - 1]; it.amts.splice(N - 1, 0, a > 0 && b > 0 ? peRound((a + b) / 2) : null); }); }
+    peRenumber(P); peRefresh(); },
+  peAddItem: () => { const P = ui.pe, N = P.tiers.length, it = { id: uid(), name: '', unit: 'reps', grow: true, amts: Array(N).fill(null) }; it.amts[0] = 10; it.amts[N - 1] = N > 1 ? 50 : 10; peFill(it, N); P.items.push(it); peRefresh(); },
+  peAddFixed: () => { ui.pe.fixed.push({ id: uid(), text: '', amt: null, sym: '$', at: 0, how: 'quest' }); peRefresh(); },
+  peDel: el => { const P = ui.pe, i = +el.dataset.n, g = el.dataset.g;
+    if (g === 'tier') { if (!i) return; P.tiers.splice(i, 1); P.items.forEach(it => { it.amts.splice(i, 1); if (!it.amts.some(a => a > 0)) it.amts[it.amts.length - 1] = 10; }); peRenumber(P); }
+    else if (g === 'item') P.items.splice(i, 1); else P.fixed.splice(i, 1);
+    peRefresh(); },
+  peHow: el => { ui.pe.fixed[+el.dataset.n].how = el.dataset.id; peRefresh(); },
   chipT: el => el.classList.toggle('on'),
   focusDone: el => { const keys = chipsOn('#focusChips'); closeModal(true); toggleQuest(el.dataset.id, keys); },
   donated: () => {
     if (!$('#donchk').checked) { toast('Tick the box first'); return; }
+    const paid = S.stats.paid = S.stats.paid || {}; owedFix().forEach(o => { if (o.amt > 0) paid[o.sym || ''] = (paid[o.sym || ''] || 0) + o.amt; });
     S.stats.donated += S.owed.length; S.owed = []; closeModal(true); afterChange();
   },
   finishSetup: () => finishSetup(),
-  calSel: el => { ui.calSel = el.dataset.id; render(); },
+  calSel: el => { ui.calSel = el.dataset.id; render(); dayPreview(el.dataset.id); },
+  dpRest: el => { A.restToggle(el); const b = $('#dpBody'); if (b) b.innerHTML = dayPreviewHtml(el.dataset.id); },
   calNav: el => { const [y, m] = ui.calMonth.split('-').map(Number); const d = new Date(y, m - 1 + (+el.dataset.id), 1); ui.calMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; render(); },
   evNew: () => eventModal(null),
   evEdit: el => eventModal(S.events.find(e => e.id === el.dataset.id)),
@@ -2768,7 +3040,7 @@ const A = {
   emDur: el => { ui.emDur = +el.dataset.id; $$('#emDur .chip').forEach(b => b.classList.toggle('on', b === el)); },
   emStart: () => {
     const k = todayKey(), d = ensureDay(k);
-    if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || 1, (S.pendingPen || {}).tier || 0) }; delete d.penTier; }
+    if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || (d.q.some(q => q.pen && !q.done && /^pen:/.test(q.key)) ? 1 : 0), (S.pendingPen || {}).tier || 0), fixed: [...new Set([...(d.penFixed || []), ...((S.pendingPen || {}).fixed || [])])] }; delete d.penTier; delete d.penFixed; }
     S.pauses.push({ id: uid(), type: 'emergency', all: true, start: k, end: ui.emDur ? addDays(k, ui.emDur - 1) : '', note: $('#emNote').value.trim() });
     closeModal(true); regenToday(); afterChange(); toast('All quests paused');
   },
@@ -2844,9 +3116,14 @@ const A = {
   },
   custMode: el => { custSet(o => { o.mode = el.dataset.id; }); const go = () => { ui.season = applySeason(); themeRefresh(); }; if (el.dataset.id === 'photo' && !custPhoto.url) loadCustomPhoto().then(go); else go(); },
   custCards: el => { custSet(o => { o.cards = el.dataset.id; }); ui.season = applySeason(); themeRefresh(); },
-  htMode: el => { htSet(o => { o.mode = el.dataset.id; }); htRefresh(true); if ($('#suText')) suRefresh(); },
+  htMode: el => { htSet(o => { o.mode = el.dataset.id; o.extra[o.mode] = null; }); htRefresh(true); if ($('#suText')) suRefresh(); },
   htTime: el => { htSet(o => { o.time = el.dataset.id; }); htRefresh(true); },
+  htExtra: el => { const [m, pos] = el.dataset.id.split(':'); htSet(o => { o.extra[m] = pos || null; }); htRefresh(true); },
   suBg: el => { S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color', bg: el.dataset.id }) }; ui.season = applySeason(); suRefresh(); },
+  suPhoto: () => { const i = $('#suPhotoIn'); if (!i) return; i.onchange = async () => { const f = i.files[0]; i.value = ''; if (!f) return; S.theme = { id: 'custom', custom: custOpts() }; await pickPhoto(f); suRefresh(); }; i.click(); },
+  suScenes: () => { S.theme = { id: 'seasonal' }; ui.season = applySeason(); suRefresh(); },
+  suCal: el => { S.cal = el.dataset.id; ui.season = applySeason(); suRefresh(); },
+  suScript: el => { S.zhScript = el.dataset.id === 'trad' ? 'trad' : 'simp'; ui.season = applySeason(); suRefresh(); },
   setSeg: el => { ui.setSeg = el.dataset.id; render(); window.scrollTo(0, 0); },
   styPick: el => { const L = lookOpts(); L.style = el.dataset.id; S.look = L; ui.lkOpen = null; save(); ui.season = applySeason(); lookRefresh(); toast(el.dataset.id === 'auto' ? `Matched: ${STYLE[styleId()].n}` : `UI style: ${STYLE[styleId()].n}`); },
   styOwn: el => { const L = lookOpts(), sid = styleId(); L.own[sid] = el.dataset.id === 'own'; S.look = L; save(); ui.season = applySeason(); lookRefresh(); },
@@ -2857,7 +3134,8 @@ const A = {
   custPhotoPick: () => { const i = $('#custPhotoIn'); if (!i) return; i.onchange = () => { pickPhoto(i.files[0]); i.value = ''; }; i.click(); },
   wheelTgt: el => { ui.wheelTgt = el.dataset.id; themeRefresh(); },
   cwSwatch: el => { const w = el.closest('.cw'); if (!w) return; const [h, s, v] = hexHsv(el.dataset.id); w.dataset.h = h; w.dataset.s = s; w.dataset.v = v; const r = w.querySelector('[data-i=cwV]'); if (r) r.value = Math.round(v * 100); initWheels(w.parentNode); wheelChanged(w, true); },
-  calSet: el => { if (calSet() === el.dataset.id) return; S.cal = el.dataset.id; save(); ui.season = applySeason(); szRefresh(); themeRefresh(); toast(S.cal === 'ja' ? '日本の七十二候 · Japanese micro-seasons' : '한국 칠십이후 · Korean micro-seasons'); },
+  calSet: el => { if (calSet() === el.dataset.id) return; S.cal = el.dataset.id; save(); ui.season = applySeason(); szRefresh(); themeRefresh(); toast({ ja: '日本の七十二候 · Japanese micro-seasons', zh: (zhTrad() ? '中國七十二候' : '中国七十二候') + ' · Chinese micro-seasons', ko: '한국 칠십이후 · Korean micro-seasons' }[calSet()]); },
+  zhScript: el => { S.zhScript = el.dataset.id === 'trad' ? 'trad' : 'simp'; save(); ui.season = applySeason(); szRefresh(); themeRefresh(); },
   szOpts: () => { closeModal(true); ui.tab = 'me'; ui.profSeg = 'settings'; ui.setSeg = 'look'; render(); const c = $('#szCard'); if (c) window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 70); },
   range: el => { ui.bodyRange = +el.dataset.id; render(); },
   bodyAdd: () => { let w = num($('#bW').value); const bf = num($('#bF').value); if (w == null && bf == null) { toast('Enter weight or body fat'); return; } if (w != null && imperial()) w = w / 2.20462; S.body.push({ id: uid(), date: $('#bD').value || todayKey(), w, bf }); afterChange(); toast('Saved'); },
@@ -2956,7 +3234,7 @@ const A = {
     const f = new FormData($('#setForm')), p = S.profile;
     const h = num(f.get('height')), wasImp = imperial();
     p.name = f.get('name').trim(); p.sex = f.get('sex'); p.birthYear = +f.get('birthYear') || p.birthYear;
-    if (h) p.heightCm = wasImp ? Math.round(h * 2.54) : h;
+    p.heightCm = h > 0 ? (wasImp ? Math.round(h * 2.54) : h) : null; // empty = not given
     p.units = f.get('units');
     const oldWake = p.wake; p.wake = f.get('wake') || p.wake; p.sleep = f.get('sleep') || p.sleep;
     if (oldWake !== p.wake) { save(); boot(); } else { regenToday(); afterChange(); }
@@ -2993,7 +3271,8 @@ document.addEventListener('input', e => {
   if (k === 'dg' && ui.dg) { ui.dg[e.target.dataset.k] = num(e.target.value); $('#dgAim').innerHTML = dgAimTxt(); }
   if (k === 'fsCalc' && ui.fs) { fsRead(); $$('#fsChips .chip').forEach(b => b.classList.toggle('on', +b.dataset.id === ui.fs.len)); $('#fsEnd').innerHTML = fsEndTxt(); }
   if (k === 'fvName' && ui.fv) ui.fv.name = e.target.value;
-  if (k === 'ht') { htSet(o => { o[e.target.dataset.k] = e.target.value; }); htRefresh(false); }
+  if (k === 'pe' && ui.pe) peInput(e.target);
+  if (k === 'ht') { const f = e.target.dataset.k; let v = e.target.value; if (f === 'sub') { const c = htLines(v); if (c !== v) { const at = e.target.selectionStart; e.target.value = v = c; try { e.target.setSelectionRange(at, at); } catch (x) { } } } htSet(o => { o[f] = v; }); htRefresh(false); }
   if (k === 'be' && ui.be) { const r = ui.be.rows[+e.target.dataset.id]; if (r) r[e.target.dataset.k] = e.target.value; }
   if (k === 'cwV') { const w = e.target.closest('.cw'); w.dataset.v = Math.max(.04, +e.target.value / 100); clearTimeout(ui.cwT); ui.cwT = setTimeout(() => initWheels(w.parentNode), 40); wheelChanged(w, false); }
   if (k === 'custDim') { const v = +e.target.value; S.theme.custom = Object.assign(custOpts(), { dim: v }); $('#dimV').textContent = v + '%'; const d = $('#bg .bg-dim'); if (d) d.style.opacity = v / 100; lookKey = null; }
@@ -3027,6 +3306,10 @@ document.addEventListener('change', e => {
   if (k === 'tkExp') { const b = $('#tkForm [name=base]'); if (b) b.value = roundUnit((+b.dataset.b || 10) * EXP_MULT[t.value], 'min'); }
   if (k === 'sd' && ui.sd) { const f = t.dataset.k; ui.sd[f] = t.value || null; if (f === 'start' && !ui.sd.start) ui.sd.start = todayKey(); if (f === 'durU') $('#sdBody').innerHTML = sdBody(); else if ($('#sdEnd')) $('#sdEnd').innerHTML = sdEndTxt(); }
   if (k === 'htDate') { htSet(o => { o.date = t.value; }); htRefresh(true); }
+  if (k === 'peUnit' && ui.pe) { const it = ui.pe.items[+t.dataset.n]; it.unit = t.value; if (t.value === 'money') { it.sym = it.sym || '$'; it.grow = false; } peRefresh(); }
+  if (k === 'peFrom' && ui.pe) { const it = ui.pe.items[+t.dataset.n], N = ui.pe.tiers.length, s = +t.value, was = peFrom(it), first = it.amts[was];
+    it.amts = it.amts.map((a, i) => i < s ? null : a); if (!(it.amts[s] > 0)) it.amts[s] = first > 0 ? first : 10; if (!(it.amts[N - 1] > 0)) it.amts[N - 1] = it.amts[s]; peFill(it, N); peRefresh(); }
+  if (k === 'peGrow' && ui.pe) ui.pe.items[+t.dataset.n].grow = t.checked;
   if (k === 'sdReq' && ui.sd) { ui.sd.req = t.checked; $('#sdBody').innerHTML = sdBody(); }
   if (k === 'sdRwAll' && ui.sd) { ui.sd.reward.all = t.checked; const sc = $('#sdScope'); if (sc) sc.hidden = t.checked; }
   if (k === 'psCalc') { const r = S.rewards.find(x => x.id === ui.pass); if (r && t.value) $('#psEnd').innerHTML = psEndTxt(t.value, r); }
@@ -3037,7 +3320,7 @@ document.addEventListener('change', e => {
   if (k === 'cwV' || k === 'custDim') save();
   if (k === 'cwHex') { const m = /^#?([0-9a-f]{6})$/i.exec(t.value.trim()); if (!m) { toast('Use a hex color like #2a6fd6'); return; } const w = t.closest('.cw'), [h, s, v] = hexHsv('#' + m[1]); w.dataset.h = h; w.dataset.s = s; w.dataset.v = v; initWheels(w.parentNode); wheelChanged(w, true); }
   if (k === 'calPick') suLook(t.value);
-  if (k === 'setupUnits') { const imp = t.value === 'imperial'; $('#hw').innerHTML = imp ? '<div><label>Height (ft)</label><input name="ft" type="number" value="5"></div><div><label>Height (in)</label><input name="in" type="number" value="10"></div>' : '<div><label>Height (cm)</label><input name="cm" type="number" value="178"></div><div></div>'; $('#wlab').textContent = imp ? 'Weight (lb)' : 'Weight (kg)'; }
+  if (k === 'setupUnits') { const imp = t.value === 'imperial'; $('#hw').innerHTML = imp ? SU_HW.imperial : SU_HW.metric; $('#wlab').textContent = imp ? 'Weight (lb, optional)' : 'Weight (kg, optional)'; }
 });
 
 // remember which library folders are open across re-renders

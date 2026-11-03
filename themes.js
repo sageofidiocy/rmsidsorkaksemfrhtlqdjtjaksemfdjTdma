@@ -36,34 +36,63 @@
   /* ---------- the pictures ---------- */
   // sky: where the sky ends; gnd: where the ground / street starts (for mist, dew, splashes); base: the picture's own light
   const GEO = {
-    // street: the wet road surface (between the curbs) where the signs' reflections can show
+    // street: the wet road surface (between the curbs) where the signs' reflections can show; pos: where the picture sits
+    // when a narrow screen crops its sides (0 = left edge, 1 = right edge); dark: a dim picture (dark cards on Auto)
     cyber_ko: { sky: 560, gnd: 1190, base: 'night', avg: '#483e77', street: [[270, 1193], [540, 1193], [797, 1376], [-27, 1376]] },
     cyber_ja: { sky: 470, gnd: 1170, base: 'night', avg: '#493466', pos: .68, street: [[390, 1140], [480, 1140], [775, 1376], [-23, 1376]] },
-    cottage_ko_warm: { sky: 470, gnd: 820, avg: '#c2c7ae' }, cottage_ko_cold: { sky: 470, gnd: 820, avg: '#cfd0d1' },
-    cottage_ja_warm: { sky: 420, gnd: 860, avg: '#b1bba1' }, cottage_ja_cold: { sky: 420, gnd: 860, avg: '#c4c8c7' },
-    village_ko_warm: { sky: 330, gnd: 760, avg: '#c5cabd' }, village_ko_cold: { sky: 330, gnd: 760, avg: '#d3d6d6' },
-    village_ja_warm: { sky: 320, gnd: 940, avg: '#b9c1b3' }, village_ja_cold: { sky: 320, gnd: 940, avg: '#cbd2d4' },
-    academia_ko_warm: { sky: 560, gnd: 1130, avg: '#b9beaf' }, academia_ko_cold: { sky: 560, gnd: 1130, base: 'dusk', avg: '#796e6a' },
-    academia_ja_warm: { sky: 560, gnd: 1150, avg: '#bfc1ad' }, academia_ja_cold: { sky: 560, gnd: 1150, base: 'dusk', avg: '#756d68' },
+    // v14: mainland (keeps the big term sign on the right in view) and Hong Kong
+    cyber_zhs: { halo: [5, 2.5, .6], bloom: [9, 8, .36], sky: 590, gnd: 1210, base: 'night', avg: '#57376a', pos: .82, street: [[248, 1212], [494, 1212], [745, 1376], [40, 1376]] },
+    cyber_zht: { halo: [5, 2.5, .6], bloom: [9, 8, .36], sky: 560, gnd: 1240, base: 'night', avg: '#483160', street: [[318, 1250], [470, 1250], [640, 1376], [110, 1376]] },
+    // v14: the new European-hybrid cottages, and a picture per season where there is one (warm = summer, cold = winter)
+    cottage_ko_spring: { sky: 470, gnd: 880, avg: '#b6b89a' }, cottage_ko_warm: { sky: 470, gnd: 880, avg: '#b7b79a' }, cottage_ko_cold: { sky: 470, gnd: 880, avg: '#bbc7ce' },
+    cottage_ja_spring: { sky: 430, gnd: 870, avg: '#a1a587' }, cottage_ja_warm: { sky: 430, gnd: 870, avg: '#a3a787' }, cottage_ja_cold: { sky: 430, gnd: 870, avg: '#adb7bf' },
+    cottage_zh_spring: { sky: 430, gnd: 900, avg: '#a1ab97' }, cottage_zh_warm: { sky: 430, gnd: 900, avg: '#a3ad99' },
+    cottage_zh_fall: { sky: 430, gnd: 900, base: 'dusk', dark: 1, avg: '#786b64' }, cottage_zh_cold: { sky: 430, gnd: 900, avg: '#aec0cd' },
+    village_ko_warm: { sky: 330, gnd: 760, avg: '#c5cabd' }, village_ko_fall: { sky: 330, gnd: 760, base: 'dusk', dark: 1, avg: '#8c7976' }, village_ko_cold: { sky: 330, gnd: 760, avg: '#d3d6d6' },
+    village_ja_warm: { sky: 320, gnd: 940, avg: '#b9c1b3' }, village_ja_fall: { sky: 320, gnd: 940, base: 'dusk', dark: 1, avg: '#76625c' }, village_ja_cold: { sky: 320, gnd: 940, avg: '#cbd2d4' },
+    village_zh_warm: { sky: 290, gnd: 760, avg: '#bdc8bd' }, village_zh_fall: { sky: 290, gnd: 760, base: 'dusk', dark: 1, avg: '#827575' }, village_zh_cold: { sky: 290, gnd: 760, avg: '#cad4d8' },
+    academia_ko_spring: { sky: 560, gnd: 1130, avg: '#b5bcb2' }, academia_ko_warm: { sky: 560, gnd: 1130, avg: '#b9beaf' }, academia_ko_cold: { sky: 560, gnd: 1130, base: 'dusk', dark: 1, avg: '#796e6a' },
+    academia_ja_spring: { sky: 560, gnd: 1150, avg: '#aaaaa3' }, academia_ja_warm: { sky: 560, gnd: 1150, avg: '#bfc1ad' }, academia_ja_cold: { sky: 560, gnd: 1150, base: 'dusk', dark: 1, avg: '#756d68' },
+    academia_zh_spring: { sky: 480, gnd: 1120, avg: '#a6b29f' }, academia_zh_warm: { sky: 480, gnd: 1120, avg: '#a5b5a1' }, academia_zh_cold: { sky: 480, gnd: 1120, base: 'dusk', dark: 1, avg: '#6c6a68' },
   };
   const seasonOfTerm = ji => ji >= 2 && ji <= 7 ? 'spring' : ji >= 8 && ji <= 13 ? 'summer' : ji >= 14 && ji <= 19 ? 'autumn' : 'winter';
-  // cottage & village: the green picture from the Spring Equinox to Frost's Descent (graded gold in autumn), the snowy one
-  // from the Start of Winter to the Awakening of Insects. Academia: light academia (blossom) from the Spring Equinox through
-  // summer, dark academia from the Start of Autumn to the Awakening of Insects.
-  function picture(theme, cal, ji) {
-    if (theme === 'cyber') return `cyber_${cal}`;
-    const warm = ji >= 5 && ji <= (theme === 'academia' ? 13 : 19);
-    return `${theme}_${cal}_${warm ? 'warm' : 'cold'}`;
+  /* v14: the Chinese set (cal 'zhs' simplified / 'zht' traditional) has its own pictures: cyber_zhs (a mainland street) and
+     cyber_zht (a Hong Kong street); cottage / village / academia _zh_* are shared by both scripts. A picture set missing from
+     ZH_ART falls back to the Korean one. */
+  const ZH_ART = new Set(['cyber_zhs', 'cyber_zht', 'cottage_zh', 'village_zh', 'academia_zh']);
+  const zhKey = (theme, cal) => theme === 'cyber' ? cal : 'zh'; // cyber has one picture per script
+  const hasArt = (theme, cal) => !/^zh/.test(cal) || ZH_ART.has(theme + '_' + zhKey(theme, cal));
+  const artOf = (theme, cal) => /^zh/.test(cal) ? (hasArt(theme, cal) ? zhKey(theme, cal) : 'ko') : cal === 'ja' ? 'ja' : 'ko';
+  /* v14: a picture per season where Daniel made one. Which seasons each set has (warm = summer, cold = winter): */
+  const SEASON_ART = {
+    cottage: { ko: ['spring', 'warm', 'cold'], ja: ['spring', 'warm', 'cold'], zh: ['spring', 'warm', 'fall', 'cold'] },
+    village: { ko: ['warm', 'fall', 'cold'], ja: ['warm', 'fall', 'cold'], zh: ['warm', 'fall', 'cold'] },
+    academia: { ko: ['spring', 'warm', 'cold'], ja: ['spring', 'warm', 'cold'], zh: ['spring', 'warm', 'cold'] },
+  };
+  /* spring picture 立春..穀雨, summer 立夏..處暑, autumn 白露..立冬 (the leaves turn in September, not at 立秋), winter (snow)
+     小雪..大寒. Academia: light (spring, summer), then dark academia from 白露 (it has no separate winter picture).
+     A season with no picture of its own uses the summer one (graded gold in autumn); with no autumn picture, 立冬 is the
+     snowy one, as before. */
+  function pictureSeason(theme, a, ji) {
+    const has = x => SEASON_ART[theme][a].includes(x);
+    if (ji >= 2 && ji <= 7) return has('spring') ? 'spring' : 'warm';
+    if (ji >= 8 && ji <= 15) return 'warm';
+    if (ji >= 16 && ji <= 20) return theme === 'academia' ? 'cold' : has('fall') ? 'fall' : ji === 20 ? 'cold' : 'warm';
+    return 'cold';
   }
-  const images = (theme, cal) => theme === 'cyber' ? [`themes/cyber_${cal}.jpg`] : [`themes/${theme}_${cal}_warm.jpg`, `themes/${theme}_${cal}_cold.jpg`];
-  const thumb = (theme, cal) => `themes/t_${theme}_${cal === 'ja' ? 'ja' : 'ko'}.jpg`;
+  function picture(theme, cal, ji) {
+    const a = artOf(theme, cal);
+    return theme === 'cyber' ? `cyber_${a}` : `${theme}_${a}_${pictureSeason(theme, a, ji)}`;
+  }
+  const images = (theme, cal) => { const a = artOf(theme, cal); return theme === 'cyber' ? [`themes/cyber_${a}.jpg`] : SEASON_ART[theme][a].map(x => `themes/${theme}_${a}_${x}.jpg`); };
+  const thumb = (theme, cal) => `themes/t_${theme}_${artOf(theme, cal)}.jpg`;
 
   /* ---------- the 24 solar terms (index 0 = 小寒, like SEASONS.JEOLGI) ----------
      tod: light of the day. grade: color mood. fx: weather & life, extrapolated from what happens in that term. */
   const TERMS = [
     /* 小寒 Minor Cold   */ { tod: 'day', grade: 'icy', fx: [['snow', 60, .7], ['frost', .8], ['glint', 18]] },
     /* 大寒 Major Cold   */ { tod: 'overcast', grade: 'icy', fx: [['snow', 260, 1, 'heavy'], ['frost', 1], ['mist', .45]] },
-    /* 立春 Start of Spring */ { tod: 'morning', grade: 'thaw', fx: [['snow', 16, .5], ['glint', 20], ['mist', .35], ['petals', 14, 'plum']] },
+    /* 立春 Start of Spring */ { tod: 'morning', grade: 'thaw', fx: [['glint', 20], ['mist', .35], ['petals', 22, 'plum']] },
     /* 雨水 Rain Water   */ { tod: 'overcast', grade: 'thaw', fx: [['rain', 130, .5], ['mist', .45]] },
     /* 驚蟄 Insects Awaken */ { tod: 'storm', fx: [['rain', 200, .55], ['bolt'], ['mist', .3]] },
     /* 春分 Spring Equinox */ { tod: 'day', grade: 'spring', fx: [['petals', 46, 'cherry'], ['wind', 4, .16]] },
@@ -117,7 +146,7 @@
     if (tod === 'storm') { L.sat += full('#808080', .45); L.mult += full('#5a6272', .6); L.norm += full(lg([[0, '#3a4050', .45], [sky / H, '#3a4050', 0]])); }
     if (tod === 'night') { L.mult += full('#1c2650', dusk ? .55 : .8); L.screen += full(lg([[0, '#3040a0', .2], [1, '#3040a0', 0]])); }
   }
-  function grade(L, gr, g, cyber, coldArt) {
+  function grade(L, gr, g, cyber, coldArt, fallArt, fallSoon) {
     const k = cyber ? .5 : g.base === 'dusk' ? .5 : 1;
     if (gr === 'icy') L.soft += full('#7ab0ff', .35 * k);
     if (gr === 'thaw') L.soft += full('#ffd0a8', .22 * k);
@@ -128,7 +157,7 @@
     if (gr === 'heat') L.soft += full('#ff9a40', .38 * k), L.screen += full(lg([[0, '#ffd080', .3], [.5, '#ffd080', 0]]), k);
     if (gr === 'lateSummer') L.soft += full('#ffc070', .28 * k);
     if (gr === 'autumn' || gr === 'lateAutumn') { // turns the green picture gold / red
-      const late = gr === 'lateAutumn', a = coldArt || cyber ? .45 : 1;
+      const late = gr === 'lateAutumn', a = fallArt ? .28 : fallSoon ? .55 : coldArt || cyber ? .45 : 1; // fallSoon: a summer picture in a set with its own autumn one
       L.mult += full(late ? '#eaa070' : '#f0c080', (late ? .42 : .34) * a);
       L.soft += full(late ? '#c8402a' : '#e07030', (late ? .34 : .3) * a);
     }
@@ -263,14 +292,45 @@
       {o:[[501.5,982.3],[501.5,986.5],[502.3,987.2],[520.5,987.2],[521.2,986.5],[521.2,981.3],[520.5,980.5],[508.3,980.5],[507.1,981.5],[502.3,981.5]],c:0},  // sushiHead
       {o:[[378.1,1016.7],[400.4,1024.7],[400.4,1042.8],[377.8,1036.9]],f:[[380.6,1020.2],[397.9,1026.4],[397.9,1039.5],[380.4,1034.9]],c:0,tc:1,t:'喫茶'},  // kissa
     ],
+    cyber_zhs: [
+      {o:[[625.0,407.1],[725.5,408.8],[742.1,757.4],[636.9,756.9]],f:[[637.6,418.6],[713.2,419.8],[728.8,745.1],[648.8,744.8]],c:2,tc:1,t:'term',v:1},  // term
+      {o:[[37.8,448.7],[122.7,449.7],[112.0,760.2],[23.5,759.5]],f:[[48.8,459.3],[111.6,460.1],[101.6,749.8],[35.5,749.3]],c:0,tc:1,t:'火锅',v:1},  // food
+      {o:[[176.1,668.6],[216.7,668.7],[213.7,815.4],[172.2,815.3]],f:[[182.2,675.1],[210.8,675.2],[208.1,809.6],[178.6,809.6]],c:1,tc:0,t:'food',v:1},  // mian
+      {o:[[542.0,656.9],[592.6,657.5],[597.5,830.5],[545.6,830.5]],f:[[548.6,663.6],[586.3,664.0],[590.9,830.0],[552.1,830.0]],x:[[[536.0,813.3],[604.0,813.3],[604.0,820.2],[536.0,820.2]]],c:1,tc:2,t:'shop',v:1},  // shop
+      {o:[[253.8,765.9],[270.4,765.0],[269.5,821.1],[253.3,822.1]],f:[[256.7,768.8],[267.3,768.2],[266.5,818.3],[256.4,818.9]],c:0,tc:1,t:'酒馆',v:1},  // jiu
+      {o:[[331.3,848.4],[351.2,848.2],[350.5,922.4],[330.7,922.4]],f:[[334.2,851.4],[348.2,851.3],[347.5,919.4],[333.8,919.4]],c:2,tc:0,t:'网吧',v:1},  // wangba
+      {o:[[481.5,831.1],[707.7,831.9],[710.4,901.6],[482.7,901.3]],f:[[490.9,839.6],[699.0,840.4],[701.1,892.6],[491.8,892.4]],c:0,tc:1,t:'item'},  // item
+      {o:[[145.0,904.9],[313.6,905.4],[313.4,959.2],[144.1,959.0]],f:[[152.4,912.2],[306.3,912.6],[306.2,951.7],[151.7,951.5]],c:1,tc:0,t:'便利店'},  // bianli
+      {o:[[29.1,835.1],[120.9,914.6],[118.8,990.1],[25.0,937.7]],f:[[32.9,844.7],[116.6,917.1],[114.8,982.4],[29.4,934.7]],c:2,tc:1,t:'KTV',fs:30},  // ktv
+      {o:[[611.3,970.0],[722.3,909.6],[724.9,989.3],[613.1,1028.2]],f:[[615.6,972.8],[718.3,916.9],[720.5,986.0],[617.2,1022.0]],c:0,tc:2,t:'小籠包',fs:28},  // xiaolong
+    ],
+    cyber_zht: [
+      {o:[[119.3,356.4],[228.1,356.1],[227.6,750.4],[119.4,749.5]],f:[[127.3,364.1],[219.5,363.9],[219.1,742.3],[127.4,741.5]],c:0,tc:1,t:'term',v:1},  // term
+      {o:[[563.3,382.9],[633.8,383.3],[633.6,591.7],[563.1,591.7]],f:[[569.8,389.5],[627.3,389.7],[627.1,585.2],[569.6,585.2]],c:1,tc:0,t:'大押',v:1},  // daya
+      {o:[[409.2,666.3],[691.2,666.3],[691.5,747.5],[409.3,747.6]],f:[[417.4,673.6],[683.0,673.6],[683.2,740.0],[417.5,740.0]],c:2,tc:1,t:'item'},  // item
+      {o:[[275.9,757.1],[320.7,757.0],[320.9,949.9],[275.8,949.9]],f:[[280.9,762.1],[315.7,762.0],[315.9,944.9],[280.8,944.9]],x:[[[277.0,924.2],[277.2,925.8],[319.8,925.5],[319.5,925.0],[284.0,925.0],[282.5,924.0]],[[277.0,852.2],[277.2,853.8],[281.5,853.8],[282.2,853.0],[283.2,853.8],[284.2,853.0],[285.2,853.8],[319.8,853.5],[319.8,852.2],[319.0,851.8],[277.8,851.8]],[[277.0,850.2],[277.8,851.0],[319.0,851.0],[319.8,850.5],[319.5,850.0],[305.0,850.0],[303.5,849.0],[300.2,849.0],[299.5,849.8],[298.5,849.0],[293.2,849.0],[291.8,850.0]],[[281.0,821.2],[281.2,821.8],[282.0,821.8],[285.2,823.8],[287.0,823.8],[288.2,824.8],[289.0,824.8],[290.2,825.8],[291.5,826.0],[292.2,826.8],[294.0,826.8],[295.2,827.8],[296.0,827.8],[297.2,828.8],[298.0,828.8],[299.2,829.8],[300.5,830.0],[301.2,830.8],[303.0,830.8],[306.2,832.8],[308.0,832.8],[311.2,834.8],[312.8,834.5],[312.5,834.0],[311.8,834.0],[308.5,832.0],[306.8,832.0],[305.5,831.0],[304.8,831.0],[303.5,830.0],[302.2,829.8],[301.5,829.0],[299.8,829.0],[298.5,828.0],[297.8,828.0],[296.5,827.0],[295.2,826.8],[294.5,826.0],[292.8,826.0],[291.5,825.0],[290.8,825.0],[289.5,824.0],[288.2,823.8],[287.5,823.0],[285.8,823.0],[282.5,821.0]],[[163.0,847.0],[399.0,847.0],[399.0,929.0],[163.0,929.0]]],c:1,tc:2,t:'酒店',v:1,xs:1,tq:[[280.9,762.1],[315.7,762.0],[315.7,846.0],[280.9,846.0]]},  // jiudian
+      {o:[[172.2,860.0],[389.5,859.9],[389.7,921.2],[172.4,921.3]],f:[[179.0,867.2],[382.6,867.1],[382.7,914.2],[179.1,914.3]],c:0,tc:1,t:'茶餐廳'},  // chacan
+      {o:[[177.8,953.6],[293.4,953.6],[293.4,999.9],[177.7,999.9]],f:[[183.0,958.6],[288.4,958.6],[288.4,994.6],[183.0,994.6]],c:1,tc:0,t:'food'},  // food
+      {o:[[250.8,995.0],[371.6,993.2],[371.8,1031.4],[251.4,1031.3]],f:[[255.6,999.6],[367.1,998.0],[367.3,1026.4],[256.0,1026.3]],x:[[[295.8,999.2],[295.0,999.2],[294.8,1001.5],[293.8,1002.0],[257.2,1002.0],[257.0,1002.5],[258.5,1003.0],[259.2,1003.8],[270.5,1003.8],[271.2,1003.0],[272.5,1003.0],[273.2,1003.8],[275.5,1003.8],[277.0,1002.8],[287.8,1002.8],[289.2,1003.8],[291.5,1003.8],[293.0,1002.8],[295.8,1002.5]],[[175.0,951.0],[295.0,951.0],[295.0,1003.0],[175.0,1003.0]]],c:2,tc:0,t:'BAR',xs:1},  // bar
+      {o:[[476.8,834.7],[511.5,834.6],[511.7,990.5],[476.9,990.0]],f:[[481.6,839.7],[507.0,839.6],[507.2,985.9],[481.6,985.6]],c:0,tc:2,t:'藥房',v:1},  // yaofang
+      {o:[[550.5,776.0],[611.4,776.0],[611.4,979.4],[550.6,979.2]],f:[[556.8,781.8],[605.2,781.8],[605.1,972.9],[556.8,972.7]],c:1,tc:0,t:'shop',v:1},  // shop
+      {o:[[412.8,1021.0],[547.3,1020.9],[547.3,1060.7],[412.7,1060.7]],f:[[417.8,1026.7],[542.3,1026.6],[542.3,1055.2],[417.7,1055.2]],c:2,tc:1,t:'麻雀'},  // maque
+      {o:[[177.7,1077.5],[250.4,1077.4],[250.4,1110.8],[177.6,1111.2]],f:[[182.7,1082.5],[245.1,1082.4],[245.1,1106.0],[182.6,1106.4]],c:0,tc:1,t:'粥麵'},  // zhou
+      {o:[[589.6,1069.6],[668.3,1069.6],[668.3,1105.2],[589.5,1105.3]],f:[[594.8,1074.9],[662.8,1074.9],[662.8,1100.0],[594.8,1100.0]],c:1,tc:2,t:'找换'},  // zhaohuan
+      {o:[[92.4,1074.6],[170.3,1107.9],[170.3,1137.9],[92.4,1113.6]],f:[[95.2,1079.1],[167.5,1110.0],[167.6,1133.9],[95.2,1111.3]],c:2,tc:0,t:'燒臘',fs:20},  // shaola
+    ],
   };
   const SIGN_WORDS = {
     ko: { spring: { food: '딸기', shop: '꽃집', item: '벚꽃' }, summer: { food: '빙수', shop: '냉면', item: '수박' }, autumn: { food: '군밤', shop: '전어', item: '단풍' }, winter: { food: '호떡', shop: '어묵', item: '군고구마' } },
     ja: { spring: { food: '花見', item: '団子', one: '桜' }, summer: { food: 'かき氷', item: '冷麺', one: '氷' }, autumn: { food: '月見', item: '焼栗', one: '月' }, winter: { food: 'おでん', item: '焼芋', one: '鍋' } },
+    // v14 Chinese: the mainland street in simplified (Chongqing: 火锅 has its own sign all year), Hong Kong in traditional
+    zhs: { spring: { food: '草莓', shop: '花店', item: '樱花' }, summer: { food: '冰粉', shop: '凉茶', item: '西瓜' }, autumn: { food: '栗子', shop: '月饼', item: '大闸蟹' }, winter: { food: '糖葫芦', shop: '烤串', item: '烤红薯' } },
+    zht: { spring: { food: '草莓', shop: '花店', item: '櫻花' }, summer: { food: '涼茶', shop: '冰室', item: '西瓜' }, autumn: { food: '栗子', shop: '月餅', item: '大閘蟹' }, winter: { food: '火鍋', shop: '煲仔飯', item: '烤番薯' } },
   };
   const NEON = { spring: ['#ff6fae', '#86d846', '#ffcf40'], summer: ['#2ef2ff', '#1fd696', '#ff5ad8'], autumn: ['#ffb02e', '#ff5a3d', '#ffcc48'], winter: ['#7ab8ff', '#c08aff', '#46d8c0'] };
   const lumOf = c => { const v = rgb(c).map(x => { x /= 255; return x <= .03928 ? x / 12.92 : Math.pow((x + .055) / 1.055, 2.4); }); return .2126 * v[0] + .7152 * v[1] + .0722 * v[2]; };
-  const FONT = { ko: "'Noto Sans KR','Noto Sans CJK KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif", ja: "'Noto Sans JP','Noto Sans CJK JP','Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif" };
+  const FONT = { ko: "'Noto Sans KR','Noto Sans CJK KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif", ja: "'Noto Sans JP','Noto Sans CJK JP','Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif",
+    zhs: "'Noto Sans SC','Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif", zht: "'Noto Sans HK','Noto Sans TC','Noto Sans CJK HK','Noto Sans CJK TC','PingFang HK','PingFang TC','Microsoft JhengHei',sans-serif" };
   // square -> quad (TL, TR, BR, BL), projective (Heckbert), so letters follow a panel seen in perspective
   function homog(q) {
     const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q, dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
@@ -283,23 +343,27 @@
   const boxOf = pts => { const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), x = Math.min(...xs), y = Math.min(...ys); return [x, y, Math.max(...xs) - x, Math.max(...ys) - y]; };
   const adv = ch => /[\u0000-ɏ]/.test(ch) ? .62 : 1; // Latin letters are narrower than hangul / kanji / kana
   function signs(L, pic, cal, ji, season) {
-    const pal = NEON[season], words = SIGN_WORDS[cal][season], J = window.SEASONS, font = FONT[cal];
-    const termHj = cal === 'ja' ? J.JA.TERMS[ji][0] : J.JEOLGI[ji][0], termKo = J.JEOLGI[ji][1], kana = cal === 'ja' ? J.JA.TERMS[ji][1] : '';
-    let halos = '', frames = ''; const hb = [];
+    const pal = NEON[season], words = SIGN_WORDS[cal][season], J = window.SEASONS, font = FONT[cal], zh = /^zh/.test(cal);
+    const termHj = cal === 'ja' ? J.JA.TERMS[ji][0] : zh ? J.ZH.TERMS[ji][cal === 'zht' ? 1 : 0] : J.JEOLGI[ji][0], termKo = J.JEOLGI[ji][1], kana = cal === 'ja' ? J.JA.TERMS[ji][1] : '';
+    let halos = '', frames = '', bloom = ''; const hb = [];
+    // the recolored spill around each tube: [stroke, blur, opacity]. The China signs sit in dark metal boxes, so their spill
+    // stays tight (a wide one turned the box edges a muddy color)
+    const hl = (GEO[pic] || {}).halo || [14, 9, .5], bl = (GEO[pic] || {}).bloom || [16, 11, .42]; // bloom: the glow around the sign
     SIGNS[pic].forEach((sg, si) => {
       const col = pal[sg.c], hotF = lumOf(col) > .5, ob = boxOf(sg.o);
       // the mask that keeps things painted in front of the panel uncovered (only as big as the panel, so it stays cheap)
       const occ = sg.x ? (() => { const id = 'sx' + (N++), [x, y, w, h] = [ob[0] - 3, ob[1] - 3, ob[2] + 6, ob[3] + 6];
         defs += `<mask id="${id}" maskUnits="userSpaceOnUse" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}">${RC(x, y, w, h, '#fff')}<path d="${sg.x.map(poly).join(' ')}" fill="#000" fill-rule="evenodd"/></mask>`; return ` mask="url(#${id})"`; })() : '';
       // the frame, recolored for the season: a soft spill of light on the wall, then the exact lit outline (no blur, no gap)
-      halos += P(poly(sg.o), col) + S(poly(sg.o), col, 14, .6); hb.push(...sg.o);
+      halos += P(poly(sg.o), col) + S(poly(sg.o), col, hl[0], .6); hb.push(...sg.o); bloom += S(poly(sg.o), col, bl[0], .9);
       frames += sg.x ? `<g${occ}>${P(poly(sg.o), col)}</g>` : P(poly(sg.o), col);
       if (!sg.f) return; // a lit strip with no face (the sushi bar's header)
       REFL.push({ x: ob[0] + ob[2] / 2, w: ob[2], col });
       const tc = pal[sg.tc ?? (sg.c + 1) % 3], hotT = lumOf(tc) > .5, q = sg.tq || sg.f, M = homog(q);
       const w = (dist(q[0], q[1]) + dist(q[3], q[2])) / 2, h = (dist(q[0], q[3]) + dist(q[1], q[2])) / 2, small = Math.min(w, h) < 16;
-      // a dark face for the tubes to glow on (dimmer frames for the glary colors)
-      L.mult += `<g${sg.xs ? occ : ''}>${P(poly(sg.f), '#160c26', .9)}${hotF ? `<path d="${poly(sg.o)} ${poly(sg.f)}" fill="#7a7a86" fill-rule="evenodd" opacity=".75"/>` : ''}</g>`;
+      // v14: a backlit face instead of a near-black one: dimmed a little and tinted with the frame's color (so the letters
+      // still read), then lit from inside in the screen layer below (dimmer frames for the glary colors)
+      L.mult += `<g${sg.xs ? occ : ''}>${P(poly(sg.f), mix(col, '#1c1030', .84), .78)}${hotF ? `<path d="${poly(sg.o)} ${poly(sg.f)}" fill="#7a7a86" fill-rule="evenodd" opacity=".75"/>` : ''}</g>`;
       const cid = 'sc' + (N++); defs += `<clipPath id="${cid}"><path d="${poly(sg.f)}"/></clipPath>`;
       const at = (x, y) => { const p = M(x / w, y / h), ex = M((x + .5) / w, y / h), ey = M(x / w, (y + .5) / h);
         return `matrix(${f3((ex[0] - p[0]) * 2)} ${f3((ex[1] - p[1]) * 2)} ${f3((ey[0] - p[0]) * 2)} ${f3((ey[1] - p[1]) * 2)} ${f(p[0])} ${f(p[1])})`; };
@@ -324,30 +388,37 @@
       const tAttr = (fill, stroke) => `font-family="${font}" font-weight="${cal === 'ko' ? 700 : 800}" fill="${fill}" stroke="${stroke}" stroke-linejoin="round" paint-order="stroke" text-anchor="middle" dominant-baseline="central"`;
       const fb = boxOf(sg.f);
       // a tight glow (not a haze), then a bright core with a thin colored edge; all of it stays on the face, behind anything in front
-      L.screen += `<g clip-path="url(#${cid})"${occ}>${P(poly(sg.f), tc, .05)}<g ${blur(small ? .9 : 2, fb)} opacity="${hotT ? .32 : .55}" ${tAttr(tc, tc)}>${lay(.12)}</g><g ${blur(small ? .35 : .7, fb)} opacity="${hotT ? .5 : .8}" ${tAttr(tc, tc)}>${lay(.05)}</g></g>`;
+      // lit from inside: an even wash of the frame's color, brighter along the edges where the tube is (the middle,
+      // behind the letters, stays deeper so they still read)
+      const fb0 = boxOf(sg.f), glowFace = P(poly(sg.f), col, .1) + `<g ${blur(small ? 1.5 : 4, fb0)}>${S(poly(sg.f), col, small ? 3 : 9, .55)}</g>`;
+      // a soft shadow under the letters on the lit face, so they stand off it
+      L.mult += `<g clip-path="url(#${cid})"${occ}><g ${blur(small ? .8 : 2.2, fb)} opacity="${small ? .25 : .4}" ${tAttr('#2a1838', '#2a1838')}>${lay(.22)}</g></g>`;
+      L.screen += `<g clip-path="url(#${cid})"${occ}>${glowFace}${P(poly(sg.f), tc, .05)}<g ${blur(small ? .9 : 2, fb)} opacity="${hotT ? .32 : .55}" ${tAttr(tc, tc)}>${lay(.12)}</g><g ${blur(small ? .35 : .7, fb)} opacity="${hotT ? .5 : .8}" ${tAttr(tc, tc)}>${lay(.05)}</g></g>`;
       L.text += `<g clip-path="url(#${cid})"${occ} ${tAttr(hotT ? mix(tc, '#ffffff', .12) : mix(tc, '#ffffff', .5), hotT ? shade(tc, -.25) : tc)}>${lay(small ? .025 : .035)}</g>`;
     });
     const b = boxOf(hb); // all the spills blurred together (one filter), then every exact frame on top (a neighbor's spill never tints a panel)
-    L.color += `<g ${blur(9, [b[0] - 7, b[1] - 7, b[2] + 14, b[3] + 14])} opacity=".5">${halos}</g>` + frames;
+    L.color += `<g ${blur(hl[1], [b[0] - 7, b[1] - 7, b[2] + 14, b[3] + 14])} opacity="${hl[2]}">${halos}</g>` + frames;
+    // v14: the glow: a soft bloom of every frame's color on the wall around it (light added, not just recolored)
+    L.screen += `<g ${blur(bl[1], [b[0] - 14, b[1] - 14, b[2] + 28, b[3] + 28])} opacity="${bl[2]}">${bloom}</g>`;
   }
 
   /* ---------- assemble ---------- */
   const ORDER = [['mult', 'multiply'], ['sat', 'saturation'], ['soft', 'soft-light'], ['color', 'color'], ['screen', 'screen'], ['text', 'normal'], ['norm', 'normal']];
   const wrap = body => `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice"><defs>${defs}</defs>${body}</svg>`;
   function render(theme, cal, ji) {
-    cal = cal === 'ja' ? 'ja' : 'ko'; ji = ((+ji || 0) % 24 + 24) % 24; if (!LIST.includes(theme)) theme = 'cyber';
-    const pic = picture(theme, cal, ji), g = GEO[pic], T = TERMS[ji], season = seasonOfTerm(ji), cy = theme === 'cyber', coldArt = /_cold$/.test(pic);
+    cal = ['ja', 'zhs', 'zht'].includes(cal) ? cal : 'ko'; ji = ((+ji || 0) % 24 + 24) % 24; if (!LIST.includes(theme)) theme = 'cyber';
+    const pic = picture(theme, cal, ji), g = GEO[pic], T = TERMS[ji], season = seasonOfTerm(ji), cy = theme === 'cyber', coldArt = /_cold$/.test(pic), fallArt = /_fall$/.test(pic);
     seed = 7 + ji * 7919 + LIST.indexOf(theme) * 104729 + (cal === 'ja' ? 31337 : 0); defs = ''; N = 0; REFL = [];
     const L = { mult: '', sat: '', soft: '', color: '', screen: '', text: '', norm: '' };
-    light(L, T.tod, g, cy); if (T.grade) grade(L, T.grade, g, cy, coldArt);
+    light(L, T.tod, g, cy); if (T.grade) grade(L, T.grade, g, cy, coldArt, fallArt, !cy && /_warm$/.test(pic) && SEASON_ART[theme][artOf(theme, cal)].includes('fall'));
     if (cy) signs(L, pic, cal, ji, season);
     T.fx.forEach(([name, ...a]) => FX[name](L, g, cy, ...a));
     const layers = []; ORDER.forEach(([k, blend]) => { if (L[k]) { if (blend === 'normal' && layers.length && layers[layers.length - 1].blend === 'normal') layers[layers.length - 1].body += L[k]; else layers.push({ blend, body: L[k] }); } });
-    const light2 = theme === 'cyber' ? false : theme === 'academia' ? !coldArt : true;
+    const light2 = theme === 'cyber' ? false : !g.dark; // v14: dim pictures (dark academia, the autumn evenings) get dark cards
     return {
       img: `themes/${pic}.jpg`, pic, pos: g.pos ?? .5, layers: layers.map(l => ({ blend: l.blend, svg: wrap(l.body) })),
       ui: { tint: TOD_TINT[T.tod] && !cy ? mix(g.avg, TOD_TINT[T.tod], .35) : g.avg, accent: ACCENT[theme][season], light: light2 },
     };
   }
-  window.THEMEFX = { render, images, thumb, picture, LIST, W, H, TERMS };
+  window.THEMEFX = { render, images, thumb, picture, hasArt, LIST, W, H, TERMS };
 })();

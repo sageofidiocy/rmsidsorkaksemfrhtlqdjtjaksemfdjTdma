@@ -14,6 +14,8 @@ Press Start 2P: Copyright 2012 The Press Start 2P Project Authors (cody@zone38.n
 VT323: Copyright 2011, The VT323 Project Authors (peter.hull@oikoi.com)
 Cormorant Garamond: Copyright 2015 The Cormorant Project Authors (github.com/CatharsisFonts/Cormorant) CormorantGaramond-Italic[wght].ttf: Copyright 2015 The Cormorant Project Authors (github.com/CatharsisFonts/Cormorant)
 Fredoka: Copyright 2016 The Fredoka Project Authors (https://github.com/hafontia/Fredoka-One)
+Michroma: Copyright 2011 The Michroma Project Authors (https://github.com/googlefonts/Michroma-font)
+Nixie One: Copyright (c) 2011, Jovanny Lemonad (lemonad@jovanny.ru), with Reserved Font Name "Nixie"
 Comic Neue: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-LightItalic.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-Regular.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-Italic.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-Bold.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue) ComicNeue-BoldItalic.ttf: Copyright 2014 The Comic Neue Project Authors (https://github.com/crozynski/comicneue)
 
 Full license text:
