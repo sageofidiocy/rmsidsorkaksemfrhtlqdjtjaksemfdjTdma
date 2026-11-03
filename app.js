@@ -4,7 +4,7 @@ const { ACTIVITIES, SKILLS, FOLDERS, BELTS, NORMS, CEFR, CEFR_PCT, RATING_PCT, R
 let ACT = {}, ACTS = []; // built-in + the user's own workout types (rebuildACT)
 const TASK_DEF = Object.fromEntries(TASKS.map(t => [t.id, t]));
 const STORE = 'ascent.v1';
-const LIST_ORDER = ['Penalty', 'Faith', 'Morning', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Chores', 'Nutrition'];
+const LIST_ORDER = ['Penalty', 'Due today', 'Faith', 'Morning', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Chores', 'Nutrition'];
 const DAY_CAP = 1440; // most minutes any one skill (or side quest, or all workouts) can log in one day: 24 h
 const DIET_BAND = { cut: [0.90, 1.05], maintain: [0.90, 1.10], bulk: [0.95, 1.10] };
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -47,6 +47,10 @@ const ICON = {
   gift: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="9" width="17" height="11.5" rx="1.5"/><path d="M2.5 9h19M12 9v11.5M12 9c-3-4.5-7-3-5.5-.5C7.4 9.5 12 9 12 9zm0 0c3-4.5 7-3 5.5-.5C16.6 9.5 12 9 12 9z"/></svg>',
   img: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M5.5 16l4-4.5 3 3 2-2 4 4"/><circle cx="14.5" cy="7.5" r="1.4"/></svg>',
   minus: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg>',
+  up: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 17l6-6 4 4 7-7.5"/><path d="M15.5 7.5h5v5"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg>',
+  coin: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="6" opacity=".45"/><path d="M12 8l1.2 2.8 2.8 1.2-2.8 1.2L12 16l-1.2-2.8L8 12l2.8-1.2z" fill="currentColor" stroke="none"/></svg>',
+  saver: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2.8l7.5 3v5.8c0 4.6-3.2 8-7.5 9.9-4.3-1.9-7.5-5.3-7.5-9.9V5.8z"/><path d="M12 7.6c.7 2.2 3 3.1 3 6.1a3 3 0 0 1-6 0c0-1.4.7-2.2 1.1-2.9.2.9.6 1.5 1.1 1.7-.2-1.9.1-3.6.8-4.9z" fill="currentColor" stroke="none"/></svg>',
 };
 
 /* ---------- state ---------- */
@@ -138,6 +142,9 @@ const activeTasks = () => Object.values(S.tasks || {}).filter(t => t.active && !
 function migrate() {
   if (!S.tasks) S.tasks = {}; if (!S.side) S.side = []; if (!S.rewards) S.rewards = [];
   ['folders', 'hideSk', 'hideTk', 'customActs'].forEach(k => { if (!Array.isArray(S[k])) S[k] = []; }); if (!S.belts || typeof S.belts !== 'object') S.belts = {};
+  // v11: coins (1 per perfect day; perfect days you already had count) and Streak Savers bought with them
+  if (typeof S.coins !== 'number') S.coins = (S.stats && S.stats.perfect) || 0;
+  if (typeof S.savers !== 'number') S.savers = 0;
   if ((S.v || 0) >= 3) return;
   S.v = 3;
   if (!S.setup) return;
@@ -201,6 +208,9 @@ const THEME_LIST = [
 const termTheme = id => window.THEMEFX && THEMEFX.LIST.includes(id);
 const themeId = () => { const id = (S.theme && S.theme.id) || 'seasonal'; return THEME_LIST.some(t => t[0] === id && !t[3]) ? id : 'seasonal'; };
 const custOpts = () => Object.assign({ mode: 'color', bg: '#22304a', accent: '#e8a85c', cards: 'auto', dim: 20, tint: null }, (S.theme && S.theme.custom) || {});
+/* v11: every theme has Auto / Light / Dark (cards, text and icons). Custom keeps it in custom.cards; the others in S.theme.cards[id] */
+const cardsPref = id => id === 'custom' ? custOpts().cards : (((S.theme && S.theme.cards) || {})[id] || 'auto');
+const SEASON_TINT = { spring: '#8fae9c', summer: '#7fb0b0', autumn: '#c09a78', winter: '#9aa8c0' }; // light look for the Seasonal theme
 /* color helpers for building a UI palette from any color */
 const hexRgb = h => { h = String(h || '#000').replace('#', ''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); const v = parseInt(h, 16) || 0; return [v >> 16 & 255, v >> 8 & 255, v & 255]; };
 const rgbHex = a => '#' + a.map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
@@ -224,39 +234,94 @@ function setVars(v, light) {
   const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = v.bg;
 }
 function setBg(html) { $('#bg').innerHTML = html; }
+/* v13: the background (above) and the UI style are separate choices. applyLook draws the background and works out the
+   background's palette; applyUi() then applies the UI style: its own colors (styles with pal) or the background's, then
+   your colors for that style (cards / buttons & icons / highlights), and sets html[data-sty] for the style's CSS. */
+let themeR = null, themeRKey = null, uiKey = null, curBase = null;
 function applyLook(si) {
-  const id = themeId(); document.documentElement.dataset.season = si.season; document.documentElement.dataset.theme = id;
+  const id = themeId(), root = document.documentElement; root.dataset.season = si.season; root.dataset.theme = id;
+  let pal, light;
   if (id === 'custom') {
-    const o = custOpts(), photo = o.mode === 'photo' && custPhoto.url, light = o.cards === 'light' || (o.cards === 'auto' && !photo && lumHex(o.bg) > .45);
-    const key = ['custom', o.mode, o.bg, o.accent, o.cards, o.dim, photo ? custPhoto.url : ''].join('|');
-    if (lookKey === key) return;
-    lookKey = key; bgIdx = null; curSeason = null; bgSvg = '';
-    setVars(uiPalette(photo ? (o.tint || '#2a3140') : o.bg, o.accent, light), light);
-    setBg(photo ? `<img src="${custPhoto.url}" alt=""><div class="bg-dim" style="opacity:${clamp(o.dim, 0, 70) / 100}"></div>` : `<div class="bg-solid" style="background:${esc(o.bg)}"></div>`);
-    return;
+    const o = custOpts(), photo = o.mode === 'photo' && custPhoto.url; light = o.cards === 'light' || (o.cards === 'auto' && !photo && lumHex(o.bg) > .45);
+    pal = uiPalette(photo ? (o.tint || '#2a3140') : o.bg, o.accent, light);
+    const key = ['custom', o.mode, o.bg, o.dim, photo ? custPhoto.url : ''].join('|');
+    if (lookKey !== key) {
+      lookKey = key; bgIdx = null; bgSvg = ''; themeLook = null;
+      setBg(photo ? `<img src="${custPhoto.url}" alt=""><div class="bg-dim" style="opacity:${clamp(o.dim, 0, 70) / 100}"></div>` : `<div class="bg-solid" style="background:${esc(o.bg)}"></div>`);
+    }
+  } else if (termTheme(id)) {
+    const key = ['term', id, calSet(), si.ji].join('|');
+    if (themeRKey !== key) { themeRKey = key; themeR = THEMEFX.render(id, calSet(), si.ji); }
+    const r = themeR, pref = cardsPref(id); light = pref === 'auto' ? r.ui.light : pref === 'light'; themeLook = r;
+    pal = uiPalette(r.ui.tint, r.ui.accent, light);
+    if (lookKey !== key) {
+      lookKey = key; bgIdx = null; bgSvg = '';
+      themeUrls.forEach(u => URL.revokeObjectURL(u)); themeUrls = r.layers.map(l => URL.createObjectURL(new Blob([l.svg], { type: 'image/svg+xml' })));
+      const pos = `object-position:${Math.round(r.pos * 100)}% 50%`;
+      setBg(`<img src="${r.img}" alt="" style="${pos}">` + r.layers.map((l, i) => `<img src="${themeUrls[i]}" alt="" style="${pos};mix-blend-mode:${l.blend}">`).join(''));
+      themePrefetch(id);
+    }
+  } else {
+    themeLook = null;
+    if (lookKey && !lookKey.startsWith('seasonal')) bgIdx = null;
+    lookKey = 'seasonal'; light = cardsPref('seasonal') === 'light';
+    pal = light ? uiPalette(SEASON_TINT[si.season], THEMES[si.season].ac, true) : Object.assign({}, THEMES[si.season], UI_DARK_TEXT);
+    const bgKey = si.idx + ':' + calSet();
+    if (bgIdx !== bgKey) { // drawn once into an <img> (cheap to composite under the blurred cards)
+      bgSvg = SCENES.render(si.h[3], si.season, si.idx, calSet()); bgIdx = bgKey;
+      try { if (bgUrl) URL.revokeObjectURL(bgUrl); bgUrl = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' })); setBg(`<img src="${bgUrl}" alt="">`); }
+      catch (e) { setBg(bgSvg); }
+    }
   }
-  if (termTheme(id)) {
-    const key = ['term', id, calSet(), si.ji].join('|'); if (lookKey === key) return;
-    lookKey = key; bgIdx = null; curSeason = null; bgSvg = '';
-    const r = THEMEFX.render(id, calSet(), si.ji); themeLook = r;
-    setVars(uiPalette(r.ui.tint, r.ui.accent, r.ui.light), r.ui.light);
-    themeUrls.forEach(u => URL.revokeObjectURL(u)); themeUrls = r.layers.map(l => URL.createObjectURL(new Blob([l.svg], { type: 'image/svg+xml' })));
-    const pos = `object-position:${Math.round(r.pos * 100)}% 50%`;
-    setBg(`<img src="${r.img}" alt="" style="${pos}">` + r.layers.map((l, i) => `<img src="${themeUrls[i]}" alt="" style="${pos};mix-blend-mode:${l.blend}">`).join(''));
-    themePrefetch(id);
-    return;
-  }
-  themeLook = null;
-  if (lookKey && !lookKey.startsWith('seasonal')) { bgIdx = null; curSeason = null; }
-  lookKey = 'seasonal';
-  if (curSeason !== si.season) { setVars(Object.assign({}, THEMES[si.season], UI_DARK_TEXT), false); curSeason = si.season; }
-  const bgKey = si.idx + ':' + calSet();
-  if (bgIdx !== bgKey) { // drawn once into an <img> (cheap to composite under the blurred cards)
-    bgSvg = SCENES.render(si.h[3], si.season, si.idx, calSet()); bgIdx = bgKey;
-    try { if (bgUrl) URL.revokeObjectURL(bgUrl); bgUrl = URL.createObjectURL(new Blob([bgSvg], { type: 'image/svg+xml' })); setBg(`<img src="${bgUrl}" alt="">`); }
-    catch (e) { setBg(bgSvg); }
-  }
+  curBase = { pal, light };
+  // is the picture itself bright? (text outside the cards needs a stronger veil when the UI's brightness disagrees with it)
+  root.dataset.bgl = id === 'custom' ? (lumHex(custOpts().mode === 'photo' && custPhoto.url ? custOpts().tint || '#2a3140' : custOpts().bg) > .45 ? '1' : '0') : termTheme(id) && themeR && themeR.ui.light ? '1' : '0';
+  applyUi();
 }
+/* ---------- UI styles (v13) ----------
+   pal = the style's own colors (used unless "Colors from: My background"); bg = the background it is matched with by
+   "Match my background". Fonts live in fonts/ (Latin subsets, SIL OFL; fonts/LICENSE.txt) and are cached by sw.js. */
+const UI_STYLES = [
+  { id: 'classic', n: 'Classic', d: 'Frosted glass cards and clean type. The original look.' },
+  { id: 'retro', n: 'Retro Tech', d: 'Boxy chamfered panels, CRT scanlines and terminal type.', bg: 'cyber' },
+  { id: 'illum', n: 'Illuminated', d: 'A medieval manuscript: blackletter titles, drop caps, gold rules.', bg: 'academia', pal: { card: '#f1e4c6', bg: '#cdb88b', accent: '#8c2a1c', gold: '#93700f', light: true, alpha: .93 } },
+  { id: 'ink', n: 'Ink & Brush', d: 'Rice paper, brush-written titles and vermilion seals.', bg: 'village', pal: { card: '#f4efe3', bg: '#d6cdbb', accent: '#1f1c19', gold: '#bb3a26', light: true, alpha: .92 } },
+  { id: 'story', n: 'Storybook', d: 'Stitched cottage cards, a soft serif and garden colors.', bg: 'cottage', pal: { card: '#fbf5e6', bg: '#e3d8bc', accent: '#55854a', gold: '#b0642a', light: true, alpha: .9 } },
+  { id: 'analog', n: 'Analog', d: 'A paper planner: ruled pages, typewriter ink and washi tape.', pal: { card: '#fbfaf3', bg: '#e6e0d0', accent: '#2c4f9e', gold: '#c0392b', light: true, alpha: .97 } },
+  { id: 'system', n: 'System', d: 'Manhwa status windows: glowing frames, brackets and system alerts.', pal: { card: '#0b1834', bg: '#040a18', accent: '#47c9ff', gold: '#ffd166', light: false, alpha: .84 } },
+  { id: 'pixel', n: 'Pixel Quest', d: '8-bit RPG menus: pixel frames, pixel fonts and a menu cursor.', pal: { card: '#1d2b8f', bg: '#0b1240', accent: '#ffd84a', gold: '#ffd84a', light: false, alpha: .95, extra: { tx: '#f4f4f4', mu: '#c3c8f0', mu2: '#8f97d6' } } },
+  { id: 'otome', n: 'Otome', d: 'Romance-game elegance: a script serif, framed cards and a little sparkle.', pal: { card: '#fff6f4', bg: '#ecd9da', accent: '#b4566f', gold: '#a87d52', light: true, alpha: .9 } },
+  { id: 'pastel', n: 'Pastel Pop', d: 'Bubbly sticker cards, rounded type and candy colors.', pal: { card: '#ffffff', bg: '#fde6f1', accent: '#f0609f', gold: '#f08a1c', light: true, alpha: .93, extra: { line: '#f8d3e4', line2: '#f0acc9' } } },
+  { id: 'minimal', n: 'Minimal', d: 'Flat, solid cards with no blur. Easiest to read and lightest on battery.' },
+  { id: 'web1', n: 'Web 1.0', d: 'Just for laughs: Comic Neue, WordArt, beveled buttons and a visitor counter.', joke: true, pal: { card: '#c0c0c0', bg: '#008080', accent: '#000080', gold: '#b000b0', light: true, alpha: 1, extra: { tx: '#000000', mu: '#303030', mu2: '#505050', line: '#808080', line2: '#404040' } } },
+];
+const STYLE = Object.fromEntries(UI_STYLES.map(x => [x.id, x]));
+const lookOpts = () => { const L = Object.assign({ style: 'auto', own: {}, colors: {} }, S.look || {}); L.own = L.own || {}; L.colors = L.colors || {}; return L; };
+const matchStyle = tid => (UI_STYLES.find(x => x.bg === tid) || STYLE.classic).id;
+const styleId = () => { const L = lookOpts(); return L.style === 'auto' ? matchStyle(themeId()) : STYLE[L.style] ? L.style : 'classic'; };
+const useOwn = (sid, auto = lookOpts().style === 'auto') => { const L = lookOpts(); return !!STYLE[sid].pal && (L.own[sid] != null ? !!L.own[sid] : !auto); }; // Match: the background's colors by default
+const txFor = light => light ? { tx: '#2a2622', mu: '#6a625a', mu2: '#978e84' } : UI_DARK_TEXT;
+function cardPal(card, light, alpha = .86) { // every surface color from one card color
+  const k = light ? '#000000' : '#ffffff', s2 = mixHex(card, k, light ? .05 : .08);
+  return Object.assign({ bg: mixHex(card, '#000000', light ? .1 : .45), s1: rgbaHex(card, alpha), s1s: card, s2, line: mixHex(card, k, .12), line2: mixHex(card, k, .22), bar: rgbaHex(card, .92) }, txFor(light));
+}
+const accPal = (ac, light) => ({ ac, ac2: mixHex(ac, light ? '#ffffff' : '#000000', .25), acA: rgbaHex(ac, light ? .12 : .14) });
+function uiFor(sid, auto, base = curBase) { // the palette a style gets with the current background and your colors
+  const st = STYLE[sid], c = lookOpts().colors[sid] || {}, own = useOwn(sid, auto);
+  let v = Object.assign({}, base ? base.pal : THEMES.winter), lt = base ? base.light : false;
+  if (own) { const p = st.pal; lt = p.light; v = Object.assign(cardPal(p.card, lt, p.alpha), { bg: p.bg }, accPal(p.accent, lt), { gold: p.gold }, p.extra || {}); }
+  if (c.card) { const was = v; lt = lumHex(c.card) > .22; v = Object.assign({}, was, cardPal(c.card, lt, own ? st.pal.alpha : .86)); if (!c.accent) Object.assign(v, accPal(was.ac, lt)); }
+  if (c.accent) Object.assign(v, accPal(c.accent, lt));
+  if (c.gold) v.gold = c.gold;
+  v.acB = rgbaHex(v.ac, .5); v.acG = rgbaHex(v.ac, .35); v['ac-tx'] = lumHex(v.ac) > .2 ? '#10161a' : '#ffffff';
+  v.goldA = rgbaHex(v.gold, .16); v.goldB = rgbaHex(v.gold, .5);
+  return { v, lt };
+}
+function applyUi() {
+  const sid = styleId(), u = uiFor(sid), key = sid + JSON.stringify(u); if (key === uiKey) return; uiKey = key;
+  setVars(u.v, u.lt); document.documentElement.dataset.sty = sid;
+}
+const pvVars = v => ['bg', 's1', 's1s', 's2', 'line', 'line2', 'ac', 'ac2', 'acA', 'acB', 'acG', 'ac-tx', 'gold', 'goldA', 'goldB', 'tx', 'mu', 'mu2', 'bar'].map(k => `--${k}:${v[k]}`).join(';');
 /* the custom photo lives in IndexedDB (too big for localStorage); a data-URL copy rides along in backups */
 const IDB = {
   db: null,
@@ -386,6 +451,72 @@ function seasonHero(si, preview) {
     <div class="sz-d">${date}</div>
   </div>${!preview && ui.previewHu != null ? `<div class="preview row"><span class="sp small">Previewing another micro-season</span><button class="btn-s" data-a="seasonReset">Back to today</button></div>` : ''}`;
 }
+/* ---------- Home text (v11): season names, the date & time, or your own words; works with every theme ----------
+   S.homeText = null (season names) | { mode 'season'|'clock'|'custom', main, sub, time '12'|'24'|'off', date (HT_DATES id) } */
+const htOpts = () => Object.assign({ mode: 'season', main: '', sub: '', time: '12', date: 'long' }, S.homeText || {});
+const HT_MODES = [['season', 'Season names'], ['clock', 'Date & time'], ['custom', 'My own words']];
+const HT_TIMES = [['12', '12-hour'], ['24', '24-hour'], ['off', 'No time']];
+const HT_DATES = ['long', 'med', 'short', 'us', 'eu', 'iso', 'ko', 'ja', 'off'];
+const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WDL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function htDate(d, f) {
+  const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate(), w = d.getDay();
+  switch (f) {
+    case 'long': return `${WDL[w]}, ${MON[m]} ${dd}`;
+    case 'med': return `${WDL[w].slice(0, 3)}, ${MON[m].slice(0, 3)} ${dd}, ${y}`;
+    case 'short': return `${MON[m]} ${dd}, ${y}`;
+    case 'us': return `${pad(m + 1)}/${pad(dd)}/${y}`;
+    case 'eu': return `${pad(dd)}/${pad(m + 1)}/${y}`;
+    case 'iso': return `${y}-${pad(m + 1)}-${pad(dd)}`;
+    case 'ko': return `${y}년 ${m + 1}월 ${dd}일 (${'일월화수목금토'[w]})`;
+    case 'ja': return `${y}年${m + 1}月${dd}日（${'日月火水木金土'[w]}）`;
+    default: return '';
+  }
+}
+function htTime(d, f) {
+  if (f === '24') return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (f === '12') return `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+  return '';
+}
+function homeHero(preview) { // the big text at the top of Home
+  const o = htOpts();
+  if (o.mode === 'clock') {
+    const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date), big = t || dt, small = t ? dt : '';
+    return `<div class="season ht clock${preview ? ' prev' : ''}"><div class="sz-h lat" data-clk="${t ? 't' : 'd'}">${esc(big || ' ')}</div>${small ? `<div class="sz-g" data-clk="d"${/^(ko|ja)$/.test(o.date) ? ` lang="${o.date}"` : ''}>${esc(small)}</div>` : ''}</div>`;
+  }
+  if (o.mode === 'custom') {
+    const main = (o.main || '').trim() || (preview ? 'Your words here' : '');
+    return `<div class="season ht custom${preview ? ' prev' : ''}"><div class="sz-h lat${o.main ? '' : ' ph'}">${esc(main)}</div>${(o.sub || '').trim() ? `<div class="sz-g">${esc(o.sub.trim())}</div>` : ''}</div>`;
+  }
+  return seasonHero(ui.season, preview);
+}
+function tickClock() { // keeps the clock on Home (and its preview) current
+  const els = document.querySelectorAll('[data-clk]'); if (!els.length) return;
+  const o = htOpts(), now = new Date();
+  els.forEach(el => { const v = el.dataset.clk === 't' ? htTime(now, o.time) : htDate(now, o.date); if (el.textContent !== v) el.textContent = v; });
+}
+setInterval(tickClock, 1000);
+function htFields(setup) { // the controls for the Home text (Settings card and setup)
+  const o = htOpts(), modes = setup === 'own' ? HT_MODES.filter(m => m[0] !== 'season') : HT_MODES, now = new Date();
+  let h = `<div class="seg tight">${modes.map(([v, n]) => `<button class="${o.mode === v ? 'on' : ''}" data-a="htMode" data-id="${v}">${n}</button>`).join('')}</div>`;
+  if (o.mode === 'clock') h += `<label>Time</label><div class="seg tight">${HT_TIMES.map(([v, n]) => `<button class="${o.time === v ? 'on' : ''}" data-a="htTime" data-id="${v}">${n}</button>`).join('')}</div>
+    <label>Date</label><select data-c="htDate" aria-label="Date format">${HT_DATES.map(v => `<option value="${v}" ${o.date === v ? 'selected' : ''}>${v === 'off' ? 'No date' : esc(htDate(now, v))}</option>`).join('')}</select>
+    ${o.time === 'off' && o.date === 'off' ? '<div class="bad small" style="margin-top:6px">Pick a time or a date to show.</div>' : ''}`;
+  if (o.mode === 'custom') h += `<label>Big text</label><input data-i="ht" data-k="main" value="${esc(o.main)}" maxlength="40" placeholder="e.g. One day at a time">
+    <label>Smaller line (optional)</label><input data-i="ht" data-k="sub" value="${esc(o.sub)}" maxlength="80" placeholder="e.g. 2 Cor 3:18">`;
+  if (o.mode === 'season' && !setup) h += '<p class="mu2 small">Choose which names the season header shows in Season display below.</p>';
+  return h;
+}
+function htCard() {
+  return `<div class="card" id="htCard"><h3>Home text</h3><p class="mu small" style="margin-top:2px">The big text at the top of Home. Works with every theme.</p>
+    <div class="ht-prev" data-ns="1"${htOpts().mode === 'season' ? ' hidden' : ''}>${htOpts().mode === 'season' ? '' : homeHero(true)}</div><div id="htF">${htFields()}</div></div>`;
+}
+function htSet(fn) { const o = htOpts(); fn(o); S.homeText = o; save(); }
+function htRefresh(fields) { // fields: re-draw the controls too (not while typing in them)
+  const o = htOpts(); $$('.ht-prev').forEach(p => { p.innerHTML = p.dataset.ns && o.mode === 'season' ? '' : homeHero(true); p.hidden = !p.innerHTML; }); // Settings: the season preview lives in Season display
+  if (fields) { const f = $('#htF'); if (f) f.innerHTML = htFields(f.dataset.setup); }
+  fitSeason();
+}
 // the top line holds major (+ minor) season inline; if it would wrap, give each level its own line
 function fitSeason(root = document) {
   root.querySelectorAll('.sz-top').forEach(el => {
@@ -421,21 +552,42 @@ function themeCard() {
   const tile = ([tid, n, d, soon]) => `<button class="th-tile ${id === tid ? 'on' : ''}${soon ? ' soon' : ''}" data-a="themePick" data-id="${tid}" ${soon ? 'aria-disabled="true"' : ''}><span class="th-sw th-${tid}"${termTheme(tid) ? ` style="background-image:url(${THEMEFX.thumb(tid, calSet())})"` : ''}></span><b>${esc(n)}</b><small>${esc(soon ? 'Art coming soon' : d)}</small></button>`;
   let ed = '';
   if (id === 'custom') {
-    const tgt = o.mode === 'photo' ? 'accent' : (ui.wheelTgt === 'accent' ? 'accent' : 'bg');
     ed = `<div class="th-ed">
       <div class="seg tight">${[['color', 'Solid color'], ['photo', 'My photo']].map(([v, n]) => `<button class="${o.mode === v ? 'on' : ''}" data-a="custMode" data-id="${v}">${n}</button>`).join('')}</div>
       ${o.mode === 'photo' ? `<div class="row" style="gap:10px;margin:4px 0 6px">${custPhoto.url ? `<img class="th-ph" src="${custPhoto.url}" alt="">` : '<div class="th-ph none">No photo yet</div>'}<div class="sp"><button class="btn-s btn-p" data-a="custPhotoPick">${custPhoto.url ? 'Change photo' : 'Choose photo'}</button><input type="file" id="custPhotoIn" accept="image/*" hidden>
         <label style="margin-top:10px">Dim the photo · <span class="num" id="dimV">${o.dim}%</span></label><input type="range" min="0" max="70" step="5" value="${o.dim}" data-i="custDim" aria-label="Dim the photo"></div></div>`
-      : `<div class="seg tight">${[['bg', 'Background'], ['accent', 'Accent']].map(([v, n]) => `<button class="${tgt === v ? 'on' : ''}" data-a="wheelTgt" data-id="${v}"><i class="dotc" style="background:${esc(v === 'bg' ? o.bg : o.accent)}"></i>${n}</button>`).join('')}</div>`}
-      ${o.mode === 'photo' ? '<label>Accent color</label>' : ''}${wheelHtml('cust', tgt === 'bg' ? o.bg : o.accent)}
-      <label>Cards</label><div class="seg tight">${[['auto', 'Auto'], ['dark', 'Dark'], ['light', 'Light']].map(([v, n]) => `<button class="${o.cards === v ? 'on' : ''}" data-a="custCards" data-id="${v}">${n}</button>`).join('')}</div>
-      <p class="mu2 small">Auto picks light cards on a light color and dark cards on a photo. Your photo stays on this phone and is included in backups.</p></div>`;
+      : `<label>Background color</label>${wheelHtml('cust', o.bg)}`}
+      <p class="mu2 small">Cards, buttons and icons are set in Colors below. Your photo stays on this phone and is included in backups.</p></div>`;
   }
   if (termTheme(id)) ed = `<p class="mu2 small" style="margin-top:10px">Changes with each of the 24 solar terms: the light, the weather and what's in the air${id === 'cyber' ? ', and the shop signs' : ''}. The ${calSet() === 'ja' ? 'Japanese' : 'Korean'} picture follows your season names (Season display). Tap the season header on Home and pick another micro-season to preview other terms.</p>`;
-  return `<div class="card" id="themeCard"><h3>Theme</h3><p class="mu small" style="margin-top:2px">${cur === 'custom' || id === 'custom' ? 'Your own look.' : 'How the app looks behind your cards.'}</p>
+  return `<div class="card" id="themeCard"><h3>Background</h3><p class="mu small" style="margin-top:2px">The picture behind your cards. Any background works with any UI style.</p>
     <div class="th-grid">${THEME_LIST.map(tile).join('')}</div>${ed}</div>`;
 }
-function themeRefresh() { const c = $('#themeCard'); if (!c) return; c.outerHTML = themeCard(); initWheels($('#themeCard')); }
+function styleCard() { // UI style tiles, each a live mini preview in its own colors
+  const L = lookOpts(), m = matchStyle(themeId()), bgName = (THEME_LIST.find(t => t[0] === themeId()) || ['', 'this background'])[1];
+  const tile = (id, name, desc, pv, joke) => `<button class="sty-tile${L.style === id ? ' on' : ''}" data-a="styPick" data-id="${id}">${pvHtml(pv, id === 'auto')}<b>${esc(name)}${joke ? ' <span class="pill joke">JOKE</span>' : ''}</b><small>${esc(desc)}</small></button>`;
+  return `<div class="card" id="styCard"><h3>UI style</h3><p class="mu small" style="margin-top:2px">How cards, buttons, fonts and icons look. Mix any style with any background.</p>
+    <div class="sty-grid">${tile('auto', 'Match my background', `${STYLE[m].n} with ${bgName}, in the background's colors.`, m)}${UI_STYLES.map(x => tile(x.id, x.n, x.d, x.id, x.joke)).join('')}</div></div>`;
+}
+function pvHtml(sid, auto = false) { const u = uiFor(sid, auto);
+  return `<div class="pv" data-pv="${sid}" style="${pvVars(u.v)}"><div class="pv-card"><div class="pv-h">Daily quests</div><div class="pv-q"><i class="pv-chk"></i><span>Push-ups</span><b>+25</b></div><div class="pv-row"><span class="pv-btn">Log</span><span class="pv-chip">Lv 3</span></div></div></div>`; }
+function colorCard() { // your colors for the current UI style, each with its own wheel
+  const L = lookOpts(), sid = styleId(), st = STYLE[sid], c = L.colors[sid] || {}, own = useOwn(sid), bid = themeId(), u = uiFor(sid);
+  const row = (k, n, hint) => { const val = c[k], shown = val || (k === 'card' ? u.v.s1s : k === 'accent' ? u.v.ac : u.v.gold), open = ui.lkOpen === k;
+    return `<div class="lk-row${open ? ' open' : ''}"><button class="lk-head" data-a="lkOpen" data-id="${k}" aria-expanded="${open}"><i class="lk-sw" style="background:${esc(shown)}"></i><span class="sp"><b>${n}</b><small>${val ? 'Yours · ' + esc(val) : 'Default'} · ${hint}</small></span><span class="chev${open ? ' open' : ''}">${ICON.chev}</span></button>
+      ${open ? `<div class="lk-body">${wheelHtml('lk-' + k, shown)}<div class="row" style="margin-top:6px"><span class="sp mu2 small">Saved with the ${esc(st.n)} style.</span>${val ? `<button class="btn-s" data-a="lkReset" data-id="${k}">Reset</button>` : ''}</div></div>` : ''}</div>`; };
+  const bright = own ? '' : `<label>Brightness</label><div class="seg tight">${[['auto', 'Auto'], ['dark', 'Dark'], ['light', 'Light']].map(([v, n]) => `<button class="${cardsPref(bid) === v ? 'on' : ''}" data-a="themeCards" data-id="${v}">${n}</button>`).join('')}</div>
+    <p class="mu2 small">${c.card ? 'Your card color decides: light cards get dark text and icons, dark cards light ones.' : bid === 'seasonal' ? 'Auto is dark, which suits the scenes at every time of day.' : bid === 'custom' ? 'Auto picks light on a light color and dark on a photo.' : 'Auto follows the picture: light on bright terms, dark on dark ones.'}</p>`;
+  return `<div class="card" id="lkCard"><h3>Colors</h3><p class="mu small" style="margin-top:2px">For ${esc(st.n)}${L.style === 'auto' ? ' (matched to your background)' : ''}. Tap a color to open its wheel.</p>
+    ${st.pal ? `<label>Colors from</label><div class="seg tight">${[['own', st.n + '’s own'], ['bg', 'My background']].map(([v, n]) => `<button class="${(v === 'own') === own ? 'on' : ''}" data-a="styOwn" data-id="${v}">${esc(n)}</button>`).join('')}</div>` : ''}
+    ${bright}<div class="lk-rows">${row('card', 'Cards', 'text follows it')}${row('accent', 'Buttons & icons', 'checks, links, the active tab')}${row('gold', 'Highlights', 'XP, streak, ranks')}</div>
+    ${Object.keys(c).length ? '<button class="btn-g small" data-a="lkResetAll" style="margin-top:6px">Reset all my colors</button>' : ''}</div>`;
+}
+function themeRefresh() { lookRefresh(); }
+function lookRefresh() { // re-draw the Themes & display tab in place (keeps the scroll position)
+  if (!(ui.tab === 'me' && ui.profSeg === 'settings' && ui.setSeg === 'look')) { const c = $('#themeCard'); if (c) { c.outerHTML = themeCard(); initWheels($('#themeCard')); } return; }
+  const y = window.scrollY; render(); window.scrollTo(0, y);
+}
 /* ---------- color wheel: hue around, saturation outward, brightness slider ---------- */
 const hsvHex = (h, s, v) => { const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); }; return rgbHex([f(5) * 255, f(3) * 255, f(1) * 255]); };
 const hexHsv = hex => { const [r, g, b] = hexRgb(hex).map(x => x / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0;
@@ -472,10 +624,14 @@ function wheelChanged(w, done) {
   wheelSet(w.dataset.cw, hex, done);
 }
 function wheelSet(id, hex, done) { // live preview while dragging; saved when you let go
+  if (id.startsWith('lk-')) {
+    const k = id.slice(3), sid = styleId(), L = lookOpts(); L.colors[sid] = Object.assign({}, L.colors[sid], { [k]: hex }); S.look = L;
+    const sw = $(`#lkCard [data-a=lkOpen][data-id=${k}] .lk-sw`); if (sw) sw.style.background = hex;
+    ui.season = applySeason(); if (done) { save(); lookRefresh(); } return;
+  }
   if (id !== 'cust') return;
-  const o = custOpts(), tgt = o.mode === 'photo' || ui.wheelTgt === 'accent' ? 'accent' : 'bg';
-  const sw = $(`#themeCard [data-a=wheelTgt][data-id=${tgt}] .dotc`); if (sw) sw.style.background = hex;
-  S.theme = Object.assign({ id: 'custom' }, S.theme || {}, { custom: Object.assign(o, { [tgt]: hex }) });
+  const o = custOpts();
+  S.theme = Object.assign({ id: 'custom' }, S.theme || {}, { custom: Object.assign(o, { bg: hex }) });
   ui.season = applySeason(); if (done) save();
 }
 function szRefresh() { const c = $('#szCard'); if (!c) return; c.outerHTML = szCard(); fitSeason($('#szCard')); }
@@ -497,34 +653,46 @@ const needAll = L => Math.round(100 * Math.pow(L, 1.6));
 function levelOf(xp, need) { let L = 1; xp = Math.max(0, xp); while (xp >= need(L)) { xp -= need(L); L++; } return { L, into: xp, need: need(L) }; }
 const overall = () => levelOf(S.xp, needAll);
 const skLevel = id => levelOf((S.skills[id] || {}).xp || 0, needSkill);
-const RANKS = [[1, 'Initiate'], [10, 'Apprentice'], [20, 'Adept'], [35, 'Vanguard'], [50, 'Paragon'], [75, 'Ascendant']];
+/* v11 ladder (Daniel): Initiate → Novice → … → Grandmaster → Sovereign. The v10 ranks keep their levels; the new ones
+   (Novice, Amateur, Journeyman, Expert, Veteran, Master, Grandmaster) sit in between, after the amateur-to-grandmaster ladder. */
+const RANKS = [[1, 'Initiate'], [3, 'Novice'], [6, 'Amateur'], [10, 'Apprentice'], [15, 'Journeyman'], [20, 'Adept'], [27, 'Expert'],
+  [35, 'Vanguard'], [42, 'Veteran'], [50, 'Paragon'], [62, 'Master'], [75, 'Ascendant'], [88, 'Grandmaster']];
+const SOV = RANKS.length; // tier of Sovereign I (II = SOV + 1, …)
 function rankOf(L) {
-  if (L >= 100) { const n = Math.floor((L - 100) / 50) + 1; return { name: 'Sovereign ' + roman(n), tier: 6 + n }; }
+  if (L >= 100) { const n = Math.floor((L - 100) / 50) + 1; return { name: 'Sovereign ' + roman(n), tier: SOV + n - 1 }; }
   let t = 0; RANKS.forEach((r, i) => { if (L >= r[0]) t = i; }); return { name: RANKS[t][1], tier: t };
 }
-/* one glyph per rank inside the gold hexagon: spark, flame, open book, shield, laurel, rising sun, crown (+ numeral, endless) */
+/* one glyph per rank inside the gold hexagon (same order as RANKS, then Sovereign): spark, sprout, key, flame, compass,
+   open book, cut gem, shield, crossed swords, laurel + star, summit flag, rising sun, chess king, crown (+ numeral, endless) */
 const RANK_GLYPH = [
   '<path d="M24 13.5l2.4 8.1 8.1 2.4-8.1 2.4-2.4 8.1-2.4-8.1-8.1-2.4 8.1-2.4z" fill="var(--gold)" stroke="none"/>',
+  '<path d="M17.4 34h13.2M24 34v-9.6"/><path d="M24 26.6c-.4-4.2-3.6-6.6-8-6.4.2 4.4 3.4 6.8 8 6.4z"/><path d="M24 24.6c.2-5.2 3.6-8.6 9-8.8-.2 5.4-3.6 8.8-9 8.8z" fill="var(--gold)" stroke="none"/>',
+  '<circle cx="19.2" cy="19.2" r="4.6"/><circle cx="19.2" cy="19.2" r="1.3" fill="var(--gold)" stroke="none"/><path d="M22.5 22.5l10 10M28.6 28.6l2.6-2.6M31.4 31.4l2.2-2.2"/>',
   '<path d="M24 13.2c3.4 4.2 7 7.4 7 12.4a7 7 0 0 1-14 0c0-3.2 1.8-5.4 3.4-7.4.5 2.4 1.6 3.6 2.8 4.2-.6-3.2-.2-6.4.8-9.2z"/><path d="M24 34.2c-2 0-3.4-1.5-3.4-3.4 0-2 1.8-3.4 3.4-5.4 1.6 2 3.4 3.4 3.4 5.4 0 1.9-1.4 3.4-3.4 3.4z" fill="var(--gold)" stroke="none"/>',
+  '<circle cx="24" cy="24" r="9.6"/><path d="M24 15.6l2.1 6.3 6.3 2.1-6.3 2.1-2.1 6.3-2.1-6.3-6.3-2.1 6.3-2.1z"/><path d="M24 15.6l2.1 6.3L24 24l-2.1-2.1z" fill="var(--gold)" stroke="none"/>',
   '<path d="M24 18.2c-2.8-1.8-6.2-2.2-9.4-1.4v14c3.2-.8 6.6-.4 9.4 1.4 2.8-1.8 6.2-2.2 9.4-1.4v-14c-3.2-.8-6.6-.4-9.4 1.4zM24 18.2v14M17.6 21.2c1.6-.2 3.2 0 4.4.6M17.6 24.8c1.6-.2 3.2 0 4.4.6M26 21.8c1.2-.6 2.8-.8 4.4-.6M26 25.4c1.2-.6 2.8-.8 4.4-.6"/>',
+  '<path d="M20.4 15.4h7.2l4.2 5.2L24 33.6l-7.8-13z"/><path d="M16.2 20.6h15.6M20.4 15.4l1.8 5.2L24 33.6l1.8-13 1.8-5.2"/><path d="M22.2 20.6h3.6L24 15.8z" fill="var(--gold)" stroke="none"/>',
   '<path d="M24 13.6l8.4 3.2v7c0 4.8-3.6 8.2-8.4 10.2-4.8-2-8.4-5.4-8.4-10.2v-7z"/><path d="M19.6 21.6l4.4 3.8 4.4-3.8M19.6 26.2l4.4 3.8 4.4-3.8"/>',
+  '<path d="M15.4 15.4l13 13M32.6 15.4l-13 13M26.2 30.8l4.6-4.6M17.2 26.2l4.6 4.6"/><path d="M15.4 15.4l-.6-1.8 1.8.6M32.6 15.4l.6-1.8-1.8.6"/><circle cx="31.6" cy="31.6" r="1.4" fill="var(--gold)" stroke="none"/><circle cx="16.4" cy="31.6" r="1.4" fill="var(--gold)" stroke="none"/>',
   '<path d="M21.6 33.8c-5.4-1.6-8-6.6-6.6-12.6M26.4 33.8c5.4-1.6 8-6.6 6.6-12.6"/><path d="M16.2 30l-2.8.4M14.8 26.2l-2.6-.9M14.9 22.4l-2.2-1.8M31.8 30l2.8.4M33.2 26.2l2.6-.9M33.1 22.4l2.2-1.8"/><path d="M24 15l1.3 2.7 2.9.4-2.1 2 .5 2.9-2.6-1.4-2.6 1.4.5-2.9-2.1-2 2.9-.4z" fill="var(--gold)" stroke="none"/>',
+  '<path d="M12.8 33.4l7.4-11.2 3 4.2 4.4-7.8 7.6 14.8z"/><path d="M27.6 18.6v-6.4"/><path d="M27.6 12.2l5 1.7-5 1.7z" fill="var(--gold)" stroke="none"/><path d="M25.2 22.9l2.4 1.4 2.3-1.3"/>',
   '<path d="M13.6 30.4h20.8M18 30.4a6 6 0 0 1 12 0"/><path d="M24 21.4v-3.2M17.6 24l-2.2-2.2M30.4 24l2.2-2.2M20.4 15.6l3.6-3 3.6 3"/>',
+  '<path d="M16.8 34.4h14.4M18.4 31.4h11.2M20.2 31.4l1.4-8.4h4.8l1.4 8.4M20.4 23c-1.8-2.6-.4-5 3.6-5s5.4 2.4 3.6 5"/><path d="M24 18v-5.4M21.6 15h4.8"/>',
   '<path d="M16.4 27.8l-1.4-10 5.2 4.2 3.8-7 3.8 7 5.2-4.2-1.4 10z"/><path d="M16.8 30.6h14.4"/><circle cx="24" cy="12.6" r="1.1" fill="var(--gold)" stroke="none"/>',
 ];
 function emblem(tier, size = 46) {
   const hex = r => Array.from({ length: 6 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / 3; return `${(24 + Math.cos(a) * r).toFixed(1)},${(24 + Math.sin(a) * r).toFixed(1)}`; }).join(' ');
-  const sov = tier >= 6;
+  const sov = tier >= SOV;
   let g = `<polygon points="${hex(21)}" fill="${sov ? 'rgba(226,194,122,.16)' : 'none'}" stroke="var(--gold)" stroke-width="1.4"/>`;
   if (sov) g += `<polygon points="${hex(18)}" fill="none" stroke="var(--gold)" stroke-width=".8" opacity=".75"/>`;
-  g += `<g fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${RANK_GLYPH[Math.min(tier, 6)]}</g>`;
-  if (sov) g += `<text x="24" y="38.6" text-anchor="middle" font-size="7.6" fill="var(--gold)" font-weight="700" font-family="Georgia,serif">${roman(Math.max(1, tier - 6))}</text>`;
+  g += `<g fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${RANK_GLYPH[Math.min(tier, SOV)]}</g>`;
+  if (sov) g += `<text x="24" y="38.6" text-anchor="middle" font-size="7.6" fill="var(--gold)" font-weight="700" font-family="Georgia,serif">${roman(tier - SOV + 1)}</text>`;
   return `<svg class="emblem" style="width:${size}px;height:${size}px" viewBox="0 0 48 48">${g}</svg>`;
 }
-function rankStrip(L) { // every rank you can reach, in order; the current one highlighted
-  const cur = rankOf(L), list = RANKS.map(([lv, n], i) => ({ lv, n, tier: i })).concat([{ lv: 100, n: 'Sovereign', tier: 7, more: true }]);
-  return `<div class="ranks">${list.map(r => { const on = L >= r.lv, here = r.more ? cur.tier >= 7 : cur.tier === r.tier;
-    return `<div class="rk${on ? '' : ' locked'}${here ? ' cur' : ''}">${emblem(r.more && cur.tier >= 7 ? cur.tier : r.tier, 40)}<b>${esc(r.more && cur.tier >= 7 ? cur.name : r.n)}</b><span class="num">Lv ${r.lv}${r.more ? '+' : ''}</span></div>`; }).join('')}</div>
+function rankStrip(L) { // every rank you can reach, in order; the current one highlighted (render() scrolls it into view)
+  const cur = rankOf(L), sov = cur.tier >= SOV, list = RANKS.map(([lv, n], i) => ({ lv, n, tier: i })).concat([{ lv: 100, n: 'Sovereign', tier: SOV, more: true }]);
+  return `<div class="ranks">${list.map(r => { const on = L >= r.lv, here = r.more ? sov : cur.tier === r.tier;
+    return `<div class="rk${on ? '' : ' locked'}${here ? ' cur' : ''}">${emblem(r.more && sov ? cur.tier : r.tier, 40)}<b>${esc(r.more && sov ? cur.name : r.n)}</b><span class="num">Lv ${r.lv}${r.more ? '+' : ''}</span></div>`; }).join('')}</div>
     <div class="mu2 small" style="margin-top:6px">Sovereign keeps going: II at level 150, III at 200, then every 50 levels.</div>`;
 }
 
@@ -575,8 +743,38 @@ function roundUnit(t, u) {
   if (u === 'km') return Math.max(0.5, Math.round(t * 2) / 2);
   return Math.max(1, Math.round(t));
 }
+/* v12: your own target (any skill with a number). skills[id].own = the number (null = automatic). It never changes by itself
+   (deload weeks still take 25% off). Sessions done at it count in s.hits (and logs 20%+ over it in s.overs) when the day is
+   evaluated; after two weeks' worth of hits (2 × days a week, at least 4) or two big overs, ownSug() suggests about +10%. */
+const ownRound = (t, u) => u === 'km' ? Math.max(0.1, Math.round(t * 10) / 10) : Math.max(1, Math.round(t));
+const ownStep = (t, u) => u === 'reps' ? (t < 20 ? 1 : 5) : u === 'min' ? (t < 30 ? 1 : 5) : u === 'sec' ? (t < 120 ? 5 : 15) : u === 'km' ? 0.5 : 1;
+const ownNeed = id => Math.max(4, 2 * Math.max(1, (skState(id).days || []).length));
+function ownSug(id) { // a raise suggestion for your own target, or null
+  const c = SK[id], s = S.skills[id]; if (!c || !s || !(s.own > 0)) return null;
+  const need = ownNeed(id), hits = s.hits || 0, overs = s.overs || [], big = overs.length >= 2;
+  if (!big && !(hits >= need && (!s.snooze || hits >= s.snooze))) return null;
+  const st = ownStep(s.own, c.unit); let to = Math.max(s.own * 1.1, s.own + st);
+  if (big) to = Math.max(to, (overs[overs.length - 1] + overs[overs.length - 2]) / 2);
+  to = Math.round(Math.ceil(to / st - 1e-9) * st * 100) / 100;
+  return { to, why: big ? `You logged ${fmtTarget(Math.max(...overs.slice(-2)), c.unit)} on a ${fmtTarget(s.own, c.unit)} target` : `You hit ${fmtTarget(s.own, c.unit)} ${hits} times` };
+}
+function ownNag() { // Quests banner(s): skills ready for a higher target
+  return SKL.filter(c => isLib(c) && (S.skills[c.id] || {}).active && ownSug(c.id)).slice(0, 2).map(c => { const g = ownSug(c.id);
+    return `<div class="banner up"><div class="row">${ICON.up}<b class="sp">${esc(c.name)}: ready for more?</b></div><div class="small" style="margin-top:4px">${esc(g.why)}. Try ${esc(fmtTarget(g.to, c.unit))}?</div>
+    <div class="row" style="margin-top:10px;gap:8px"><button class="btn-s btn-p" data-a="ownRaise" data-id="${c.id}">Raise to ${esc(fmtTarget(g.to, c.unit))}</button><button class="btn-s" data-a="ownLater" data-id="${c.id}">Not yet</button></div></div>`; }).join('');
+}
+function ownSet(id, v) { // v in the skill's unit; null = back to automatic
+  const c = SK[id], s = skState(id);
+  if (v == null) { // carry on from your number: set the automatic difficulty so it continues from it
+    if (s.own > 0) s.load = clamp(s.own / Math.max(0.01, c.base * (1 + 0.02 * (skLevel(id).L - 1))), 0.4, 6);
+    s.own = null;
+  } else { s.own = ownRound(v, c.unit); s.ownSince = todayKey(); }
+  s.hits = 0; s.overs = []; s.snooze = null;
+  regenToday(); afterChange();
+}
 function skillTarget(id, k) {
   const c = SK[id], s = skState(id);
+  if (s.own > 0) return c.phys && isDeload(k) ? ownRound(s.own * 0.75, c.unit) : s.own;
   let t = c.base * s.load * (1 + 0.02 * (skLevel(id).L - 1));
   if (c.phys && isDeload(k)) t *= 0.75;
   return roundUnit(Math.min(t, c.max || t), c.unit);
@@ -592,8 +790,10 @@ function skillTitle(id) {
   return c.name;
 }
 function makeSkillQuest(id, k, title, list) {
-  const c = SK[id], t = skillTarget(id, k);
-  return { key: 'skill:' + id, title: title || skillTitle(id), list: list || c.list || 'Daily', skill: id, unit: c.unit, target: t, progress: 0, done: false, xp: questXp(id, t) };
+  const c = SK[id], t = skillTarget(id, k), own = skState(id).own;
+  const q = { key: 'skill:' + id, title: title || skillTitle(id), list: list || c.list || 'Daily', skill: id, unit: c.unit, target: t, progress: 0, done: false, xp: questXp(id, t) };
+  if (own > 0 && t === own) q.ownT = own; // a session at your own target (counts toward a raise suggestion)
+  return q;
 }
 function generate(k) {
   const wd = dparse(k).getDay(), rest = S.rest.includes(k), used = new Set();
@@ -621,6 +821,7 @@ function generate(k) {
     if (t.lock === 'sleep') tq.lockAt = sleepDeadline(k) + 15 * 60000;
     q.push(tq);
   }
+  q.push(...sideDueQuests(k)); // v11: side quests due today (deadline / checkpoint day) count toward the day
   const pi = pauseInfo(k);
   if (pi) q = pi.all ? [] : q.filter(x => !pi.lists.has(x.list) && !(x.skill && pi.skills.has(x.skill)) && !(x.task && pi.tasks.has(x.task)));
   return q;
@@ -635,7 +836,7 @@ function ensureToday() {
   if (S.pendingPen && !(pi && pi.all)) { d.q = d.q.filter(q => !q.pen).concat(penaltyQuests(S.pendingPen.tier)); d.penTier = S.pendingPen.tier; S.pendingPen = null; }
   const dq = d.q.find(q => q.key === 'diet'), want = dietWanted(k);
   if ((want && !dq) || (!want && dq && (!dq.done || fastOn(k)))) regenToday();
-  syncDiet(k, true);
+  syncDiet(k, true); syncSide(k);
   return d;
 }
 function regenToday() {
@@ -649,7 +850,7 @@ function regenToday() {
     if (o.key === 'diet' && fasting) { if (o.done) { S.stats.qdone = Math.max(0, S.stats.qdone - 1); addXp(null, -o.xp, true); addXp('discipline', -2, true); } return; }
     if (o.done || (o.pen && !(pi && pi.all))) merged.push(o);
   });
-  d.q = merged;
+  d.q = merged; syncSide(k);
 }
 
 /* ---------- day evaluation, streaks, penalties, adaptation ---------- */
@@ -660,6 +861,7 @@ function evaluate() {
   while (k < today && n < 60) {
     const d = ensureDay(k);
     if (!d.ev) {
+      syncSide(k); // side quests due that day, done or not by its end
       d.ev = true;
       const pi = pauseInfo(k);
       if (!d.q.length || (pi && pi.all)) { d.frozen = true; d.pct = null; }
@@ -668,11 +870,20 @@ function evaluate() {
         syncDiet(k, true);
         const tot = d.q.length, done = d.q.filter(q => q.done).length, pct = done / tot;
         d.pct = pct;
-        if (pct >= 1) { S.streak.cur++; S.streak.best = Math.max(S.streak.best, S.streak.cur); S.stats.perfect++; addXp('discipline', 20, true); }
-        else S.streak.cur = 0;
+        if (pct >= 1) { S.streak.cur++; S.streak.best = Math.max(S.streak.best, S.streak.cur); S.stats.perfect++; addXp('discipline', 20, true); S.coins = (S.coins || 0) + 1; }
+        else {
+          // remember the streak this miss ended, so a Streak Saver can bring it back (one saver per missed day)
+          if (S.streak.cur > 0) S.streakBreak = { n: S.streak.cur, day: k, last: k, miss: 1, days: [k] };
+          else if (S.streakBreak) { S.streakBreak.miss++; S.streakBreak.last = k; S.streakBreak.days.push(k); }
+          S.streak.cur = 0;
+        }
         for (const q of d.q) {
           if (!q.skill || !SK[q.skill] || !SK[q.skill].unit) continue;
           const s = skState(q.skill), f = Math.max(1, s.days.length);
+          if (s.own > 0) { // your own target: no auto-adjusting, count the sessions at it
+            if (q.ownT === s.own) { if (q.done) s.hits = (s.hits || 0) + 1; if ((q.progress || 0) >= s.own * 1.2) s.overs = (s.overs || []).concat([q.progress]).slice(-3); }
+            continue;
+          }
           s.load = clamp(q.done ? s.load * (1 + 0.08 / f) : s.load * 0.94, 0.4, 6);
         }
         const tier = pct >= 1 ? 0 : pct >= 0.75 ? 1 : pct >= 0.5 ? 2 : pct > 0 ? 3 : 4;
@@ -694,7 +905,7 @@ function addXp(skill, amt, quiet) {
   if (quiet) return;
   const after = overall().L;
   if (after > before) toast(`Level ${after} · ${rankOf(after).name}`, 'lv');
-  if (skill && SK[skill] && skLevel(skill).L > sb) toast(`${SK[skill].name} reached level ${skLevel(skill).L}`, 'lv');
+  if (skill && SK[skill] && skLevel(skill).L > sb) { const L = skLevel(skill).L, r = skRankOf(L).name; toast(`${SK[skill].name} reached level ${L}${r !== skRankOf(sb).name ? ' · ' + r : ''}`, 'lv'); }
 }
 function defaultActivity(id) {
   const c = SK[id]; if (!c) return null;
@@ -714,6 +925,7 @@ const uncapMin = (id, k, n) => { const m = dayMins(k); m[id] = Math.max(0, (m[id
 function toggleQuest(key, focus) {
   const k = todayKey(), d = S.days[k]; if (!d) return;
   const q = d.q.find(x => x.key === key); if (!q) return;
+  if (q.side) { sideTap(q); return; }
   if (q.auto) { ui.tab = 'log'; ui.logSeg = 'food'; render(); window.scrollTo(0, 0); toast('This quest checks itself from your food log'); return; }
   const c = q.skill && SK[q.skill] ? SK[q.skill] : null;
   if (!q.done && q.lockAt && Date.now() > q.lockAt) { toast('Deadline passed. This one is locked.', 'bad'); return; }
@@ -729,14 +941,15 @@ function toggleQuest(key, focus) {
     s.done = Math.max(0, s.done + sign); s.cnt = Math.max(0, s.cnt + sign * (q.target || 0));
     if (sign > 0) {
       const remain = Math.max(0, (q.target || 0) - (q.progress || 0));
-      q.addMin = capMin(q.skill, k, Math.round(remain * (EST_MIN[c.unit] ?? 0)), true);
+      q.addMin = capMin(q.skill, k, estMin(q.skill, remain), true);
       s.min += q.addMin;
       if (c.custom && q.addMin) {
         const ks = focus && focus.length ? focus : c.stats.map(x => x.k); q.smAdd = {};
         ks.forEach(k => { const m = q.addMin / ks.length; s.sm[k] = (s.sm[k] || 0) + m; q.smAdd[k] = m; });
       }
-      const act = c.phys && c.unit === 'min' && q.addMin > 0 ? defaultActivity(q.skill) : null;
-      if (act) { const w = { id: uid(), date: k, act, min: q.addMin, int: 1, skill: q.skill, auto: true, xp: 0, kcal: workoutKcal(act, q.addMin, 1) }; S.workouts.push(w); q.wid = w.id; }
+      const ra = c.phys && c.unit === 'reps' ? repAct(q.skill) : null; // v12: a rep quest checked by hand logs the rest of its reps
+      const act = c.phys && q.addMin > 0 ? (c.unit === 'min' ? defaultActivity(q.skill) : ra ? ra.id : null) : null;
+      if (act) { const w = { id: uid(), date: k, act, min: q.addMin, int: 1, skill: q.skill, auto: true, xp: 0, kcal: workoutKcal(act, q.addMin, 1) }; if (ra) w.reps = remain; S.workouts.push(w); q.wid = w.id; }
     } else {
       s.min = Math.max(0, s.min - (q.addMin || 0)); uncapMin(q.skill, k, q.addMin); q.addMin = 0;
       if (q.smAdd) { for (const k in q.smAdd) s.sm[k] = Math.max(0, (s.sm[k] || 0) - q.smAdd[k]); q.smAdd = null; }
@@ -765,25 +978,88 @@ function stepTask(q, dir) { // one session of a task quest forward (+1) or back 
   }
   afterChange();
 }
+/* ---------- logging amounts (v12): reps, seconds, km, pages, chapters… not only minutes ----------
+   Rep exercises (ACTIVITIES with reps = seconds per rep) log reps × sets; the time and calories are estimated from the reps.
+   Any quest with a number target has a + button on Quests (qlogModal). Logging past the target is allowed: it counts toward
+   a raise suggestion (own targets, v12). Workouts that filled a quest remember how much (w.fill) so deleting them undoes it. */
+const repAct = id => ACTS.find(a => a.reps && a.skill === id && !a.del) || null;
+const estMin = (id, n) => { const c = SK[id], u = c && c.unit, a = u === 'reps' ? repAct(id) : null; return Math.round((a ? n * a.reps / 60 : n * (EST_MIN[u] ?? 0)) * 10) / 10; };
+const UNIT_NAME = { min: 'Minutes', reps: 'Reps', sec: 'Seconds', km: 'Distance', ch: 'Chapters', sprints: 'Sprints', sessions: 'Sessions', pages: 'Pages' };
+const QUICK = { reps: [5, 10, 15, 20, 25, 50], sec: [15, 30, 45, 60, 90, 120], min: [5, 10, 15, 30, 45, 60], km: [0.5, 1, 2, 3, 5, 10] };
+const unitLabel = u => u === 'km' ? (imperial() ? 'Miles' : 'Kilometers') : UNIT_NAME[u] || 'Amount';
+const amtRound = (n, u) => u === 'km' ? Math.round(n * 100) / 100 : Math.round(n);
+function logAmount(id, n, keys = []) { // n in the skill's own unit (km for distance)
+  const c = SK[id], u = c && c.unit; if (!u || !(n > 0)) return;
+  if (u === 'min') { logPractice(id, Math.round(n), keys); return; }
+  const s = skState(id), k = todayKey(); n = amtRound(n, u);
+  const m = capMin(id, k, estMin(id, n), true);
+  s.min += m;
+  if (c.custom && m) { const ks = keys.length ? keys : c.stats.map(x => x.k); ks.forEach(x => { s.sm[x] = (s.sm[x] || 0) + m / ks.length; }); }
+  const act = c.phys ? (repAct(id) || ACT[defaultActivity(id)] || null) : null;
+  const q = (S.days[k] || { q: [] }).q.find(x => x.skill === id);
+  if (act && m > 0) S.workouts.push({ id: uid(), date: k, act: act.id, min: m, int: 1, skill: id, xp: 0, kcal: workoutKcal(act.id, m, 1), practice: true, reps: u === 'reps' ? n : undefined, dist: u === 'km' ? n : null, fill: q ? n : 0 });
+  addXp(id, u === 'reps' ? Math.max(1, Math.round(n / 10)) : Math.max(1, Math.round(m / 3)));
+  if (q) {
+    q.progress = amtRound((q.progress || 0) + n, u);
+    if (!q.done && q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, keys); return; }
+  }
+  fx('tick'); toast(`Logged ${fmtTarget(n, u)} of ${c.name}${q && !q.done ? ` · ${fmtTarget(q.progress, u)} of ${fmtTarget(q.target, u)}` : ''}`); afterChange();
+}
+function logQuestAmount(q, n) { // penalty exercises and event quests with a target
+  q.progress = amtRound((q.progress || 0) + n, q.unit);
+  if (!q.done && q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key); return; }
+  fx('tick'); toast(`Logged ${fmtTarget(n, q.unit)} · ${fmtTarget(q.progress, q.unit)} of ${fmtTarget(q.target, q.unit)}`); afterChange();
+}
+function qlogModal(key) { // the + on a quest with a number target
+  const d = S.days[todayKey()], q = d && d.q.find(x => x.key === key); if (!q) return;
+  const c = q.skill ? SK[q.skill] : null, u = q.unit, mi = u === 'km' && imperial(); ui.ql = key;
+  const quick = (QUICK[u] || [1, 2, 3, 5, 10]).map(v => mi ? Math.round(v / 1.609 * 10) / 10 : v);
+  openModal(`<h3>Log ${esc(q.title)}</h3><p class="mu small">Today: <b>${q.progress ? esc(fmtTarget(q.progress, u)) : '0'}</b> of ${esc(fmtTarget(q.target, u))}${q.done ? ' · done. Extra still counts toward a raise.' : ''}</p>
+    <div class="grid2"><div><label>${unitLabel(u)}${u === 'reps' ? ' per set' : ''}</label><input id="qlN" type="number" inputmode="${u === 'km' ? 'decimal' : 'numeric'}" step="any" min="0"></div>
+    ${u === 'reps' ? '<div><label>Sets</label><input id="qlSets" type="number" inputmode="numeric" min="1" max="50" value="1"></div>' : '<div></div>'}</div>
+    <div class="chips ql-chips">${quick.map(v => `<button class="chip" data-a="qlChip" data-id="${v}">${v}</button>`).join('')}</div>
+    ${c && c.custom ? `<div class="mu2 small" style="margin-top:10px">Which parts did you work on? (none = split evenly)</div><div class="chips" id="ql_parts" style="margin-top:6px">${c.stats.map(x => `<button class="chip" data-a="chipT" data-k="${esc(x.k)}">${esc(x.n)}</button>`).join('')}</div>` : ''}
+    <div class="actions">${c ? `<button class="btn-g small" data-a="ownGo" data-id="${q.skill}">Change target</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="qlGo">Log</button></div>`);
+  setTimeout(() => { const i = $('#qlN'); if (i) i.focus(); }, 60);
+}
+function qlogGo() {
+  const d = S.days[todayKey()], q = d && d.q.find(x => x.key === ui.ql); if (!q) { closeModal(true); return; }
+  let n = num($('#qlN').value); if (!(n > 0)) { toast('Enter an amount'); return; }
+  const sets = $('#qlSets') ? clamp(Math.round(num($('#qlSets').value) || 1), 1, 50) : 1;
+  if (q.unit === 'km' && imperial()) n = n / 0.621371;
+  n = amtRound(n, q.unit) * sets; const keys = $('#ql_parts') ? chipsOn('#ql_parts') : [];
+  closeModal(true);
+  if (q.skill && SK[q.skill] && SK[q.skill].unit === q.unit) logAmount(q.skill, n, keys); else logQuestAmount(q, n);
+}
 function logPractice(id, min, keys) {
   const c = SK[id], s = skState(id), k = todayKey();
   min = capMin(id, k, min); if (!min) { render(); return; }
   s.min += min;
   if (c.custom) { const ks = keys.length ? keys : c.stats.map(x => x.k); ks.forEach(x => { s.sm[x] = (s.sm[x] || 0) + min / ks.length; }); }
-  const act = c.phys ? defaultActivity(id) : null;
-  if (act) S.workouts.push({ id: uid(), date: k, act, min, int: 1, skill: id, xp: 0, kcal: workoutKcal(act, min, 1), practice: true });
+  const act = c.phys ? defaultActivity(id) : null, q = (S.days[k] || { q: [] }).q.find(x => x.skill === id), fills = q && q.unit === 'min';
+  if (act) S.workouts.push({ id: uid(), date: k, act, min, int: 1, skill: id, xp: 0, kcal: workoutKcal(act, min, 1), practice: true, fill: fills ? min : 0 });
   addXp(id, Math.round(min / 3));
-  const q = (S.days[k] || { q: [] }).q.find(x => x.skill === id && !x.done);
-  if (q && q.unit === 'min') {
+  if (fills) {
     q.progress = (q.progress || 0) + min;
-    if (q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, keys); return; }
+    if (!q.done && q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, keys); return; }
   }
   fx('tick'); toast(`Logged ${min} min of ${c.name}`); afterChange();
 }
-function afterChange(full = true) { syncDiet(todayKey()); checkTitles(); checkPerfect(); save(); if (full) render(); }
+function afterChange(full = true) { syncDiet(todayKey()); syncSide(todayKey()); checkTitles(); checkPerfect(); save(); if (full) render(); }
 
 /* ---------- titles ---------- */
-const CUSTOM_TIERS = [[3, 'Novice'], [5, 'Apprentice'], [10, 'Journeyman'], [20, 'Adept'], [35, 'Expert'], [50, 'Master'], [75, 'Grandmaster']];
+/* v12 (Daniel): skills have their OWN ladder, separate from the player ranks and paced for skill XP (one skill earns ~30 XP a
+   day vs ~200 for the player level). Same ladder for built-in and custom skills; custom skills add their title noun.
+   Daily practice: Competent ~1 week, Proficient ~3 months, Seasoned ~9 months, Elite ~2 years, Legendary ~3½ years. */
+const SKILL_RANKS = [[1, 'Fledgling'], [2, 'Developing'], [3, 'Competent'], [5, 'Capable'], [7, 'Proficient'], [9, 'Skilled'], [11, 'Seasoned'],
+  [13, 'Accomplished'], [15, 'Elite'], [18, 'Exceptional'], [20, 'Legendary']];
+const SK_LEG = 20, SK_LEG_STEP = 4; // Legendary II at 24, III at 28, …
+function skRankOf(L) {
+  if (L >= SK_LEG) { const n = Math.floor((L - SK_LEG) / SK_LEG_STEP) + 1; return { name: 'Legendary' + (n > 1 ? ' ' + roman(n) : ''), word: 'Legendary', n, tier: SKILL_RANKS.length - 1 + n - 1 }; }
+  let t = 0; SKILL_RANKS.forEach((r, i) => { if (L >= r[0]) t = i; }); return { name: SKILL_RANKS[t][1], word: SKILL_RANKS[t][1], n: 0, tier: t };
+}
+const skillRank = id => skRankOf(skLevel(id).L).name; // e.g. "Seasoned"
+const nextSkRank = L => { const r = SKILL_RANKS.find(([at]) => at > L); return r ? { at: r[0], name: r[1] } : { at: SK_LEG + (Math.floor((L - SK_LEG) / SK_LEG_STEP) + 1) * SK_LEG_STEP, name: 'Legendary ' + roman(Math.floor((L - SK_LEG) / SK_LEG_STEP) + 2) }; };
 const stp = (at, id, name, desc) => ({ at, id, name, desc });
 function ladder(cur, steps, more) {
   const all = steps.slice();
@@ -791,12 +1067,11 @@ function ladder(cur, steps, more) {
   return { earned: all.filter(s => cur >= s.at), next: all.find(s => cur < s.at) || null };
 }
 const customRole = c => (c.role || c.name || '').trim();
-function customRank(id) {
-  const c = SK[id], L = skLevel(id).L, role = customRole(c);
-  if (L >= 100) return `Legendary ${role} ${roman(Math.floor((L - 100) / 50) + 1)}`;
-  const t = CUSTOM_TIERS.filter(([at]) => L >= at).pop();
-  return t ? `${t[1]} ${role}` : `Unranked ${role}`;
+function customRank(id) { // "Seasoned Painter", "Legendary Painter II"
+  const c = SK[id], r = skRankOf(skLevel(id).L), role = customRole(c);
+  return `${r.word} ${role}${r.n > 1 ? ' ' + roman(r.n) : ''}`;
 }
+const skillRankLabel = id => SK[id] && SK[id].custom ? customRank(id) : skillRank(id);
 function titleTracks() {
   const T = [], num0 = v => Math.round(v).toLocaleString();
   const add = (group, cur, steps, more, fmt = num0, opts = {}) => T.push(Object.assign({ group, cur, fmt }, ladder(cur, steps, more), opts));
@@ -807,7 +1082,7 @@ function titleTracks() {
   add('Consistency', S.stats.perfect, [[7, 'Flawless Week'], [30, 'Flawless Month'], [100, 'Hundred Perfect Days'], [365, 'Perfect Year']].map(([n, nm]) => stp(n, 'perf' + n, nm, `${n} perfect days`)), null, v => v + ' days');
   add('Consistency', S.stats.qdone, [10, 50, 100, 250, 500, 1000, 2500, 5000].map(n => stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`)),
     k => { const n = (k + 1) * 10000; return stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`); });
-  add('Consistency', overall().L, [[5, 'Awakened'], [10, 'Apprentice'], [20, 'Adept'], [35, 'Vanguard'], [50, 'Paragon'], [75, 'Ascendant'], [100, 'Sovereign']].map(([n, nm]) => stp(n, 'lvl' + n, nm, `Reach level ${n}`)),
+  add('Consistency', overall().L, [[3, 'Novice'], [5, 'Awakened'], [6, 'Amateur'], [10, 'Apprentice'], [15, 'Journeyman'], [20, 'Adept'], [27, 'Expert'], [35, 'Vanguard'], [42, 'Veteran'], [50, 'Paragon'], [62, 'Master'], [75, 'Ascendant'], [88, 'Grandmaster'], [100, 'Sovereign']].map(([n, nm]) => stp(n, 'lvl' + n, nm, `Reach level ${n}`)),
     k => { const n = 150 + k * 50; return stp(n, 'lvl' + n, 'Sovereign ' + roman(k + 2), `Reach level ${n}`); }, lv);
   // training & body
   add('Training & body', S.workouts.length, [[1, 'First Sweat'], [10, 'Regular'], [50, 'Gym Rat'], [100, 'Hundred Sessions'], [250, 'Iron Habit'], [500, 'Machine'], [1000, 'Thousand Sessions']].map(([n, nm]) => stp(n, 'wk' + n, nm, `Log ${n.toLocaleString()} workout${n > 1 ? 's' : ''}`)), null, v => v + ' sessions');
@@ -827,14 +1102,11 @@ function titleTracks() {
     if (!c.unit && c.id !== 'discipline') continue;
     if (c.moved && !((S.skills[c.id] || {}).xp > 0)) continue;
     const L = skLevel(c.id).L;
-    if (c.custom) {
-      const role = customRole(c);
-      add('Your skills', L, CUSTOM_TIERS.map(([n, t]) => stp(n, `ck_${c.id}_${n}`, `${t} ${role}`, `${c.name} level ${n}`)),
-        k => { const n = 100 + k * 50; return stp(n, `ck_${c.id}_${n}`, `Legendary ${role} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: !active(c.id) || hiddenSk(c.id) });
-    } else {
-      add('Skills', L, [[10, 'Adept'], [25, 'Expert'], [50, 'Master'], [100, 'Grandmaster']].map(([n, p]) => stp(n, `sk_${c.id}_${n}`, `${p} of ${c.name}`, `${c.name} level ${n}`)),
-        k => { const n = 200 + k * 100; return stp(n, `sk_${c.id}_${n}`, `Legend of ${c.name} ${roman(k + 1)}`, `${c.name} level ${n}`); }, lv, { hidden: (!active(c.id) && c.id !== 'discipline') || hiddenSk(c.id) });
-    }
+    // v12: one skill ladder for built-in and custom skills (title IDs sr_<skill>_<level>; the old sk_ / ck_ ladders are retired)
+    const role = c.custom ? customRole(c) : null, nm = (w, n) => role ? `${w} ${role}${n > 1 ? ' ' + roman(n) : ''}` : `${w}${n > 1 ? ' ' + roman(n) : ''} · ${c.name}`;
+    add(c.custom ? 'Your skills' : 'Skills', L, SKILL_RANKS.filter(([at]) => at >= 3).map(([n, w]) => stp(n, `sr_${c.id}_${n}`, nm(w, 1), `${c.name} level ${n}`)),
+      k => { const n = SK_LEG + (k + 1) * SK_LEG_STEP; return stp(n, `sr_${c.id}_${n}`, nm('Legendary', k + 2), `${c.name} level ${n}`); }, lv,
+      { hidden: c.custom ? !active(c.id) || hiddenSk(c.id) : (!active(c.id) && c.id !== 'discipline') || hiddenSk(c.id) });
   }
   // languages
   let b2 = 0, anyLang = false;
@@ -1112,7 +1384,7 @@ function checkPerfect() { // the moment the last daily quest is checked
   setTimeout(() => {
     fx('day');
     if (isMilestone(n)) celebrate(`${n}-day streak`, n === 3 ? 'Three perfect days in a row. The habit is taking root.' : n < 30 ? `${n} perfect days in a row. Keep the fire going.` : n < 100 ? `${n} days without missing a single quest. That's discipline.` : `${n} days. Unbroken. Truly remarkable.`, { big: String(n) });
-    else toast(`Perfect day · streak ${n} tomorrow`, 'lv');
+    else toast(`Perfect day · streak ${n} and +1 coin tomorrow`, 'lv');
   }, 250);
 }
 function celebrate(title, msg, o = {}) {
@@ -1142,6 +1414,7 @@ function renderTop() {
   const o = overall(), rk = rankOf(o.L);
   $('#top').innerHTML = `<div class="topbar">${emblem(rk.tier, 36)}<div class="lv"><b>Lv ${o.L}</b><small>${esc(rk.name)}</small>
     <div class="bar gold"><i style="width:${(o.into / o.need * 100).toFixed(1)}%"></i></div></div>
+    <button class="coins" data-a="goBoard" data-id="rewards" title="Coins" aria-label="${S.coins || 0} coins">${ICON.coin}<span class="num">${S.coins || 0}</span></button>
     <div class="streak" title="Streak">${ICON.flame}<span class="num">${S.streak.cur}</span></div></div>`;
 }
 function renderNav() {
@@ -1153,34 +1426,38 @@ function render() {
   if (!S.setup) return renderSetup();
   if (ui.tab === 'body') { ui.tab = 'log'; ui.logSeg = 'body'; }
   document.body.dataset.tab = ui.tab;
+  document.documentElement.classList.toggle('noscroll', ui.tab === 'home'); // Home is one fixed screen (v11)
   renderTop(); renderNav();
   $('#view').innerHTML = ({ home: viewHome, today: viewToday, board: viewBoard, cal: viewCal, log: viewLog, me: viewMe })[ui.tab]();
   fitSeason($('#view'));
   if (ui.tab === 'me' && ui.profSeg === 'settings') initWheels($('#view'));
+  const rk = ui.tab === 'me' && $('#view .ranks .rk.cur'); if (rk) rk.parentNode.scrollLeft = Math.max(0, rk.offsetLeft - rk.parentNode.offsetLeft - 90);
   if (ui.tab === 'log' && ui.logSeg === 'workout') updateWkcal();
-  if (S.owed.length) showDonation();
+  if (S.owed.length) showDonation(); else streakOffer();
 }
 /* ---------- views: home (the season scene, no quests) ---------- */
 function viewHome() {
   const k = todayKey(), d = ensureDay(k), q = d.q, done = q.filter(x => x.done).length, o = overall(), rk = rankOf(o.L);
   const side = (S.side || []).filter(x => x.status === 'active' && x.start <= k).length, rw = (S.rewards || []).filter(r => !r.used).length;
-  return `<div class="home">${seasonHero(ui.season)}
+  return `<div class="home">${homeHero()}
     <div class="home-st">
       <span class="hs gold">${ICON.flame}<b class="num">${S.streak.cur}</b></span>
       <span class="hs"><b>Lv ${o.L}</b>&nbsp;${esc(rk.name)}</span>
+      <button class="hs gold" data-a="goBoard" data-id="rewards" aria-label="${S.coins || 0} coins">${ICON.coin}<b class="num">${S.coins || 0}</b></button>
+    </div><div class="home-st">
       <button class="hs hs-q" data-a="tab" data-id="today"><b class="num">${done}/${q.length}</b>&nbsp;today${side ? ` · ${side} side` : ''}${ICON.chev}</button>
       ${rw ? `<button class="hs gold" data-a="goBoard" data-id="rewards" aria-label="${rw} rewards waiting">${ICON.gift}<b class="num">${rw}</b></button>` : ''}
-      <span class="sp"></span><button class="hs hs-ic" data-a="wallpaper" aria-label="Save this scene as a wallpaper" title="Save as wallpaper">${ICON.img}</button>
+      <button class="hs hs-ic" data-a="wallpaper" aria-label="Save this scene as a wallpaper" title="Save as wallpaper">${ICON.img}</button>
     </div></div>`;
 }
 /* ---------- views: setup ---------- */
 function renderSetup() {
   applySeason();
   $('#top').innerHTML = ''; $('#nav').innerHTML = '';
-  const tdef = ['teeth', 'shower', 'phone', 'pray'];
+  // v11 (Daniel): nothing is ticked for you: no skills, no tasks, no look
   const tree = pid => subFolders(pid).filter(f => !/^u_/.test(f.id)).map(f => { const own = SKILLS.filter(s => isSkill(s) && s.f === f.id), kids = tree(f.id); if (!own.length && !kids) return '';
-    return `<details class="su"${f.id === 'faith' ? ' open' : ''}><summary><span class="sp">${esc(f.name)}</span>${ICON.chev}</summary>${kids}${own.map(s => `
-    <div class="skpick"><label><input type="checkbox" name="sk_${s.id}" ${s.id === 'bible' ? 'checked' : ''}> ${esc(s.name)}</label>
+    return `<details class="su"><summary><span class="sp">${esc(f.name)}</span>${ICON.chev}</summary>${kids}${own.map(s => `
+    <div class="skpick"><label><input type="checkbox" name="sk_${s.id}"> ${esc(s.name)}</label>
     <select name="lv_${s.id}"><option value="1">Beginner</option><option value="2">Intermediate</option><option value="3">Advanced</option></select></div>`).join('')}</details>`; }).join('');
   $('#view').innerHTML = `<div class="hero"><img src="icons/icon-192.png" class="hero-icon" alt=""><h1>Deificatio</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
   <form id="setupForm" onsubmit="return false">
@@ -1193,9 +1470,11 @@ function renderSetup() {
     <div class="grid2"><div><label id="wlab">Weight (lb)</label><input name="weight" type="number" step="0.1" inputmode="decimal"></div><div><label>Body fat % (optional)</label><input name="bf" type="number" step="0.1" inputmode="decimal"></div></div>
     <label>Goal</label><select name="goal"><option value="cut">Lose fat (−500 kcal)</option><option value="maintain" selected>Maintain</option><option value="bulk">Build muscle (+300 kcal)</option></select>
   </div>
-  <div class="card"><h3>Seasons</h3><p class="mu small">The app follows the 72 micro-seasons (七十二候). Pick whose names and scenes you want. You can switch later in Profile → Settings.</p>
-    <div class="cal-pick">${[['ko', '한국 칠십이후', 'Korean', 'The original Chinese set read in Korean, with hangul, 뜻풀이 and romanization.', '東風解凍 · 동풍해동'], ['ja', '日本の七十二候', 'Japanese', "Japan's own version (本朝七十二候) with kana readings, modern meanings and romaji.", '東風解凍 · はるかぜこおりをとく']]
-      .map(([v, a, n, d, ex], i) => `<label class="cal-opt"><input type="radio" name="cal" value="${v}" data-c="calPick" ${i ? '' : 'checked'}><span><b lang="${v}">${a}</b> <span class="mu small">${n}</span><span class="mu2 small">${d}</span><span class="small" lang="${v}">${ex}</span></span></label>`).join('')}</div>
+  <div class="card" id="suLook"><h3>Look</h3><p class="mu small">The app can follow the 72 micro-seasons (七十二候): pick whose names and scenes you want, or use your own look. You can switch later in Profile → Settings.</p>
+    <div class="cal-pick">${[['ko', '한국 칠십이후', 'Korean', 'The original Chinese set read in Korean, with hangul, 뜻풀이 and romanization.', '東風解凍 · 동풍해동'], ['ja', '日本の七十二候', 'Japanese', "Japan's own version (本朝七十二候) with kana readings, modern meanings and romaji.", '東風解凍 · はるかぜこおりをとく'],
+      ['own', 'My own theming', 'Your own look', 'No season names or scenes: a color you pick, and the date & time or your own words on Home.', '']]
+      .map(([v, a, n, d, ex]) => `<label class="cal-opt"><input type="radio" name="cal" value="${v}" data-c="calPick" ${ui.suLook === v ? 'checked' : ''}><span><b${v === 'own' ? '' : ` lang="${v}"`}>${a}</b> <span class="mu small">${n}</span><span class="mu2 small">${d}</span>${ex ? `<span class="small" lang="${v}">${ex}</span>` : ''}</span></label>`).join('')}</div>
+    <div id="suText">${suText()}</div>
   </div>
   <div class="card"><h3>Daily rhythm</h3><p class="mu small">Your day resets at wake time. "Phone away & asleep" locks 15 minutes after sleep time.</p>
     <div class="grid2"><div><label>Wake time</label><input name="wake" type="time" value="07:00"></div><div><label>Sleep time</label><input name="sleep" type="time" value="23:00"></div></div>
@@ -1204,19 +1483,40 @@ function renderSetup() {
   <div class="lib su-tree">${tree(null)}</div>
   </div>
   <div class="card"><h3>Daily tasks</h3><p class="mu small">Everyday basics with an XP bar and achievements instead of a hexagon. You can change these any time in Board → Tasks.</p>
-  ${TASKS.map(t => `<div class="skpick"><label><input type="checkbox" name="tk_${t.id}" ${tdef.includes(t.id) ? 'checked' : ''}> ${esc(t.name)}</label><span class="mu2 small">${esc(taskDesc(t))}</span></div>`).join('')}
+  ${TASKS.map(t => `<div class="skpick"><label><input type="checkbox" name="tk_${t.id}"> ${esc(t.name)}</label><span class="mu2 small">${esc(taskDesc(t))}</span></div>`).join('')}
   </div>
   <button class="btn-p btn-big" data-a="finishSetup">Start</button>
   </form>
   <p class="mu2 small" style="text-align:center;margin-top:14px">Have a backup? <a href="#" data-a="importOpen">Restore it</a><input type="file" id="importFile" accept="application/json,.json,text/plain,.txt" hidden></p>`;
 }
+function suText() { // setup: Home text (+ background color for your own look), shown once a look is picked
+  const look = ui.suLook; if (!look) return '';
+  const bg = custOpts().bg;
+  return `<label>Home text</label><div id="htF" data-setup="${look === 'own' ? 'own' : 'season'}">${htFields(look === 'own' ? 'own' : 'season')}</div>
+    <div class="ht-prev">${homeHero(true)}</div>
+    ${look === 'own' ? `<label>Background color</label><div class="cw-swatches su-sw">${SWATCHES.map(c => `<button class="cw-s${c === bg ? ' on' : ''}" style="background:${c}" data-a="suBg" data-id="${c}" aria-label="${c}"></button>`).join('')}</div>
+      <p class="mu2 small">Any color, an accent color or your own photo: later in Profile → Settings → Theme.</p>` : ''}`;
+}
+function suRefresh() { const el = $('#suText'); if (el) { el.innerHTML = suText(); fitSeason(el); } }
+function suLook(v) { // picking Korean / Japanese / my own theming at setup previews it right away
+  const was = ui.suLook; ui.suLook = v;
+  if (v === 'own') { S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color' }) }; if (htOpts().mode === 'season') htSet(o => { o.mode = 'clock'; }); }
+  else { S.cal = v === 'ja' ? 'ja' : 'ko'; if (S.theme && S.theme.id === 'custom') S.theme = null; if (was === 'own' && htOpts().mode === 'clock') htSet(o => { o.mode = 'season'; }); }
+  ui.season = applySeason(); suRefresh();
+}
 function finishSetup() {
   const f = new FormData($('#setupForm')), g = k => f.get(k);
+  const look = g('cal'), ho = htOpts(), stop = (m, el) => { toast(m, 'bad'); const t = el && $(el); if (t) t.scrollIntoView({ block: 'center' }); };
+  if (!look) return stop('Pick a look: Korean, Japanese or your own', '#suLook');
+  if (ho.mode === 'custom' && !(ho.main || '').trim()) return stop('Type your Home text, or pick Date & time', '#suLook');
+  if (ho.mode === 'clock' && ho.time === 'off' && ho.date === 'off') return stop('Pick a time or a date for Home', '#suLook');
+  if (![...f.keys()].some(x => /^(sk|tk)_/.test(x)) && !confirm('You didn’t pick any skills or daily tasks, so your quest list starts almost empty. Start anyway? You can add them any time in Board.')) return;
   const p = S.profile;
   p.name = (g('name') || '').trim(); p.sex = g('sex'); p.birthYear = +g('birthYear') || 2000; p.units = g('units');
   p.heightCm = p.units === 'imperial' ? Math.round(((+g('ft') || 0) * 12 + (+g('in') || 0)) * 2.54) : (+g('cm') || 175);
   const w = num(g('weight')); p.weightKg = w ? (p.units === 'imperial' ? w / 2.20462 : w) : 75;
-  p.goal = g('goal'); p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00'; S.cal = g('cal') === 'ja' ? 'ja' : 'ko';
+  p.goal = g('goal'); p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00'; S.cal = look === 'ja' ? 'ja' : 'ko';
+  if (look === 'own') S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color' }) };
   const today = todayKey(); p.start = today;
   const bf = num(g('bf')); if (w || bf != null) S.body.push({ id: uid(), date: today, w: w ? p.weightKg : null, bf });
   for (const t of TASKS) if (f.get('tk_' + t.id)) adoptTask(t.id);
@@ -1243,7 +1543,7 @@ function pauseBanner(p, tk) {
     <div class="row" style="margin-top:10px;gap:8px">${p.start === tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">${em ? 'Resume today' : 'Cancel pause'}</button>` : ''}${p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">${em ? 'Resume tomorrow' : 'End early'}</button>` : ''}</div></div>`;
 }
 function seasonMini(si) { // one-line season label for the Quests tab (the full header lives on Home)
-  if (!si) return '';
+  if (!si || (themeId() === 'custom' && htOpts().mode !== 'season')) return ''; // your own look: no season label
   const o = szOpts(), m = o.main, lat = m === 'en' || m === 'rom', t = szText('term', si), h = szText('hu', si), lg = SZC().lang[m] || 'ko';
   return `<div class="sz-mini" data-a="seasonList" role="button" aria-label="Browse the 72 micro-seasons"><b${lat ? '' : ` lang="${lg}"`} class="${lat ? 'lat' : ''}${m === 'ja' ? ' kana' : ''}">${esc(h[m])}</b><span class="mu small">${esc(m === 'en' ? t.en : t[m] + (m === 'hj' || m === 'ko' || m === 'ja' ? ' · ' + h.en : ''))}</span></div>`;
 }
@@ -1257,6 +1557,7 @@ function viewToday() {
   const badges = [S.rest.includes(k) ? '<span class="pill">Rest day</span>' : '', isDeload(k) ? '<span class="pill">Deload week · −25%</span>' : '', d.penTier ? `<span class="pill bad">Penalty · ${esc(PENALTY[d.penTier].name)}</span>` : '',
     fst ? `<span class="pill gold">Fasting · day ${fastDay(fst, k)}/${fastLen(fst)}</span>` : ''].filter(Boolean).join(' ');
   const qrow = x => {
+    if (x.side) return dueRow(x);
     const locked = !x.done && x.lockAt && now > x.lockAt;
     const t = x.task ? S.tasks[x.task] : null, n = x.sessions || 1;
     const lv = x.skill && SK[x.skill] ? `Lv ${skLevel(x.skill).L}` : t ? `Lv ${taskLevel(t).L}` : '';
@@ -1265,29 +1566,34 @@ function viewToday() {
     const sub = x.key === 'diet' ? dietSub(k) : [x.task ? (x.unit === 'min' ? fmtTarget(x.target, 'min') + (n > 1 ? ' each' : '') : '') : hasProg ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit), x.task && n > 1 ? `${x.progress || 0} of ${n}` : '', lv, locked ? 'locked' : ''].filter(Boolean).join(' · ');
     const pips = x.task && n > 1 ? `<div class="pips">${Array.from({ length: n }, (_, i) => `<i class="${i < (x.progress || 0) ? 'on' : ''}"></i>`).join('')}</div>` : '';
     const minus = x.task && n > 1 && x.progress > 0 && !x.done ? `<button class="btn-g x" data-a="tqMinus" data-id="${esc(x.key)}" aria-label="Undo one">${ICON.minus}</button>` : '';
+    const plus = !x.task && !x.auto && !x.side && x.unit && x.target > 0 && !locked ? `<button class="btn-g x qplus" data-a="qLog" data-id="${esc(x.key)}" aria-label="Log ${esc(UNIT_NAME[x.unit] || 'amount')}">${ICON.plus}</button>` : '';
     const chk = x.done ? ICON.check : x.task && n > 1 && x.progress ? `<span class="num chk-n">${x.progress}</span>` : '';
     return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''} ${x.task ? 'task' : ''}"><button class="chk${x.task && n > 1 && x.progress && !x.done ? ' part' : ''}" data-a="tq" data-id="${esc(x.key)}" aria-label="Check ${esc(x.title)}">${chk}</button>
-      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${pips}${prog}</div>${minus}<div class="qx">+${x.xp}</div></div>`;
+      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${pips}${prog}</div>${minus}${plus}<div class="qx">+${x.xp}</div></div>`;
   };
   const rw = (S.rewards || []).filter(r => !r.used), side = sideSection();
   const rwBanner = rw.length ? `<button class="banner rw" data-a="goBoard" data-id="rewards"><div class="row">${ICON.gift}<b class="sp">${rw.length === 1 ? 'You have a reward waiting' : rw.length + ' rewards waiting'}</b>${ICON.chev}</div><div class="small mu" style="margin-top:3px;text-align:left">${esc(rw.slice(0, 2).map(rewardName).join(' · '))}</div></button>` : '';
-  if (pi && pi.all) return `${seasonMini(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}${backupNag(k)}${rwBanner}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : pi.ps.some(p => p.type === 'pass') ? 'You earned this rest. Nothing to log today.' : 'Everything is paused. Enjoy the break.'}</div>
+  if (pi && pi.all) return `${seasonMini(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}${streakNag(k)}${backupNag(k)}${rwBanner}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : pi.ps.some(p => p.type === 'pass') ? 'You earned this rest. Nothing to log today.' : 'Everything is paused. Enjoy the break.'}</div>
   ${side}<div class="row" style="justify-content:center;margin-top:12px"><button class="btn-s" data-a="tab" data-id="log">Log a workout anyway</button></div>`;
-  return `${seasonMini(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${backupNag(k)}${rwBanner}
+  return `${seasonMini(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${streakNag(k)}${ownNag()}${backupNag(k)}${rwBanner}
   <div class="card ring"><div style="flex:none">${ringSvg(pct)}</div><div class="sp"><div class="mu2 small">Day ${dayN}</div><h3>${fmtDate(k)}</h3>
     <div class="mu small"><span class="num">${done}/${q.length}</span> quests · <span class="gold num">+${xpToday} XP</span></div>${badges ? `<div class="badges">${badges}</div>` : ''}</div></div>
   ${q.length ? lists.map(l => `<div class="qlist"><div class="qhead"><h2 class="${l === 'Penalty' ? 'bad' : ''}">${esc(l)}</h2><span class="mu2 small num">${q.filter(x => x.list === l && x.done).length}/${q.filter(x => x.list === l).length}</span></div>
     ${q.filter(x => x.list === l).map(qrow).join('')}</div>`).join('') : `<div class="empty">${pi && pi.emergency ? 'Nothing today. Take care of what matters.' : 'Nothing scheduled today.'}</div>`}
   ${side}
   <div class="row" style="margin-top:16px"><button class="btn-s" data-a="regen">Refresh quests</button><span class="sp"></span><button class="btn-s" data-a="goBoard" data-id="tasks">Edit quests</button></div>
-  <p class="mu2 small note">Targets adapt: finishing a skill raises it about 8% a week; missing lowers it 6%. Every 4th week is a deload. Under 100% means penalty exercises tomorrow; 0% means a $5 donation plus Tier III. Side quests never count against you.</p>
+  <p class="mu2 small note">Targets adapt: finishing a skill raises it about 8% a week; missing lowers it 6%, unless you set your own target on its skill card. Every 4th week is a deload. Tap + to log reps, seconds or distance. Under 100% means penalty exercises tomorrow; 0% means a $5 donation plus Tier III. Side quests count only on their due days (deadline or checkpoint day), unless you switch that off.</p>
   ${pi && pi.emergency ? '' : '<div style="text-align:center;margin-top:6px"><button class="btn-g bad small" data-a="emNew">Extreme emergency</button></div>'}`;
 }
 /* ---------- side quests: one-time & time-limited ----------
    S.side = [{ id, type 'once'|'timed', title, note, diff 1-4, start, due|null, durN, durU 'd'|'w'|'m'|'y'|'done',
      track 'check'|'cp'|'time', cps [{ id, t, day|null, done|null }], goalMin, log [{ date, min }],
-     reward null|{ kind 'custom', text }|{ kind 'pass', days, all, lists, skills, tasks }, status 'active'|'done'|'expired'|'given', doneOn, xpGot }]
-   They run on their own clock, never count toward the daily %, and expiring costs nothing. */
+     reward null|{ kind 'custom', text }|{ kind 'pass', days, all, lists, skills, tasks }, status 'active'|'done'|'expired'|'given', doneOn, xpGot,
+     req (v11; missing = true), failed }]
+   They run on their own clock. v11: a quest with req on counts toward the day on its due dates (the deadline, and any
+   checkpoint with a quest day): those days get a 'Due today' quest (key sd:<id> / sc:<id>:<cp>) that is done when the
+   quest / checkpoint was finished by the end of that day. Missing it = an incomplete day = penalties. Giving up a
+   counted quest that still has a due date ahead fails it today. With req off they never count and never cost anything. */
 const SIDE_XP = { 1: 25, 2: 50, 3: 100, 4: 200 };
 const SIDE_DIFF = ['', 'Easy', 'Medium', 'Hard', 'Epic'];
 const DUR_U = { d: 'days', w: 'weeks', m: 'months', y: 'years' };
@@ -1306,10 +1612,53 @@ function sideProg(q) {
   return q.status === 'done' ? 1 : 0;
 }
 function sideLeft(q) {
-  if (q.status !== 'active') return q.status === 'done' ? `Done ${fmtDate(q.doneOn)}` : q.status === 'expired' ? `Expired ${fmtDate(q.due)}` : 'Given up';
+  if (q.status !== 'active') return q.status === 'done' ? `Done ${fmtDate(q.doneOn)}` : q.status === 'expired' ? `${q.failed ? 'Failed' : 'Expired'} ${fmtDate(q.due)}` : 'Given up';
   if (q.start > todayKey()) return `Starts ${fmtDate(q.start)}`;
   if (!q.due) return q.type === 'timed' ? 'Until it’s done' : 'No deadline';
   const n = daysBetween(todayKey(), q.due); return n === 0 ? 'Last day today' : n === 1 ? '1 day left' : n < 60 ? `${n} days left` : `Until ${fmtDate(q.due)}`;
+}
+const DUE_LIST = 'Due today';
+const sideCounts = q => q.req !== false;
+const sideHasDue = q => !!q.due || (q.track === 'cp' && (q.cps || []).some(c => c.day));
+const sideFutureDue = (q, k) => (q.due && q.due >= k) || (q.track === 'cp' && (q.cps || []).some(c => !c.done && cpDate(q, c) && cpDate(q, c) >= k));
+function sideDueQuests(k) { // the side quests that count toward day k
+  const out = [];
+  for (const q of S.side || []) {
+    if (!sideCounts(q) || !q.start || q.start > k || (q.created && q.created > k)) continue;
+    if ((q.status === 'done' || q.status === 'given') && q.doneOn < k) continue;
+    const gaveUp = q.status === 'given' && q.doneOn === k && sideFutureDue(q, k), last = q.due === k || gaveUp;
+    if (last) out.push({ key: 'sd:' + q.id, side: q.id, title: q.title, list: DUE_LIST, unit: '', target: 0, progress: 0, done: false, xp: sideXp(q) });
+    if (q.track === 'cp' && !last) (q.cps || []).forEach(c => { if (cpDate(q, c) === k && (!q.due || k < q.due)) out.push({ key: `sc:${q.id}:${c.id}`, side: q.id, cp: c.id, title: c.t || 'Checkpoint', list: DUE_LIST, unit: '', target: 0, progress: 0, done: false, xp: 10 }); });
+  }
+  return out;
+}
+function sideEntryDone(x, k) {
+  const q = (S.side || []).find(s => s.id === x.side); if (!q) return !!x.done;
+  if (x.cp) { const c = q.cps.find(z => z.id === x.cp); return !!(c && c.done && c.done <= k); }
+  return q.status === 'done' && !!q.doneOn && q.doneOn <= k;
+}
+function syncSide(k) { // keep a day's "Due today" quests in step with the side quests (never touches evaluated days)
+  const d = S.days[k]; if (!d || d.ev) return;
+  const pi = pauseInfo(k), want = pi && pi.all ? [] : sideDueQuests(k).filter(w => !(pi && pi.lists.has(w.list)));
+  const keys = new Set(want.map(w => w.key));
+  d.q = d.q.filter(x => !x.side || keys.has(x.key));
+  const have = new Set(d.q.map(x => x.key));
+  want.forEach(w => { if (!have.has(w.key)) d.q.push(w); });
+  d.q.forEach(x => { if (!x.side) return; const w = want.find(y => y.key === x.key); if (w) { x.title = w.title; x.xp = w.xp; } x.done = sideEntryDone(x, k); });
+}
+function cpToggle(q, c) {
+  if (!c || q.status !== 'active') return;
+  if (!c.done) { c.done = todayKey(); q.xpGot = (q.xpGot || 0) + 10; addXp(null, 10); fx('tick'); } else { c.done = null; q.xpGot = Math.max(0, (q.xpGot || 0) - 10); addXp(null, -10, true); }
+  if (q.cps.every(x => x.done)) { completeSide(q); return; }
+  afterChange(); if (c.done) toast('Checkpoint done: ' + c.t, 'ti');
+}
+function sideTap(x) { // checking a "Due today" quest on the Quests tab
+  const q = (S.side || []).find(s => s.id === x.side); if (!q) return;
+  if (q.status !== 'active') { toast(q.status === 'done' ? 'Already complete' : q.status === 'given' ? 'You gave up on this one: it counts as failed today' : 'This quest is over', q.status === 'done' ? '' : 'bad'); return; }
+  if (x.cp) { cpToggle(q, q.cps.find(z => z.id === x.cp)); return; }
+  if (q.track === 'check') { if (confirm(`Complete "${q.title}"?`)) completeSide(q); return; }
+  if (q.track === 'cp') { const c = q.cps.find(z => !z.done); if (c) cpToggle(q, c); return; }
+  ui.tab = 'board'; ui.boardSeg = q.type; ui.sideOpen = q.id; render(); window.scrollTo(0, 0); // time logged: log it on the card
 }
 function passName(p) { const d = p.days || 1; return `${d === 1 ? 'A complete rest day' : d + ' complete rest days'}${p.all ? '' : ' · ' + scopeTxt(p)}`; }
 const rewardName = r => r.kind === 'pass' ? passName(r.pass || {}) : r.text || 'A treat';
@@ -1327,7 +1676,20 @@ function completeSide(q) {
 }
 function expireSide(quiet) {
   const tk = todayKey();
-  (S.side || []).forEach(q => { if (q.status === 'active' && q.due && q.due < tk) { q.status = 'expired'; if (!quiet) toast('Quest expired: ' + q.title + ' · no penalty'); } });
+  (S.side || []).forEach(q => {
+    if (q.status !== 'active' || !q.due || q.due >= tk) return;
+    q.status = 'expired'; if (sideCounts(q)) q.failed = true;
+    if (!quiet) toast(q.failed ? `Quest failed: ${q.title} · it counted toward ${fmtShort(q.due)}` : 'Quest expired: ' + q.title + ' · no penalty', q.failed ? 'bad' : '');
+  });
+}
+function dueRow(x) { // a side quest that counts toward today, in the Quests list
+  const q = (S.side || []).find(s => s.id === x.side), over = q && q.status !== 'active' && !x.done;
+  const sub = !q ? '' : x.cp ? `${q.title} · checkpoint due today` : [q.status === 'given' ? 'Given up · counts as failed' : 'Deadline today', SIDE_DIFF[q.diff || 2],
+    q.track === 'cp' ? `${q.cps.filter(c => c.done).length}/${q.cps.length} checkpoints` : q.track === 'time' ? `${(sideMin(q) / 60).toFixed(1)}/${(q.goalMin / 60).toFixed(0)} h` : ''].filter(Boolean).join(' · ');
+  const time = q && !x.cp && q.track === 'time' && q.status === 'active' && !x.done;
+  const ctl = time ? `<button class="btn-s" data-a="sideOpen" data-id="${q.id}">+ Time</button>` : `<button class="chk" data-a="tq" data-id="${esc(x.key)}" aria-label="Check ${esc(x.title)}"${over ? ' disabled' : ''}>${x.done ? ICON.check : ''}</button>`;
+  const prog = q && !x.cp && q.track !== 'check' && !x.done ? `<div class="prog"><i style="width:${(sideProg(q) * 100).toFixed(1)}%"></i></div>` : '';
+  return `<div class="q due${x.done ? ' done' : ''}${over ? ' locked' : ''}">${ctl}<div class="qb"${q ? ` data-a="sideOpen" data-id="${q.id}" role="button"` : ''}><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${prog}</div>${q && q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic" title="Has a reward">${ICON.gift}</span>` : ''}<div class="qx">+${x.xp}</div></div>`;
 }
 function sideRowMini(q) { // compact card on the Quests tab
   const p = sideProg(q), tk = todayKey(), next = q.track === 'cp' ? q.cps.find(c => !c.done) : null, late = next && cpDate(q, next) && cpDate(q, next) < tk;
@@ -1337,9 +1699,10 @@ function sideRowMini(q) { // compact card on the Quests tab
   return `<div class="q side${late ? ' late' : ''}">${ctl}<div class="qb" data-a="sideOpen" data-id="${q.id}" role="button"><div class="qt">${esc(q.title)}</div><div class="qs">${esc([sub, sideLeft(q)].filter(Boolean).join(' · '))}</div>${q.track !== 'check' ? `<div class="prog"><i style="width:${(p * 100).toFixed(1)}%"></i></div>` : ''}</div>${q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic" title="Has a reward">${ICON.gift}</span>` : ''}<div class="qx">+${sideXp(q)}</div></div>`;
 }
 function sideSection() {
-  const tk = todayKey(), act = (S.side || []).filter(q => q.status === 'active' && q.start <= tk);
+  const tk = todayKey(), due = new Set(((S.days[tk] || {}).q || []).filter(x => x.side).map(x => x.side));
+  const act = (S.side || []).filter(q => q.status === 'active' && q.start <= tk && !due.has(q.id));
   if (!act.length) return '';
-  return `<div class="qlist"><div class="qhead"><h2>Side quests</h2><span class="mu2 small">don’t count toward today</span></div>${act.sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(sideRowMini).join('')}</div>`;
+  return `<div class="qlist"><div class="qhead"><h2>Side quests</h2><span class="mu2 small">${act.some(q => sideCounts(q) && sideHasDue(q)) ? 'count only on their due days' : 'don’t count toward today'}</span></div>${act.sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(sideRowMini).join('')}</div>`;
 }
 function sideCard(q) { // full card on the Board
   const tk = todayKey(), open = ui.sideOpen === q.id, p = sideProg(q), act = q.status === 'active';
@@ -1351,14 +1714,14 @@ function sideCard(q) { // full card on the Board
     if (q.reward && q.reward.kind !== 'none') body += `<div class="rw-line">${ICON.gift}<span>${esc(q.reward.kind === 'pass' ? passName(q.reward) : q.reward.text)}</span></div>`;
     body += `<div class="row wrap" style="margin-top:12px;gap:8px">${act && q.track === 'check' ? `<button class="btn-s btn-p" data-a="sideDone" data-id="${q.id}">Complete</button>` : ''}${act ? `<button class="btn-s" data-a="sideEdit" data-id="${q.id}">Edit</button><span class="sp"></span><button class="btn-g small" data-a="sideGive" data-id="${q.id}">Give up</button>` : `<span class="sp"></span><button class="btn-g bad small" data-a="sideDel" data-id="${q.id}">Delete</button>`}</div>`;
   }
-  return `<div class="card side-card ${q.status}"><div class="row" data-a="sideOpen" data-id="${q.id}" role="button"><div class="sp"><div>${esc(q.title)} <span class="pill">${SIDE_DIFF[q.diff || 2]}</span></div><div class="mu small">${esc(sideLeft(q))}${q.track === 'cp' ? ` · ${q.cps.filter(c => c.done).length}/${q.cps.length} checkpoints` : q.track === 'time' ? ` · ${(sideMin(q) / 60).toFixed(1)}/${(q.goalMin / 60).toFixed(0)} h` : ''}</div>
+  return `<div class="card side-card ${q.status}"><div class="row" data-a="sideOpen" data-id="${q.id}" role="button"><div class="sp"><div>${esc(q.title)} <span class="pill">${SIDE_DIFF[q.diff || 2]}</span>${act && sideCounts(q) && sideHasDue(q) ? ' <span class="pill gold">Counts</span>' : ''}${q.failed ? ' <span class="pill bad">Failed</span>' : ''}</div><div class="mu small">${esc(sideLeft(q))}${q.track === 'cp' ? ` · ${q.cps.filter(c => c.done).length}/${q.cps.length} checkpoints` : q.track === 'time' ? ` · ${(sideMin(q) / 60).toFixed(1)}/${(q.goalMin / 60).toFixed(0)} h` : ''}</div>
     ${q.track !== 'check' ? `<div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i></div>` : ''}</div>${q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic">${ICON.gift}</span>` : ''}<span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
 }
 function boardSide(type) {
   const all = (S.side || []).filter(q => q.type === type), act = all.filter(q => q.status === 'active'), past = all.filter(q => q.status !== 'active').sort((a, b) => (b.doneOn || b.due || '') < (a.doneOn || a.due || '') ? -1 : 1);
   const have = new Set(all.filter(q => q.status === 'active').map(q => q.title)), ideas = SIDE_TEMPLATES[type].filter(t => !have.has(t.title));
   const intro = type === 'once' ? 'Things to do once, like going camping with friends. Set an optional deadline and a reward.' : 'Projects with their own clock: days, weeks, months, years, or until they’re done. Track them with checkpoints or time logged.';
-  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">${intro} They never count against your day.</p><button class="btn-p btn-s" data-a="sideNew" data-id="${type}">+ New</button></div>
+  return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">${intro} With a deadline they count toward your day on their due dates (switch that off per quest).</p><button class="btn-p btn-s" data-a="sideNew" data-id="${type}">+ New</button></div>
   <h2>Active</h2>${act.length ? act.map(sideCard).join('') : `<div class="card mu small">No ${type === 'once' ? 'one-time' : 'time-limited'} quests yet. Start one, or adopt an idea below.</div>`}
   ${ideas.length ? `<h2>Ideas</h2><div class="card">${ideas.map((t, i) => `<div class="list-item"><div class="sp"><div>${esc(t.title)}</div><div class="mu small">${esc([SIDE_DIFF[t.diff], type === 'timed' ? (t.dur ? durTxt(t.dur[0], t.dur[1]) : 'until done') : '', t.track === 'cp' ? t.cps.length + ' checkpoints' : t.track === 'time' ? t.goalH + ' h' : '', t.reward ? 'reward' : ''].filter(Boolean).join(' · '))}</div></div><button class="chip" data-a="sideIdea" data-id="${type}" data-k="${SIDE_TEMPLATES[type].indexOf(t)}">Adopt</button></div>`).join('')}</div>` : ''}
   ${past.length ? `<h2>History</h2>${past.slice(0, 20).map(sideCard).join('')}` : ''}`;
@@ -1389,7 +1752,7 @@ function sdBody() {
   let h = `<label>Quest</label><input data-i="sd" data-k="title" value="${esc(d.title)}" placeholder="${d.type === 'once' ? 'e.g. Go camping with friends' : 'e.g. Finish my game demo'}" maxlength="80">
     <label>Notes (optional)</label><input data-i="sd" data-k="note" value="${esc(d.note || '')}" maxlength="140">
     <label>Difficulty · ${sideXp(d)} XP when done</label><div class="seg tight">${[1, 2, 3, 4].map(v => `<button class="${d.diff === v ? 'on' : ''}" data-a="sdSet" data-k="diff" data-id="${v}">${SIDE_DIFF[v]}</button>`).join('')}</div>`;
-  if (d.type === 'once') h += `<label>Deadline (optional)</label><input type="date" min="${tk}" data-c="sd" data-k="due" value="${d.due || ''}"><div class="mu2 small">Past the deadline it quietly expires. No penalty.</div>`;
+  if (d.type === 'once') h += `<label>Deadline (optional)</label><input type="date" min="${tk}" data-c="sd" data-k="due" value="${d.due || ''}"><div class="mu2 small">${sideCounts(d) ? 'On the deadline it joins that day’s quests. Not done by the end of that day = failed, with penalties.' : 'Past the deadline it quietly expires. No penalty.'}</div>`;
   else {
     h += `<div class="grid2"><div><label>Starts</label><input type="date" ${started ? 'disabled' : `min="${tk}"`} data-c="sd" data-k="start" value="${d.start}"></div><div><label>Time limit</label><div class="row" style="gap:6px">${d.durU === 'done' ? '' : `<input type="number" inputmode="numeric" min="1" data-i="sd" data-k="durN" value="${d.durN || 1}" style="width:64px;flex:none">`}<select data-c="sd" data-k="durU">${[['d', 'Days'], ['w', 'Weeks'], ['m', 'Months'], ['y', 'Years'], ['done', 'Until done']].map(([v, n]) => `<option value="${v}" ${d.durU === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div></div>
       <div class="mu2 small" id="sdEnd">${sdEndTxt()}</div>
@@ -1397,6 +1760,9 @@ function sdBody() {
     if (d.track === 'cp') h += `<div class="mu2 small">Optional: the quest day each checkpoint should be done by (day 1 = the start).</div><div class="cp-ed">${d.cps.map((c, i) => `<div class="row"><input data-i="sdCp" data-id="${i}" data-k="t" value="${esc(c.t)}" placeholder="Checkpoint ${i + 1}" ${c.done ? 'disabled' : ''}><input type="number" inputmode="numeric" min="1" data-i="sdCp" data-id="${i}" data-k="day" value="${c.day || ''}" placeholder="Day" style="width:70px;flex:none" ${c.done ? 'disabled' : ''}>${c.done ? '<span class="gold small">done</span>' : `<button class="btn-g x" data-a="sdCpDel" data-id="${i}" aria-label="Remove">✕</button>`}</div>`).join('')}</div><button class="btn-s" data-a="sdCpAdd" style="margin-top:8px">+ Checkpoint</button>`;
     else h += `<label>Goal (hours)</label><input type="number" inputmode="decimal" step="any" min="0.5" data-i="sd" data-k="goalH" value="${(d.goalMin || 600) / 60}"><div class="mu2 small">Log time on the quest card. At most 24 h counts per day.</div>`;
   }
+  const on = sideCounts(d), cpDays = d.type === 'timed' && d.track === 'cp';
+  h += `<label class="check" style="margin-top:14px"><input type="checkbox" data-c="sdReq" ${on ? 'checked' : ''}> Counts toward my day</label>
+    <div class="mu2 small">${on ? `Its deadline${cpDays ? ' and every checkpoint with a day' : ''} join${cpDays ? '' : 's'} that day’s quests. Missing one means the day isn’t complete: penalties and a broken streak. Giving up counts as failing.` : 'Never counts toward your day and never gives a penalty.'}${on && d.type === 'timed' && d.durU === 'done' && !cpDays ? ' (An “until done” quest has no deadline, so there’s nothing to count.)' : ''}</div>`;
   h += `<hr><label>Reward for finishing</label><div class="seg tight">${[['none', 'None'], ['custom', 'Treat'], ['pass', 'Rest pass']].map(([v, n]) => `<button class="${rw.kind === v ? 'on' : ''}" data-a="sdRw" data-id="${v}">${n}</button>`).join('')}</div>`;
   if (rw.kind === 'custom') h += `<input data-i="sdRwT" value="${esc(rw.text || '')}" placeholder="e.g. A meal from Portillo's" maxlength="80"><div class="mu2 small">Anything you'd like to give yourself.</div>`;
   if (rw.kind === 'pass') h += `<div class="mu2 small">A pass you can use any time: those days don't need logging and can't give penalties.</div>
@@ -1409,7 +1775,7 @@ function sdEndTxt() {
   const d = ui.sd; if (d.type !== 'timed') return '';
   if (d.durU === 'done') return 'No deadline: it runs until you finish it.';
   const n = Math.round(num(d.durN) || 0); if (n < 1) return '<span class="bad">Set how long.</span>';
-  return `Ends ${fmtDate(addDur(d.start, n, d.durU))}. It expires on its own after that, with no penalty.`;
+  return `Ends ${fmtDate(addDur(d.start, n, d.durU))}. ${sideCounts(d) ? 'That day it counts toward your quests: not finished by its end = failed, with penalties.' : 'It expires on its own after that, with no penalty.'}`;
 }
 function saveSide() {
   const d = ui.sd, tk = todayKey(), bad = m => { toast(m, 'bad'); return false; };
@@ -1435,7 +1801,7 @@ function boardRewards() {
   const rs = S.rewards || [], ready = rs.filter(r => !r.used), used = rs.filter(r => r.used).sort((a, b) => a.used < b.used ? 1 : -1);
   const row = r => `<div class="list-item rw-item"><span class="rw-ic">${ICON.gift}</span><div class="sp"><div>${esc(rewardName(r))}</div><div class="mu small">From “${esc(r.from)}” · ${r.used ? (r.kind === 'pass' ? 'used from ' : 'enjoyed ') + fmtDate(r.used) : 'earned ' + fmtDate(r.earned)}</div></div>
     ${r.used ? '' : r.kind === 'pass' ? `<button class="btn-s btn-p" data-a="rwUse" data-id="${r.id}">Use pass</button>` : `<button class="btn-s btn-p" data-a="rwDone" data-id="${r.id}">Enjoyed it</button>`}</div>`;
-  return `<p class="mu small" style="margin-top:14px">Rewards come from finishing one-time and time-limited quests. Treats are whatever you promised yourself; rest passes give you real days off with nothing to log and no penalty.</p>
+  return `${shopCard()}<p class="mu small" style="margin-top:14px">Rewards come from finishing one-time and time-limited quests, or from the coin shop. Treats are whatever you promised yourself; rest passes give you real days off with nothing to log and no penalty.</p>
   <h2>Ready · ${ready.length}</h2><div class="card">${ready.length ? ready.map(row).join('') : '<div class="mu small">Nothing yet. Add a reward to a quest and finish it.</div>'}</div>
   ${used.length ? `<h2>Used</h2><div class="card">${used.slice(0, 30).map(row).join('')}</div>` : ''}`;
 }
@@ -1453,6 +1819,61 @@ function usePass(r, start) {
   if (start === tk && p.all) { const d = ensureDay(tk); if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || 1, (S.pendingPen || {}).tier || 0) }; delete d.penTier; } }
   S.pauses.push(pz); r.used = start; r.pauseId = pz.id;
   closeModal(true); if (start === tk) regenToday(); afterChange(); toast(start === tk ? 'Rest pass active · enjoy it' : 'Rest pass scheduled for ' + fmtDate(start), 'ti');
+}
+/* ---------- coins & the shop (v11) ----------
+   S.coins: +1 for every perfect day (given when the day is evaluated). The shop sells, for 10 coins each:
+   a Streak Saver (S.savers; brings back a streak a missed day just ended) and a Rest Day Pass (a 1-day, everything
+   pass in S.rewards, used exactly like one earned from a quest). S.streakBreak = { n, day, last, miss, days[], asked }
+   is the streak the latest miss ended; it can be restored until the end of the day after the last missed day. */
+const SHOP_COST = 10;
+const SHOP = [
+  ['saver', 'Streak Saver', 'Brings back a streak you just lost. One saver covers one missed day. The penalty for that day still happens.'],
+  ['pass', 'Rest Day Pass', 'One complete rest day you can use any time: nothing to log, no penalties, streak frozen.']];
+function shopCard() {
+  const c = S.coins || 0, sb = sbValid() ? S.streakBreak : null;
+  const row = ([id, n, d]) => `<div class="list-item shop-item"><span class="rw-ic">${id === 'saver' ? ICON.saver : ICON.gift}</span><div class="sp"><div>${n}${id === 'saver' && S.savers ? ` <span class="pill gold">${S.savers} owned</span>` : ''}</div><div class="mu small">${d}</div></div>
+    <button class="btn-s btn-p buy" data-a="buy" data-id="${id}" ${c < SHOP_COST ? 'disabled' : ''}>${ICON.coin}<span class="num">${SHOP_COST}</span></button></div>`;
+  return `<div class="card shop" style="margin-top:14px"><div class="row"><span class="coin-big">${ICON.coin}</span><div class="sp"><h3><span class="num">${c}</span> coin${c === 1 ? '' : 's'}</h3><div class="mu small">You earn 1 coin for every perfect day (every quest done).</div></div></div>
+    ${sb ? `<div class="banner sv" style="margin-top:10px"><div class="row">${ICON.saver}<b class="sp">Your ${sb.n}-day streak can still be saved</b></div><div class="row" style="margin-top:8px;gap:8px"><button class="btn-s btn-p" data-a="svRestore">Bring it back</button></div></div>` : ''}
+    ${SHOP.map(row).join('')}</div>`;
+}
+function buyItem(id) {
+  const it = SHOP.find(x => x[0] === id); if (!it) return;
+  if ((S.coins || 0) < SHOP_COST) { toast(`You need ${SHOP_COST} coins · you have ${S.coins || 0}`, 'bad'); return; }
+  if (!confirm(`Spend ${SHOP_COST} coins on a ${it[1]}?`)) return;
+  S.coins -= SHOP_COST;
+  if (id === 'saver') S.savers = (S.savers || 0) + 1;
+  else S.rewards.push({ id: uid(), qid: null, from: 'Coin shop', kind: 'pass', text: '', earned: todayKey(), used: null, bought: true, pass: { days: 1, all: true, lists: [], skills: [], tasks: [] } });
+  afterChange(); fx('check'); toast(id === 'saver' ? `Streak Saver bought · you have ${S.savers}` : 'Rest Day Pass bought · use it from Ready below', 'ti');
+}
+const sbValid = () => { const b = S.streakBreak; return !!(b && b.n > 0 && todayKey() <= addDays(b.last, 1)); };
+function streakNag(k) {
+  if (!sbValid()) return ''; const b = S.streakBreak, need = b.miss, can = (S.savers || 0) + Math.floor((S.coins || 0) / SHOP_COST) >= need;
+  return `<div class="banner sv"><div class="row">${ICON.saver}<b class="sp">Your ${b.n}-day streak ended</b></div>
+    <div class="small" style="margin-top:4px">${b.miss === 1 ? 'You missed ' + fmtDate(b.day) : `You missed ${b.miss} days`}. ${can ? `A Streak Saver brings it back${need > 1 ? ` (${need} needed, one per day)` : ''}. You have ${S.savers || 0} and ${S.coins || 0} coins. Only today.` : `It takes ${need} Streak Saver${need > 1 ? 's' : ''} (${SHOP_COST} coins each). You have ${S.savers || 0} and ${S.coins || 0} coins.`}</div>
+    <div class="row" style="margin-top:10px;gap:8px">${can ? `<button class="btn-s btn-p" data-a="svRestore">Bring it back</button>` : ''}<button class="btn-s" data-a="svDrop">Let it go</button></div></div>`;
+}
+function streakModal() {
+  const b = S.streakBreak, need = b.miss, have = S.savers || 0, buy = Math.max(0, need - have), can = buy * SHOP_COST <= (S.coins || 0);
+  openModal(`<div class="sv-head">${ICON.saver}</div><h3 style="text-align:center">Your ${b.n}-day streak ended</h3>
+    <p class="mu small" style="text-align:center">${b.miss === 1 ? 'You missed ' + fmtDate(b.day) : `You missed ${b.miss} days in a row`}. ${need === 1 ? 'A Streak Saver' : need + ' Streak Savers'} can bring it back. That day’s penalty still happens.</p>
+    <p class="small" style="text-align:center">You have <b>${have}</b> Streak Saver${have === 1 ? '' : 's'} · <b>${S.coins || 0}</b> coins</p>
+    <div class="bk-btns">${can ? `<button class="btn-p" data-a="svRestore">${buy ? `Buy ${buy === 1 ? 'one' : buy} for ${buy * SHOP_COST} coins and bring it back` : `Use ${need === 1 ? 'a Streak Saver' : need + ' Streak Savers'}`}</button>` : `<div class="mu2 small" style="text-align:center">Not enough coins: it takes ${buy * SHOP_COST}, you have ${S.coins || 0}. Coins come from perfect days.</div>`}
+    <button data-a="svDrop">Let it go</button><button class="btn-g" data-a="close">Decide later today</button></div>`);
+}
+function streakOffer() { // once per break, after the locked donation sheet (if any)
+  if (!sbValid() || S.streakBreak.asked || S.owed.length || !$('#modal').hidden) return;
+  S.streakBreak.asked = true; save(); streakModal();
+}
+function restoreStreak() {
+  if (!sbValid()) { toast('That streak can’t be saved any more', 'bad'); return; }
+  const b = S.streakBreak, need = b.miss, buy = Math.max(0, need - (S.savers || 0));
+  if (buy * SHOP_COST > (S.coins || 0)) { toast(`You need ${buy * SHOP_COST} coins for that`, 'bad'); return; }
+  S.coins -= buy * SHOP_COST; S.savers = (S.savers || 0) + buy - need;
+  (b.days || [b.day]).forEach(k => { if (S.days[k]) S.days[k].saved = true; });
+  S.streak.cur += b.n; S.streak.best = Math.max(S.streak.best, S.streak.cur); S.streakBreak = null;
+  closeModal(true); afterChange(); fx('day');
+  celebrate('Streak saved', `Your streak is back: ${S.streak.cur} day${S.streak.cur === 1 ? '' : 's'} and counting.`, { big: String(S.streak.cur) });
 }
 
 /* ---------- views: quest board (create / edit quests) ---------- */
@@ -1545,7 +1966,7 @@ function viewCal() {
     ${fastOn(sel) ? `<div class="small" style="margin-bottom:8px"><span class="gold">Fast${fastOn(sel).note ? ' · ' + esc(fastOn(sel).note) : ''}</span> · day ${fastDay(fastOn(sel), sel)} of ${fastLen(fastOn(sel))} · diet quest off</div>` : ''}
     ${spi ?`<div class="small" style="margin-bottom:8px">${ICON.pause} <span class="${spi.emergency ? 'bad' : 'acc'}">${spi.emergency ? 'Extreme emergency' : 'Vacation'}</span> · paused: ${esc(spi.all ? 'everything' : [...spi.lists, ...[...spi.skills].map(id => SK[id] ? SK[id].name : id)].join(', '))}</div>` : ''}
     ${evs.length ? evs.map(e => `<div class="list-item"><div class="sp"><div>${esc(e.title)}</div><div class="mu small">${esc(e.list || '')} · ${esc(repTxt(e))}${e.skill && SK[e.skill] ? ' · ' + esc(SK[e.skill].name) : ''}</div></div><button class="btn-s" data-a="evEdit" data-id="${e.id}">Edit</button></div>`).join('') : '<div class="mu small">No events this day.</div>'}
-    ${day && day.ev ? `<div class="mu small" style="margin-top:8px">Result: ${day.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(day.pct * 100)}%</span>${day.tier ? ` · <span class="bad">${day.tier === 4 ? 'Donation' : PENALTY[day.tier].name}</span>` : ''}`}</div>` : ''}
+    ${day && day.ev ? `<div class="mu small" style="margin-top:8px">Result: ${day.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(day.pct * 100)}%</span>${day.tier ? ` · <span class="bad">${day.tier === 4 ? 'Donation' : PENALTY[day.tier].name}</span>` : ''}${day.saved ? ' · <span class="gold">streak saved</span>' : ''}`}</div>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn-p btn-s" data-a="evNew">+ Event</button><span class="sp"></span>
     ${sel >= tk ? `<button class="btn-s" data-a="restToggle" data-id="${sel}">${S.rest.includes(sel) ? 'Unset rest day' : 'Mark rest day'}</button>` : ''}</div>
     ${sideDue.length ? `<div class="mu small" style="margin-top:10px">${sideDue.map(q => `<div class="list-item"><span class="rw-ic">${ICON.board}</span><span class="sp">${esc(q.title)}</span><span class="mu2 small">${q.due === sel ? 'deadline' : 'checkpoint'}</span></div>`).join('')}</div>` : ''}
@@ -1626,16 +2047,18 @@ function viewWorkout() {
   const week = S.workouts.filter(w => w.date > addDays(k, -7));
   return `<div class="card"><h3>Log a workout</h3>
     <label>Activity</label><select id="wAct" data-c="wcalc">${actOptions(ui.lastAct)}</select>
-    <div class="grid2"><div><label>Minutes</label><input id="wMin" type="number" inputmode="numeric" value="45" data-i="wcalc"></div>
+    <div class="grid2" id="wTime"><div><label>Minutes</label><input id="wMin" type="number" inputmode="numeric" value="45" data-i="wcalc"></div>
     <div id="wDistWrap"><label>Distance (${imperial() ? 'mi' : 'km'})</label><input id="wDist" type="number" step="0.1" inputmode="decimal" placeholder="optional"></div></div>
+    <div class="grid2" id="wRep" hidden><div><label>Reps per set</label><input id="wReps" type="number" inputmode="numeric" value="20" min="1" data-i="wcalc"></div>
+    <div><label>Sets</label><input id="wSets" type="number" inputmode="numeric" value="1" min="1" max="50" data-i="wcalc"></div></div>
     <label>Intensity</label><div class="seg" style="margin-top:0">${['Light', 'Moderate', 'Vigorous'].map((n, i) => `<button class="${ui.intensity === i ? 'on' : ''}" data-a="int" data-id="${i}">${n}</button>`).join('')}</div>
-    <div class="row est"><span class="mu small sp">Estimated burn</span><b id="wKcal" class="num">—</b></div>
+    <div class="row est"><span class="mu small sp" id="wEstL">Estimated burn</span><b id="wKcal" class="num">—</b></div>
     <button class="btn-p btn-big" data-a="wLog">Log workout</button>
-    <p class="mu2 small">MET × your weight × time (2024 Compendium of Physical Activities). Linked skill quests fill in automatically.</p>
+    <p class="mu2 small">MET × your weight × time (2024 Compendium of Physical Activities). Rep exercises estimate the time from the reps. Linked skill quests fill in automatically.</p>
     <button class="btn-s" data-a="caNew" style="margin-top:2px">+ New workout type</button></div>
-  <h2>Today</h2><div class="card">${todays.length ? todays.map(w => `<div class="list-item"><div class="sp"><div>${esc((ACT[w.act] || { name: w.act }).name)}</div><div class="mu small">${w.min} min · ${['light', 'moderate', 'vigorous'][w.int]}${w.auto ? ' · from quest' : w.practice ? ' · from practice' : ''}</div></div><span class="num">${w.kcal} kcal</span>${w.auto ? '' : `<button class="btn-g x" data-a="wDel" data-id="${w.id}" aria-label="Delete">✕</button>`}</div>`).join('') : '<div class="mu small">Nothing logged yet.</div>'}</div>
-  <div class="grid3"><div class="stat"><b>${week.length}</b><span>Sessions · 7d</span></div><div class="stat"><b>${week.reduce((a, w) => a + w.min, 0)}</b><span>Minutes · 7d</span></div><div class="stat"><b>${week.reduce((a, w) => a + (w.kcal || 0), 0).toLocaleString()}</b><span>kcal · 7d</span></div></div>
-  ${mine.length ? `<h2>Your workout types</h2><div class="card">${mine.map(a => `<div class="list-item"><div class="sp"><div>${esc(a.name)}</div><div class="mu small">${esc((folderById(a.f) || { name: 'Other' }).name)} · MET ${a.met.join(' / ')}${a.skill && SK[a.skill] ? ' · ' + esc(SK[a.skill].name) : ''}${a.dist ? ' · distance' : ''}</div></div><button class="chip" data-a="caEdit" data-id="${a.id}">Edit</button></div>`).join('')}</div>` : ''}`;
+  <h2>Today</h2><div class="card">${todays.length ? todays.map(w => `<div class="list-item"><div class="sp"><div>${esc((ACT[w.act] || { name: w.act }).name)}</div><div class="mu small">${w.reps ? `${w.reps} reps${w.sets > 1 ? ` (${w.sets} × ${Math.round(w.reps / w.sets)})` : ''}` : w.dist ? `${esc(fmtTarget(w.dist, 'km'))} · ${Math.round(w.min)} min` : `${Math.round(w.min * 10) / 10} min`} · ${['light', 'moderate', 'vigorous'][w.int]}${w.auto ? ' · from quest' : w.practice ? ' · from practice' : ''}</div></div><span class="num">${w.kcal} kcal</span>${w.auto ? '' : `<button class="btn-g x" data-a="wDel" data-id="${w.id}" aria-label="Delete">✕</button>`}</div>`).join('') : '<div class="mu small">Nothing logged yet.</div>'}</div>
+  <div class="grid3"><div class="stat"><b>${week.length}</b><span>Sessions · 7d</span></div><div class="stat"><b>${Math.round(week.reduce((a, w) => a + w.min, 0))}</b><span>Minutes · 7d</span></div><div class="stat"><b>${week.reduce((a, w) => a + (w.kcal || 0), 0).toLocaleString()}</b><span>kcal · 7d</span></div></div>
+  ${mine.length ? `<h2>Your workout types</h2><div class="card">${mine.map(a => `<div class="list-item"><div class="sp"><div>${esc(a.name)}</div><div class="mu small">${esc((folderById(a.f) || { name: 'Other' }).name)} · MET ${a.met.join(' / ')}${a.skill && SK[a.skill] ? ' · ' + esc(SK[a.skill].name) : ''}${a.reps ? ' · reps' : ''}${a.dist ? ' · distance' : ''}</div></div><button class="chip" data-a="caEdit" data-id="${a.id}">Edit</button></div>`).join('')}</div>` : ''}`;
 }
 function caModal(a) { // the user's own workout type
   const wf = workoutFolders(), like = a ? a.like : 'hiit';
@@ -1648,7 +2071,9 @@ function caModal(a) { // the user's own workout type
   <div id="caMet" class="met3" ${a && !a.like ? '' : 'hidden'}>${['Light', 'Moderate', 'Vigorous'].map((n, i) => `<div><label>${n}</label><input name="met${i}" type="number" step="0.1" inputmode="decimal" value="${a ? a.met[i] : [3, 5, 8][i]}"></div>`).join('')}
     <div class="mu2 small">MET: 1 = sitting still, 3.5 = brisk walk, 8 = jogging, 12+ = all-out.</div></div>
   <label>Linked skill (optional)</label><select name="skill"><option value="">None</option>${skillOptions(a ? a.skill : '')}</select>
-  <div class="mu2 small" style="margin-top:4px">Logging it adds XP to the skill and fills that skill's minute quest.</div>
+  <div class="mu2 small" style="margin-top:4px">Logging it adds XP to the skill and fills that skill's quest (minutes, or reps for a rep skill).</div>
+  <label>Counted in</label><select name="count" data-c="caCount"><option value="min" ${a && a.reps ? '' : 'selected'}>Minutes</option><option value="reps" ${a && a.reps ? 'selected' : ''}>Reps (× sets)</option></select>
+  <div id="caRs" ${a && a.reps ? '' : 'hidden'}><label>Seconds per rep (for time and calories)</label><input name="rs" type="number" step="0.1" inputmode="decimal" value="${a && a.reps ? a.reps : 3}"></div>
   <label class="check"><input type="checkbox" name="dist" ${a && a.dist ? 'checked' : ''}> Track distance</label>
   </form>
   <div class="actions">${a ? `<button class="btn-g bad" data-a="caDel" data-id="${a.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="caSave" data-id="${a ? a.id : ''}">${a ? 'Save' : 'Create'}</button></div>`);
@@ -1661,37 +2086,46 @@ function saveAct(id) {
   const like = f.get('like'); let met;
   if (like === '__met') { met = [0, 1, 2].map(i => num(f.get('met' + i))); if (met.some(v => !v || v < 1 || v > 25)) { toast('MET values go from 1 to 25'); return; } }
   else { const L = ACT[like]; if (!L) { toast('Pick an activity to compare with'); return; } met = L.met.slice(); }
-  const def = { id: id || 'ca_' + uid().slice(0, 8), name, f: fid, met, like: like === '__met' ? null : like, skill: f.get('skill') || null, dist: !!f.get('dist') };
+  const rs = f.get('count') === 'reps' ? num(f.get('rs')) : null; if (rs != null && !(rs >= 0.5 && rs <= 60)) { toast('Seconds per rep: 0.5 to 60'); return; }
+  const def = { id: id || 'ca_' + uid().slice(0, 8), name, f: fid, met, like: like === '__met' ? null : like, skill: f.get('skill') || null, dist: !rs && !!f.get('dist'), reps: rs || null };
   const i = S.customActs.findIndex(a => a.id === def.id);
   if (i >= 0) S.customActs[i] = Object.assign(S.customActs[i], def); else S.customActs.push(def);
   rebuildACT(); ui.lastAct = def.id; closeModal(true); afterChange(); toast(i >= 0 ? 'Workout type updated' : 'Workout type added', 'ti');
 }
+const wRepTotal = () => Math.max(0, Math.round(num(($('#wReps') || {}).value) || 0)) * clamp(Math.round(num(($('#wSets') || {}).value) || 1), 1, 50);
 function updateWkcal() {
   const a = $('#wAct'), m = $('#wMin'); if (!a || !m) return;
-  $('#wKcal').textContent = workoutKcal(a.value, num(m.value) || 0, ui.intensity) + ' kcal';
+  const A = ACT[a.value], rp = !!(A && A.reps); $('#wTime').hidden = rp; $('#wRep').hidden = !rp;
+  const min = rp ? Math.round(wRepTotal() * A.reps / 60 * 10) / 10 : num(m.value) || 0;
+  $('#wKcal').textContent = workoutKcal(a.value, min, ui.intensity) + ' kcal';
+  $('#wEstL').textContent = rp ? `${wRepTotal()} reps ≈ ${min} min of work · burn` : 'Estimated burn';
   $('#wDistWrap').style.visibility = hasDist(a.value) ? 'visible' : 'hidden';
 }
 function logWorkout() {
-  const act = $('#wAct').value; let min = Math.round(num($('#wMin').value) || 0); if (min <= 0) { toast('Enter minutes'); return; }
-  let dist = hasDist(act) ? num($('#wDist').value) : null; if (dist && imperial()) dist = dist / 0.621371;
-  const a = ACT[act]; if (!a) { toast('Pick an activity'); return; }
+  const act = $('#wAct').value, a = ACT[act]; if (!a) { toast('Pick an activity'); return; }
+  const reps = a.reps ? wRepTotal() : 0, sets = a.reps ? clamp(Math.round(num($('#wSets').value) || 1), 1, 50) : 1;
+  if (a.reps && reps <= 0) { toast('Enter reps'); return; }
+  let min = a.reps ? Math.max(0.1, Math.round(reps * a.reps / 60 * 10) / 10) : Math.round(num($('#wMin').value) || 0); if (min <= 0) { toast('Enter minutes'); return; }
+  let dist = !a.reps && hasDist(act) ? num($('#wDist').value) : null; if (dist && imperial()) dist = dist / 0.621371;
   const k = todayKey(), room = DAY_CAP - S.workouts.filter(x => x.date === k).reduce((t, x) => t + (x.min || 0), 0);
   if (min > room) { if (room <= 0) { toast('Already 24 h of workouts logged today', 'bad'); return; } min = room; toast(`Capped at 24 h for today · logged ${min} min`, 'bad'); }
   if (a.skill && !SK[a.skill]) a.skill = null;
   if (a.skill) { min = capMin(a.skill, k, min); if (!min) return; }
-  const w = { id: uid(), date: k, act, min, int: ui.intensity, kcal: workoutKcal(act, min, ui.intensity), skill: a.skill, xp: Math.round(min / 3), dist };
+  const w = { id: uid(), date: k, act, min, int: ui.intensity, kcal: workoutKcal(act, min, ui.intensity), skill: a.skill, xp: a.reps ? Math.max(1, Math.round(reps / 10)) : Math.round(min / 3), dist };
+  if (a.reps) { w.reps = reps; w.sets = sets; }
   ui.lastAct = act;
   S.workouts.push(w);
   addXp(a.skill, w.xp);
   if (a.skill) {
     skState(a.skill).min += min;
-    const q = (S.days[k] || { q: [] }).q.find(x => x.skill === a.skill && !x.done);
-    if (q && (q.unit === 'min' || (q.unit === 'km' && dist))) {
-      q.progress = Math.round(((q.progress || 0) + (q.unit === 'km' ? dist : min)) * 10) / 10;
-      if (q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, []); return; }
+    const q = (S.days[k] || { q: [] }).q.find(x => x.skill === a.skill);
+    const add = !q ? 0 : q.unit === 'reps' && a.reps ? reps : q.unit === 'min' ? min : q.unit === 'km' && dist ? dist : 0;
+    if (add) { // extra after the quest is done still counts toward a raise suggestion
+      w.fill = add; q.progress = Math.round(((q.progress || 0) + add) * 10) / 10;
+      if (!q.done && q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, []); return; }
     }
   }
-  fx('tick'); toast(`Logged ${min} min · ${w.kcal} kcal`); afterChange();
+  fx('tick'); toast(a.reps ? `Logged ${reps} reps · ${w.kcal} kcal` : `Logged ${min} min · ${w.kcal} kcal`); afterChange();
 }
 function kbar(s) {
   const ref = s.hi ?? s.lo ?? 1, max = Math.max(ref * 1.25, s.eaten * 1.04, 1), P = v => +clamp(v / max * 100, 0, 100).toFixed(1);
@@ -1929,7 +2363,7 @@ function meOverview() {
     ${tile(S.stats.penalties, 'Penalties')}${tile(S.stats.penCleared, 'Cleared')}${tile('$' + S.stats.donated * 5, 'Donated')}</div>
   <h2>Health</h2><div class="card"><div class="hex-wrap">${radar(healthAxes())}</div></div>
   <h2>Discipline · Lv ${skLevel('discipline').L}</h2><div class="card"><div class="hex-wrap">${radar(SK.discipline.stats.map(st => ({ n: st.n, v: statValue('discipline', st) })))}</div></div>
-  <h2>Top skills</h2><div class="card">${top.length ? top.map(s => { const l = skLevel(s.id); return `<div class="list-item"><span class="sp">${esc(s.name)}</span><span class="mu small num">Lv ${l.L}</span><div style="width:80px" class="bar"><i style="width:${l.into / l.need * 100}%"></i></div></div>`; }).join('') : '<div class="mu small">Complete quests to level up skills.</div>'}</div>`;
+  <h2>Top skills</h2><div class="card">${top.length ? top.map(s => { const l = skLevel(s.id); return `<div class="list-item"><span class="sp">${esc(s.name)} <span class="gold small">${esc(skillRank(s.id))}</span></span><span class="mu small num">Lv ${l.L}</span><div style="width:80px" class="bar"><i style="width:${l.into / l.need * 100}%"></i></div></div>`; }).join('') : '<div class="mu small">Complete quests to level up skills.</div>'}</div>`;
 }
 /* ---------- martial-art belts ---------- */
 const ord = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
@@ -2009,29 +2443,39 @@ function statsOf(id) { // a skill's hexagon sides; a Belt side is added when you
   if (st.some(x => x.t === 'belt') || !(b && b.ladder && b.ladder.length)) return st;
   const i = s.custom ? st.length : Math.max(0, st.length - 2); return st.slice(0, i).concat([{ k: 'belt', n: 'Belt', t: 'belt' }], st.slice(i));
 }
+function ownBox(id) { // set your own target, see progress toward a raise
+  const c = SK[id], s = skState(id), own = s.own > 0, u = c.unit, mi = u === 'km' && imperial(), g = ownSug(id), need = ownNeed(id);
+  const val = own ? s.own : skillTarget(id, todayKey()), shown = mi ? Math.round(val * 0.621371 * 10) / 10 : val;
+  const word = u === 'km' ? (mi ? 'mi' : 'km') : u === 'sec' ? 'seconds' : u === 'ch' ? 'chapters' : UNIT[u] || u;
+  return `<div class="own-box"><label>${own ? 'Your target' : 'Set your own target'}</label>
+    <div class="row"><input id="ot_${id}" type="number" step="any" min="0" inputmode="decimal" value="${shown}" aria-label="Your target"><span class="mu small">${esc(word)}</span><button class="btn-s" data-a="ownSet" data-id="${id}">${own ? 'Change' : 'Set'}</button></div>
+    <div class="mu2 small" style="margin-top:4px">${own ? `Yours: it won’t change by itself${c.phys ? ' (deload weeks take 25% off)' : ''}. After ${need} sessions at it, about two weeks, you’ll get a suggestion to raise it · <b class="num">${Math.min(s.hits || 0, need)}/${need}</b> so far.` : 'Automatic now: it grows about 8% a week when you finish and drops 6% when you miss. Set a number to take over.'}</div>
+    ${g ? `<div class="banner up" style="margin-top:10px"><div class="row">${ICON.up}<b class="sp">Ready for more</b></div><div class="small" style="margin-top:4px">${esc(g.why)}.</div><div class="row" style="margin-top:8px;gap:8px"><button class="btn-s btn-p" data-a="ownRaise" data-id="${id}">Raise to ${esc(fmtTarget(g.to, u))}</button><button class="btn-s" data-a="ownLater" data-id="${id}">Not yet</button></div></div>` : ''}
+    ${own ? `<button class="btn-g small" data-a="ownAuto" data-id="${id}" style="margin-top:6px">Back to automatic</button>` : ''}</div>`;
+}
 function skillCard(id) {
   const s = SK[id], st = skState(id), l = skLevel(id), open = ui.openSkill === id, stats = statsOf(id);
   const axes = stats.map(x => ({ n: x.n, v: statValue(id, x) }));
   let body = '';
   if (open) {
     body = `<div class="hex-wrap" style="margin-top:6px">${radar(axes, 230)}</div>` + beltBox(id);
-    if (s.unit) body += `<div class="mu small">Next target <b class="num">${esc(fmtTarget(skillTarget(id, todayKey()), s.unit))}</b> · difficulty ×${st.load.toFixed(2)} · ${(st.min / 60).toFixed(1)} h logged${histMin(id) ? ` + ${(histMin(id) / 60).toFixed(0)} h past` : ''}</div>`;
+    if (s.unit) body += `<div class="mu small">Next target <b class="num">${esc(fmtTarget(skillTarget(id, todayKey()), s.unit))}</b> · ${st.own > 0 ? 'your own target' : `difficulty ×${st.load.toFixed(2)}`} · ${(st.min / 60).toFixed(1)} h logged${histMin(id) ? ` + ${(histMin(id) / 60).toFixed(0)} h past` : ''}</div>` + ownBox(id);
     if (s.custom) body += `<div class="mu2 small" style="margin-top:4px">Each side grows with the hours you put into that part. ${s.scale || 100} h on one part = 50 (average).</div>`;
     body += stats.map(x => statEditor(id, x)).join('');
     if (s.unit) {
-      body += `<hr><div class="small mu">Log practice time</div>
+      body += `<hr><div class="small mu">${s.unit === 'min' ? 'Log practice time' : 'Log ' + unitLabel(s.unit).toLowerCase()}</div>
         ${s.custom ? `<div class="chips" id="pf_${id}" style="margin:8px 0">${s.stats.map(x => `<button class="chip" data-a="chipT" data-k="${esc(x.k)}">${esc(x.n)}</button>`).join('')}</div><div class="mu2 small" style="margin-bottom:8px">No parts picked = split evenly.</div>` : ''}
-        <div class="row" style="margin-top:6px"><input id="pm_${id}" type="number" inputmode="numeric" placeholder="Minutes" style="flex:1"><button class="btn-s" data-a="practice" data-id="${id}">Log</button></div>
-        <div class="mu2 small" style="margin-top:4px">Up to 24 h per skill per day.</div>
+        <div class="row" style="margin-top:6px"><input id="pm_${id}" type="number" inputmode="${s.unit === 'km' ? 'decimal' : 'numeric'}" step="any" placeholder="${esc(unitLabel(s.unit))}" style="flex:1"><button class="btn-s" data-a="practice" data-id="${id}">Log</button></div>
+        <div class="mu2 small" style="margin-top:4px">${s.unit === 'min' ? 'Up to 24 h per skill per day.' : `Counts toward today’s quest. Time and calories are estimated from the ${unitLabel(s.unit).toLowerCase()}.`}</div>
         <div class="hist"><div class="small mu">Past experience (before this app)</div><div class="mu2 small">Fills in the hexagon only. It never adds XP or levels.${s.custom ? ' Uses the parts picked above (none = split evenly).' : ''}</div>
         <div class="row" style="margin-top:6px"><input id="ph_${id}" type="number" inputmode="decimal" step="any" placeholder="Hours" style="flex:1"><button class="btn-s" data-a="hist" data-id="${id}">Add hours</button></div>
         ${histMin(id) ? `<div class="row small" style="margin-top:6px"><span class="sp mu">${(histMin(id) / 60).toLocaleString(undefined, { maximumFractionDigits: 1 })} h of past experience</span><button class="btn-g small" data-a="histClear" data-id="${id}">Clear</button></div>` : ''}</div>
-        <div class="row wrap" style="margin-top:12px;gap:8px"><button class="btn-s" data-a="skLoad" data-id="${id}" data-v="0.85">Easier</button><button class="btn-s" data-a="skLoad" data-id="${id}" data-v="1.15">Harder</button><span class="sp"></span>
+        <div class="row wrap" style="margin-top:12px;gap:8px">${st.own > 0 ? '' : `<button class="btn-s" data-a="skLoad" data-id="${id}" data-v="0.85">Easier</button><button class="btn-s" data-a="skLoad" data-id="${id}" data-v="1.15">Harder</button>`}<span class="sp"></span>
         ${s.custom ? `<button class="btn-s" data-a="csEdit" data-id="${id}">Edit skill</button>` : `<button class="btn-g small bad" data-a="skHide" data-id="${id}">Delete</button>`}<button class="btn-s" data-a="skToggle" data-id="${id}">${st.active ? 'Remove from quests' : 'Add to quests'}</button></div>`;
     }
   }
   const bc = beltDef(id) && beltCur(id);
-  return `<div class="card skill-card"><div class="row" data-a="skOpen" data-id="${id}" role="button"><div class="sp"><div>${esc(s.name)} <span class="mu small num">Lv ${l.L}</span>${s.custom ? ' <span class="pill">Custom</span>' : ''}${bc ? ' ' + beltSvg(beltDef(id).belts[bc.i], bc.m, 40) : ''}</div>${s.custom ? `<div class="gold small">${esc(customRank(id))}</div>` : ''}
+  return `<div class="card skill-card"><div class="row" data-a="skOpen" data-id="${id}" role="button"><div class="sp"><div>${esc(s.name)} <span class="mu small num">Lv ${l.L}</span>${s.custom ? ' <span class="pill">Custom</span>' : ''}${bc ? ' ' + beltSvg(beltDef(id).belts[bc.i], bc.m, 40) : ''}</div><div class="gold small sk-rank">${esc(skillRankLabel(id))}${(() => { const nx = nextSkRank(l.L); return ` <span class="mu2">· ${esc(nx.name)} at Lv ${nx.at}</span>`; })()}</div>
     <div class="bar" style="max-width:200px"><i style="width:${l.into / l.need * 100}%"></i></div></div><span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
 }
 function libSkills(fid) { // skills in a folder and everything under it
@@ -2044,7 +2488,7 @@ function libFolder(f, depth = 0) {
   return `<details data-f="${f.id}" ${ui.libOpen.has(f.id) ? 'open' : ''}><summary><span class="sp">${user ? '<span class="fd-ic">' + ICON.folder + '</span>' : ''}${esc(f.name)}</span><span class="mu2 small num">${on}/${all.length}</span>${ICON.chev}</summary><div class="lib-body">
     ${subFolders(f.id).map(c => libFolder(c, depth + 1)).join('')}
     ${own.map(s => { const a = (S.skills[s.id] || {}).active;
-      return `<div class="list-item"><span class="sp">${esc(s.name)}${s.custom ? ' <span class="pill">Custom</span>' : ''}</span><span class="mu2 small num">Lv ${skLevel(s.id).L}</span><button class="chip ${a ? 'on' : ''}" data-a="skToggle" data-id="${s.id}">${a ? 'Active' : 'Add'}</button><button class="btn-g x lib-del" data-a="${s.custom ? 'csDel' : 'skHide'}" data-id="${s.id}" aria-label="Delete ${esc(s.name)}">${ICON.trash}</button></div>`; }).join('')}
+      return `<div class="list-item"><span class="sp">${esc(s.name)}${s.custom ? ' <span class="pill">Custom</span>' : ''}</span><span class="mu2 small num">Lv ${skLevel(s.id).L} · ${esc(skillRank(s.id))}</span><button class="chip ${a ? 'on' : ''}" data-a="skToggle" data-id="${s.id}">${a ? 'Active' : 'Add'}</button><button class="btn-g x lib-del" data-a="${s.custom ? 'csDel' : 'skHide'}" data-id="${s.id}" aria-label="Delete ${esc(s.name)}">${ICON.trash}</button></div>`; }).join('')}
     <div class="lib-acts"><button class="btn-g small" data-a="csNew" data-f="${f.id}">+ Skill here</button><button class="btn-g small" data-a="fdNew" data-f="${f.id}">+ Folder here</button>${user ? `<span class="sp"></span><button class="btn-g small" data-a="fdEdit" data-id="${f.id}">Rename</button><button class="btn-g small bad" data-a="fdDel" data-id="${f.id}">Delete</button>` : ''}</div></div></details>`;
 }
 function meSkills() {
@@ -2148,8 +2592,10 @@ function meBooks() {
     ${b.finished ? '' : `<div class="bar"><i style="width:${Math.min(100, (b.read || 0) / b.pages * 100)}%"></i></div><div class="row" style="margin-top:10px"><input type="number" inputmode="numeric" placeholder="Current page" id="bkr_${b.id}" style="flex:1"><button class="btn-s" data-a="bkPage" data-id="${b.id}">Update</button><button class="btn-s btn-p" data-a="bkFin" data-id="${b.id}">Finished</button></div>`}</div>`).join('')}`;
 }
 function meSettings() {
-  const p = S.profile, ft = Math.floor(p.heightCm / 2.54 / 12), inch = Math.round(p.heightCm / 2.54 - ft * 12);
-  return `<div class="card" style="margin-top:14px"><h3>Profile</h3><form id="setForm" onsubmit="return false">
+  const p = S.profile, ft = Math.floor(p.heightCm / 2.54 / 12), inch = Math.round(p.heightCm / 2.54 - ft * 12), seg = ui.setSeg === 'look' ? 'look' : 'gen';
+  const tabs = `<div class="seg set-seg">${[['gen', 'General'], ['look', 'Themes & display']].map(([v, n]) => `<button class="${seg === v ? 'on' : ''}" data-a="setSeg" data-id="${v}">${n}</button>`).join('')}</div>`;
+  if (seg === 'look') return tabs + themeCard() + styleCard() + colorCard() + htCard() + szCard(); // v13: everything about the look in one tab
+  return `${tabs}<div class="card"><h3>Profile</h3><form id="setForm" onsubmit="return false">
     <label>Name</label><input name="name" value="${esc(p.name)}">
     <div class="grid2"><div><label>Sex</label><select name="sex"><option value="M" ${p.sex === 'M' ? 'selected' : ''}>Male</option><option value="F" ${p.sex === 'F' ? 'selected' : ''}>Female</option></select></div><div><label>Birth year</label><input name="birthYear" type="number" value="${p.birthYear}"></div></div>
     <div class="grid2"><div><label>Height (${imperial() ? 'total in' : 'cm'})</label><input name="height" type="number" value="${imperial() ? Math.round(p.heightCm / 2.54) : p.heightCm}"></div><div><label>Units</label><select name="units"><option value="imperial" ${imperial() ? 'selected' : ''}>Imperial</option><option value="metric" ${!imperial() ? 'selected' : ''}>Metric</option></select></div></div>
@@ -2157,8 +2603,7 @@ function meSettings() {
     <label>Diet goal</label><div class="row dg-sum"><div class="sp small">${esc(dietSummary())}</div><button type="button" class="btn-s" data-a="dietGoal">Edit</button></div>
     <button class="btn-p btn-big" data-a="setSave">Save profile</button></form>
     <div class="mu2 small" style="margin-top:8px">${ft}′${inch}″ · started ${p.start ? fmtDate(p.start) : '—'}</div></div>
-  ${themeCard()}
-  ${szCard()}
+  <button class="card set-link" data-a="setSeg" data-id="look"><span class="sp"><b>Themes &amp; display</b><small class="mu">Background, UI style, colors, Home text, season names</small></span>${ICON.chev}</button>
   <div class="card" id="fxCard"><h3>Feedback</h3><p class="mu small" style="margin-top:2px">What happens when you check something off.</p>
     <label class="check"><input type="checkbox" data-c="fx" data-k="sound" ${fxOpts().sound ? 'checked' : ''}> Checkmark sound</label>
     <label class="check"><input type="checkbox" data-c="fx" data-k="haptic" ${fxOpts().haptic ? 'checked' : ''}> Vibration${navigator.vibrate ? '' : ' <span class="mu2 small">(not supported on this device)</span>'}</label>
@@ -2168,7 +2613,7 @@ function meSettings() {
   <div class="card"><h3>Quest lists</h3><div class="chips" style="margin:8px 0">${S.lists.map(l => `<span class="chip">${esc(l)}</span>`).join('')}</div>
     <div class="row"><input id="newList" placeholder="New list name"><button class="btn-s" data-a="listAdd">Add</button></div></div>
   <div class="card"><h3>Backup</h3><p class="mu small" style="margin-top:2px">Your data lives only on this phone. ${S.lastBackup ? 'Last backup: <b>' + fmtDate(S.lastBackup) + '</b>' : '<b>No backup yet.</b>'}</p>
-    <p class="mu2 small">Back up now opens your share sheet: choose Google Drive, or Save to Files → iCloud Drive on iPhone. To restore, tap Restore and pick the file from Drive, iCloud or Downloads.</p>
+    <p class="mu2 small">Back up now asks before it does anything: upload to Google Drive (pick Drive in the share list), or save the file to this phone. To restore, tap Restore and pick the file from Drive, iCloud or Downloads.</p>
     <div class="row wrap" style="gap:8px"><button class="btn-p" data-a="backup">${ICON.cloud} Back up now</button><button data-a="export">Download</button><button data-a="importOpen">Restore</button><input type="file" id="importFile" accept="application/json,.json,text/plain,.txt" hidden></div></div>
   <div class="card"><h3>About</h3><p class="mu small">Food: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Exercise burn: MET values from the Adult Compendium of Physical Activities. Population norms are rough approximations for motivation, not a medical assessment.</p>
     <button class="btn-g bad" data-a="reset">Erase all data</button></div>`;
@@ -2191,11 +2636,28 @@ function downloadBackup() {
   a.href = URL.createObjectURL(blob); a.download = backupName() + '.json'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000); markBackup('Backup downloaded');
 }
+/* v11: "Back up now" asks first (Upload to Google Drive / Save to this phone) and never downloads on its own.
+   Android Chrome says it can share a .json file and then refuses it (the old code fell back to a silent download),
+   so Android always shares the .txt copy; Restore reads both. */
+const isAndroid = () => /Android/i.test(navigator.userAgent || '');
+const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function backupModal(state) {
+  const share = !!(navigator.share && navigator.canShare), ios = isIOS();
+  const msg = state === 'fail' ? '<p class="bad small">The share list didn’t open. Try again, or save the file to this phone and upload it from the Google Drive app (+ → Upload).</p>'
+    : !share ? '<p class="mu small">This browser can’t send files to other apps. Save the file to this phone, then open the Google Drive app, tap + → Upload and pick it from Downloads.</p>'
+    : `<p class="mu small">Your progress lives only on this phone. Upload a copy to Google Drive so you can restore it on any phone.</p>
+      <ol class="bk-steps mu small"><li>Tap <b>Upload to Google Drive</b>.</li><li>Pick <b>Drive</b> in the list that opens${ios ? ' (or <b>Save to Files</b> → iCloud Drive)' : ''}.</li><li>Tap <b>Upload</b>${ios ? ' or <b>Save</b>' : ''}.</li></ol>`;
+  openModal(`<h3>Back up to Google Drive?</h3>${msg}
+    <div class="bk-btns">${share ? `<button class="btn-p" data-a="bkShare">${ICON.cloud} ${state === 'fail' ? 'Try again' : 'Upload to Google Drive'}</button>` : ''}<button data-a="bkDown"${share ? '' : ' class="btn-p"'}>Save to this phone${share ? ' instead' : ''}</button><button class="btn-g" data-a="close">Not now</button></div>`);
+}
 function shareBackup() {
-  const data = backupText(), opts = [new File([data], backupName() + '.json', { type: 'application/json' }), new File([data], backupName() + '.txt', { type: 'text/plain' })];
+  const data = backupText(), txt = new File([data], backupName() + '.txt', { type: 'text/plain' });
+  const opts = isAndroid() || ui.bkTxt ? [txt] : [new File([data], backupName() + '.json', { type: 'application/json' }), txt];
   const file = navigator.share && navigator.canShare ? opts.find(f => { try { return navigator.canShare({ files: [f] }); } catch (e) { return false; } }) : null;
-  if (!file) { downloadBackup(); return; }
-  navigator.share({ files: [file], title: 'Deificatio backup' }).then(() => markBackup('Backup saved')).catch(e => { if (!e || e.name !== 'AbortError') downloadBackup(); });
+  if (!file) { backupModal('noshare'); return; }
+  navigator.share({ files: [file], title: 'Deificatio backup' }).then(() => { closeModal(true); markBackup('Backup saved'); })
+    .catch(e => { if (e && e.name === 'AbortError') return; // closed the share list: the question stays open
+      ui.bkTxt = true; backupModal('fail'); }); // next try sends the .txt copy (accepted everywhere)
 }
 function backupNag(k) {
   const last = S.lastBackup || S.profile.start; if (!last || S.backupSnooze === k) return '';
@@ -2237,7 +2699,11 @@ const A = {
   sideOpen: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; if (ui.tab !== 'board') { ui.tab = 'board'; ui.boardSeg = q.type; ui.sideOpen = q.id; render(); window.scrollTo(0, 0); return; } ui.sideOpen = ui.sideOpen === q.id ? null : q.id; render(); },
   sideEdit: el => { const q = S.side.find(x => x.id === el.dataset.id); if (q) sideModal(q, q.type); },
   sideDone: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q || q.status !== 'active') return; if (!confirm(`Complete "${q.title}"?`)) return; completeSide(q); },
-  sideGive: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q || !confirm('Give up on this quest? There’s no penalty.')) return; q.status = 'given'; q.doneOn = todayKey(); afterChange(); },
+  sideGive: el => {
+    const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; const tk = todayKey(), fail = sideCounts(q) && q.start <= tk && sideFutureDue(q, tk);
+    if (!confirm(fail ? 'Give up on this quest? It counts toward your day, so giving up counts as failing it: today won’t be complete, and you’ll get penalty exercises tomorrow.' : 'Give up on this quest? There’s no penalty.')) return;
+    q.status = 'given'; q.doneOn = tk; if (fail) q.failed = true; afterChange();
+  },
   sideDel: el => { if (!confirm('Delete this quest from your history?')) return; S.side = S.side.filter(x => x.id !== el.dataset.id); afterChange(); },
   sideLog: el => {
     const q = S.side.find(x => x.id === el.dataset.id), k = todayKey(); if (!q || q.status !== 'active') return;
@@ -2247,12 +2713,7 @@ const A = {
     if (sideMin(q) >= q.goalMin) { completeSide(q); return; }
     afterChange(); toast(`Logged ${m} min · ${(sideMin(q) / 60).toFixed(1)} of ${(q.goalMin / 60).toFixed(0)} h`);
   },
-  cpTog: el => {
-    const q = S.side.find(x => x.id === el.dataset.id), c = q && q.cps.find(x => x.id === el.dataset.c); if (!c || q.status !== 'active') return;
-    if (!c.done) { c.done = todayKey(); q.xpGot = (q.xpGot || 0) + 10; addXp(null, 10); fx('tick'); } else { c.done = null; q.xpGot = Math.max(0, (q.xpGot || 0) - 10); addXp(null, -10, true); }
-    if (q.cps.every(x => x.done)) { completeSide(q); return; }
-    afterChange(); if (c.done) toast('Checkpoint done: ' + c.t, 'ti');
-  },
+  cpTog: el => { const q = S.side.find(x => x.id === el.dataset.id), c = q && q.cps.find(x => x.id === el.dataset.c); if (c) cpToggle(q, c); },
   sdSet: el => { const k = el.dataset.k; ui.sd[k] = k === 'diff' ? +el.dataset.id : el.dataset.id; if (k === 'track' && ui.sd.track === 'cp' && !ui.sd.cps.length) ui.sd.cps.push({ id: uid(), t: '', day: null, done: null }); $('#sdBody').innerHTML = sdBody(); },
   sdRw: el => { ui.sd.reward.kind = el.dataset.id; $('#sdBody').innerHTML = sdBody(); },
   sdCpAdd: () => { if (ui.sd.cps.length >= 30) { toast('30 checkpoints max'); return; } ui.sd.cps.push({ id: uid(), t: '', day: null, done: null }); $('#sdBody').innerHTML = sdBody(); const ins = $$('#sdBody [data-i=sdCp][data-k=t]'); if (ins.length) ins[ins.length - 1].focus(); },
@@ -2319,7 +2780,7 @@ const A = {
   wDel: el => {
     const w = S.workouts.find(x => x.id === el.dataset.id); if (!w) return;
     S.workouts = S.workouts.filter(x => x !== w);
-    if (w.skill && SK[w.skill]) { const s = skState(w.skill); s.min = Math.max(0, s.min - w.min); uncapMin(w.skill, w.date, w.min); const q = (S.days[w.date] || { q: [] }).q.find(x => x.skill === w.skill && !x.done); if (q) q.progress = Math.max(0, (q.progress || 0) - (q.unit === 'km' ? (w.dist || 0) : w.min)); }
+    if (w.skill && SK[w.skill]) { const s = skState(w.skill); s.min = Math.max(0, s.min - w.min); uncapMin(w.skill, w.date, w.min); const q = (S.days[w.date] || { q: [] }).q.find(x => x.skill === w.skill && !x.done); if (q) q.progress = Math.max(0, (q.progress || 0) - (w.fill != null ? w.fill : q.unit === 'km' ? (w.dist || 0) : w.min)); }
     addXp(w.skill, -(w.xp || 0), true); afterChange();
   },
   foodPick: el => foodModal(ui.foodRes[+el.dataset.id]),
@@ -2383,11 +2844,21 @@ const A = {
   },
   custMode: el => { custSet(o => { o.mode = el.dataset.id; }); const go = () => { ui.season = applySeason(); themeRefresh(); }; if (el.dataset.id === 'photo' && !custPhoto.url) loadCustomPhoto().then(go); else go(); },
   custCards: el => { custSet(o => { o.cards = el.dataset.id; }); ui.season = applySeason(); themeRefresh(); },
+  htMode: el => { htSet(o => { o.mode = el.dataset.id; }); htRefresh(true); if ($('#suText')) suRefresh(); },
+  htTime: el => { htSet(o => { o.time = el.dataset.id; }); htRefresh(true); },
+  suBg: el => { S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color', bg: el.dataset.id }) }; ui.season = applySeason(); suRefresh(); },
+  setSeg: el => { ui.setSeg = el.dataset.id; render(); window.scrollTo(0, 0); },
+  styPick: el => { const L = lookOpts(); L.style = el.dataset.id; S.look = L; ui.lkOpen = null; save(); ui.season = applySeason(); lookRefresh(); toast(el.dataset.id === 'auto' ? `Matched: ${STYLE[styleId()].n}` : `UI style: ${STYLE[styleId()].n}`); },
+  styOwn: el => { const L = lookOpts(), sid = styleId(); L.own[sid] = el.dataset.id === 'own'; S.look = L; save(); ui.season = applySeason(); lookRefresh(); },
+  lkOpen: el => { ui.lkOpen = ui.lkOpen === el.dataset.id ? null : el.dataset.id; lookRefresh(); },
+  lkReset: el => { const L = lookOpts(), sid = styleId(); if (L.colors[sid]) delete L.colors[sid][el.dataset.id]; S.look = L; save(); ui.season = applySeason(); lookRefresh(); },
+  lkResetAll: () => { const L = lookOpts(); L.colors[styleId()] = {}; S.look = L; ui.lkOpen = null; save(); ui.season = applySeason(); lookRefresh(); toast('Colors back to the style’s defaults'); },
+  themeCards: el => { if (themeId() === 'custom') { custSet(o => { o.cards = el.dataset.id; }); ui.season = applySeason(); lookRefresh(); return; } const id = themeId(); S.theme = Object.assign({ id }, S.theme || {}); S.theme.cards = Object.assign({}, S.theme.cards || {}, { [id]: el.dataset.id }); save(); ui.season = applySeason(); themeRefresh(); },
   custPhotoPick: () => { const i = $('#custPhotoIn'); if (!i) return; i.onchange = () => { pickPhoto(i.files[0]); i.value = ''; }; i.click(); },
   wheelTgt: el => { ui.wheelTgt = el.dataset.id; themeRefresh(); },
   cwSwatch: el => { const w = el.closest('.cw'); if (!w) return; const [h, s, v] = hexHsv(el.dataset.id); w.dataset.h = h; w.dataset.s = s; w.dataset.v = v; const r = w.querySelector('[data-i=cwV]'); if (r) r.value = Math.round(v * 100); initWheels(w.parentNode); wheelChanged(w, true); },
   calSet: el => { if (calSet() === el.dataset.id) return; S.cal = el.dataset.id; save(); ui.season = applySeason(); szRefresh(); themeRefresh(); toast(S.cal === 'ja' ? '日本の七十二候 · Japanese micro-seasons' : '한국 칠십이후 · Korean micro-seasons'); },
-  szOpts: () => { closeModal(true); ui.tab = 'me'; ui.profSeg = 'settings'; render(); const c = $('#szCard'); if (c) window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 70); },
+  szOpts: () => { closeModal(true); ui.tab = 'me'; ui.profSeg = 'settings'; ui.setSeg = 'look'; render(); const c = $('#szCard'); if (c) window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 70); },
   range: el => { ui.bodyRange = +el.dataset.id; render(); },
   bodyAdd: () => { let w = num($('#bW').value); const bf = num($('#bF').value); if (w == null && bf == null) { toast('Enter weight or body fat'); return; } if (w != null && imperial()) w = w / 2.20462; S.body.push({ id: uid(), date: $('#bD').value || todayKey(), w, bf }); afterChange(); toast('Saved'); },
   bDel: el => { S.body = S.body.filter(b => b.id !== el.dataset.id); afterChange(); },
@@ -2402,7 +2873,25 @@ const A = {
   skOpen: el => { ui.openSkill = ui.openSkill === el.dataset.id ? null : el.dataset.id; render(); },
   skToggle: el => { const id = el.dataset.id, s = skState(id); s.active = !s.active; if (s.active && SK[id].cat === 'Faith') s.days = [0, 1, 2, 3, 4, 5, 6]; regenToday(); afterChange(); toast(s.active ? SK[id].name + ' added to quests' : SK[id].name + ' removed from quests'); },
   skLoad: el => { const s = skState(el.dataset.id); s.load = clamp(s.load * +el.dataset.v, 0.4, 6); regenToday(); afterChange(); },
-  practice: el => { const id = el.dataset.id, m = Math.round(num($('#pm_' + id).value) || 0); if (m <= 0) { toast('Enter minutes'); return; } logPractice(id, m, SK[id].custom ? chipsOn('#pf_' + id) : []); },
+  practice: el => {
+    const id = el.dataset.id, u = SK[id].unit, keys = SK[id].custom ? chipsOn('#pf_' + id) : []; let n = num($('#pm_' + id).value) || 0;
+    if (n <= 0) { toast('Enter ' + unitLabel(u).toLowerCase()); return; }
+    if (u === 'min') { logPractice(id, Math.round(n), keys); return; }
+    if (u === 'km' && imperial()) n = n / 0.621371; logAmount(id, n, keys);
+  },
+  qLog: el => qlogModal(el.dataset.id),
+  ownSet: el => {
+    const id = el.dataset.id, c = SK[id]; let v = num(($('#ot_' + id) || {}).value);
+    if (!(v > 0) || v > 100000) { toast('Enter a target above 0', 'bad'); return; }
+    if (c.unit === 'km' && imperial()) v = v / 0.621371;
+    ownSet(id, v); toast(`${c.name}: your target is ${fmtTarget(skState(id).own, c.unit)}`, 'ti');
+  },
+  ownAuto: el => { const id = el.dataset.id; ownSet(id, null); toast(`${SK[id].name}: automatic again, starting from ${fmtTarget(skillTarget(id, todayKey()), SK[id].unit)}`); },
+  ownRaise: el => { const id = el.dataset.id, g = ownSug(id); if (!g) return; ownSet(id, g.to); fx('check'); toast(`${SK[id].name}: new target ${fmtTarget(g.to, SK[id].unit)}`, 'lv'); },
+  ownLater: el => { const s = skState(el.dataset.id); s.snooze = (s.hits || 0) + Math.max(2, Math.ceil(ownNeed(el.dataset.id) / 2)); s.overs = []; afterChange(); toast('OK. I’ll ask again in about a week.'); },
+  ownGo: el => { closeModal(true); ui.tab = 'board'; ui.boardSeg = 'skills'; ui.openSkill = el.dataset.id; render(); const c = $('#ot_' + el.dataset.id); if (c) c.scrollIntoView({ block: 'center' }); },
+  qlChip: el => { const i = $('#qlN'); if (i) { i.value = el.dataset.id; i.focus(); } },
+  qlGo: () => qlogGo(),
   csNew: el => { ui.csF = el && el.dataset.f || null; csModal(null); },
   csEdit: el => csModal(SK[el.dataset.id]),
   csAddStat: () => { const n = $$('.csStat').length; if (n >= 8) { toast('8 stats max'); return; } $('#csStats').insertAdjacentHTML('beforeend', `<input class="csStat" data-k="" placeholder="Stat ${n + 1}" style="margin-bottom:6px">`); },
@@ -2475,7 +2964,12 @@ const A = {
   },
   listAdd: () => { const n = $('#newList').value.trim(); if (!n) return; if (S.lists.includes(n)) { toast('List already exists'); return; } S.lists.push(n); afterChange(); },
   export: () => downloadBackup(),
-  backup: () => shareBackup(),
+  backup: () => backupModal(),
+  buy: el => buyItem(el.dataset.id),
+  svRestore: () => restoreStreak(),
+  svDrop: () => { if (!S.streakBreak || !confirm(`Let your ${S.streakBreak.n}-day streak go?`)) return; S.streakBreak = null; closeModal(true); afterChange(); },
+  bkShare: () => shareBackup(),
+  bkDown: () => { closeModal(true); downloadBackup(); },
   backupLater: () => { S.backupSnooze = todayKey(); save(); render(); },
   importOpen: () => {
     const i = $('#importFile'); if (!i) return;
@@ -2499,6 +2993,7 @@ document.addEventListener('input', e => {
   if (k === 'dg' && ui.dg) { ui.dg[e.target.dataset.k] = num(e.target.value); $('#dgAim').innerHTML = dgAimTxt(); }
   if (k === 'fsCalc' && ui.fs) { fsRead(); $$('#fsChips .chip').forEach(b => b.classList.toggle('on', +b.dataset.id === ui.fs.len)); $('#fsEnd').innerHTML = fsEndTxt(); }
   if (k === 'fvName' && ui.fv) ui.fv.name = e.target.value;
+  if (k === 'ht') { htSet(o => { o[e.target.dataset.k] = e.target.value; }); htRefresh(false); }
   if (k === 'be' && ui.be) { const r = ui.be.rows[+e.target.dataset.id]; if (r) r[e.target.dataset.k] = e.target.value; }
   if (k === 'cwV') { const w = e.target.closest('.cw'); w.dataset.v = Math.max(.04, +e.target.value / 100); clearTimeout(ui.cwT); ui.cwT = setTimeout(() => initWheels(w.parentNode), 40); wheelChanged(w, false); }
   if (k === 'custDim') { const v = +e.target.value; S.theme.custom = Object.assign(custOpts(), { dim: v }); $('#dimV').textContent = v + '%'; const d = $('#bg .bg-dim'); if (d) d.style.opacity = v / 100; lookKey = null; }
@@ -2525,11 +3020,14 @@ document.addEventListener('change', e => {
   if (k === 'csFolder') { const w = $('#csNewF'); if (w) w.hidden = t.value !== '__new'; }
   if (k === 'caF') { const w = $('#caNewF'); if (w) w.hidden = t.value !== '__new'; }
   if (k === 'caLike') { const w = $('#caMet'); if (w) w.hidden = t.value !== '__met'; }
+  if (k === 'caCount') { const w = $('#caRs'); if (w) w.hidden = t.value !== 'reps'; }
   if (k === 'bcMark' && ui.bc) { ui.bc.m = +t.value; $('#bcBody').innerHTML = bcBody(); }
   if (k === 'be' && ui.be) ui.be.rows[+t.dataset.id][t.dataset.k] = t.value;
   if (k === 'beWord' && ui.be) { ui.be.word = t.value; $('#beBody').innerHTML = beBody(); }
   if (k === 'tkExp') { const b = $('#tkForm [name=base]'); if (b) b.value = roundUnit((+b.dataset.b || 10) * EXP_MULT[t.value], 'min'); }
   if (k === 'sd' && ui.sd) { const f = t.dataset.k; ui.sd[f] = t.value || null; if (f === 'start' && !ui.sd.start) ui.sd.start = todayKey(); if (f === 'durU') $('#sdBody').innerHTML = sdBody(); else if ($('#sdEnd')) $('#sdEnd').innerHTML = sdEndTxt(); }
+  if (k === 'htDate') { htSet(o => { o.date = t.value; }); htRefresh(true); }
+  if (k === 'sdReq' && ui.sd) { ui.sd.req = t.checked; $('#sdBody').innerHTML = sdBody(); }
   if (k === 'sdRwAll' && ui.sd) { ui.sd.reward.all = t.checked; const sc = $('#sdScope'); if (sc) sc.hidden = t.checked; }
   if (k === 'psCalc') { const r = S.rewards.find(x => x.id === ui.pass); if (r && t.value) $('#psEnd').innerHTML = psEndTxt(t.value, r); }
   if (k === 'szChk') { szSet(o => { o.show[t.dataset.l][t.dataset.p] = t.checked ? 1 : 0; }); szRefresh(); }
@@ -2538,7 +3036,7 @@ document.addEventListener('change', e => {
   if (k === 'fsCalc' && ui.fs) { fsRead(); $('#fsEnd').innerHTML = fsEndTxt(); }
   if (k === 'cwV' || k === 'custDim') save();
   if (k === 'cwHex') { const m = /^#?([0-9a-f]{6})$/i.exec(t.value.trim()); if (!m) { toast('Use a hex color like #2a6fd6'); return; } const w = t.closest('.cw'), [h, s, v] = hexHsv('#' + m[1]); w.dataset.h = h; w.dataset.s = s; w.dataset.v = v; initWheels(w.parentNode); wheelChanged(w, true); }
-  if (k === 'calPick') { S.cal = t.value === 'ja' ? 'ja' : 'ko'; applySeason(); }
+  if (k === 'calPick') suLook(t.value);
   if (k === 'setupUnits') { const imp = t.value === 'imperial'; $('#hw').innerHTML = imp ? '<div><label>Height (ft)</label><input name="ft" type="number" value="5"></div><div><label>Height (in)</label><input name="in" type="number" value="10"></div>' : '<div><label>Height (cm)</label><input name="cm" type="number" value="178"></div><div></div>'; $('#wlab').textContent = imp ? 'Weight (lb)' : 'Weight (kg)'; }
 });
 
@@ -2550,7 +3048,8 @@ function boot() {
   migrate();
   if (themeId() === 'custom' && custOpts().mode === 'photo' && !custPhoto.url && !boot.ph) { boot.ph = 1; loadCustomPhoto().then(() => { if (S.setup) render(); }); }
   if (!S.setup) { renderSetup(); return; }
-  evaluate(); ensureToday(); expireSide(); checkTitles(true); save(); render();
+  evaluate(); if (S.streakBreak && !sbValid()) S.streakBreak = null;
+  ensureToday(); expireSide(); checkTitles(true); save(); render();
 }
 setInterval(() => { if (S.setup && todayKey() !== curDay) boot(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.setup && todayKey() !== curDay) boot(); });

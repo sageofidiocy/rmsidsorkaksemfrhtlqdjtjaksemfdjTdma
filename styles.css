@@ -516,3 +516,461 @@ html[data-ui=light] .hs { background: rgba(255,255,255,.6); border-color: rgba(0
 html[data-ui=light] #modal { background: rgba(40,32,24,.35); }
 html[data-ui=light] .banner .btn-s:not(.btn-p) { background: rgba(0,0,0,.04); }
 html[data-ui=light] input[type=search]::-webkit-search-cancel-button { filter: none; }
+
+/* ===== v11: no-scroll centered Home, Home text, coins & shop, streak saver, due-today side quests, backup sheet ===== */
+html.noscroll, html.noscroll body { overflow: hidden; height: 100%; overscroll-behavior: none; }
+html.noscroll body { position: fixed; inset: 0; width: 100%; }
+.home .season { text-align: center; }
+.home .sz-k, .home .sz-d { margin-left: auto; margin-right: auto; }
+.home .season::before { background: radial-gradient(130% 100% at 50% 0%, rgba(0,0,0,.5), rgba(0,0,0,.2) 60%, transparent 85%); }
+html[data-ui=light] .home .season::before { background: radial-gradient(130% 100% at 50% 0%, rgba(255,255,255,.55), rgba(255,255,255,.22) 60%, transparent 85%); }
+.home-st { justify-content: center; }
+/* Home text: date & time / your own words */
+.ht.clock .sz-h { font-family: ui-serif, "Noto Serif", "Source Serif Pro", "Times New Roman", serif; font-variant-numeric: lining-nums tabular-nums; letter-spacing: .01em; font-weight: 500; }
+.home .ht.clock .sz-h { font-size: 64px; line-height: 1.05; }
+.home .ht.custom .sz-h { font-size: 38px; }
+.ht .sz-g { font-size: 17px; margin-top: 6px; }
+.home .ht .sz-g { font-size: 19px; }
+.ht .sz-h.ph { opacity: .45; font-style: italic; }
+.ht-prev { margin-top: 10px; padding: 0 14px 12px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(160deg, rgba(0,0,0,.30), rgba(0,0,0,.06)); overflow: hidden; }
+html[data-ui=light] .ht-prev { background: linear-gradient(160deg, rgba(255,255,255,.5), rgba(255,255,255,.15)); }
+.ht-prev .sz-h { font-size: 32px; }
+.ht-prev .sz-h.lat { font-size: 25px; }
+.ht-prev .ht.clock .sz-h { font-size: 36px; }
+.ht-prev .ht .sz-g { font-size: 15px; }
+#htF .seg + label, #htF select { margin-top: 10px; }
+.su-sw { margin-top: 6px; }
+.su-sw .cw-s.on { outline: 2px solid var(--ac); outline-offset: 2px; }
+/* coins */
+.coins { display: flex; align-items: center; gap: 4px; color: var(--gold); font: inherit; font-weight: 600; padding: 4px 10px; border: 1px solid rgba(217,181,108,.25); border-radius: 99px; background: none; cursor: pointer; }
+.coins svg { width: 16px; height: 16px; }
+.shop .coin-big { color: var(--gold); display: inline-flex; flex: none; }
+.shop .coin-big svg { width: 34px; height: 34px; }
+.shop h3 { margin: 0; }
+.shop .row + .list-item, .shop .banner + .list-item { margin-top: 8px; border-top: 1px solid var(--line); }
+.shop-item .rw-ic svg { width: 20px; height: 20px; }
+.buy { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.buy svg { width: 14px; height: 14px; }
+.buy[disabled] { opacity: .45; }
+.banner.sv { border-color: rgba(226,194,122,.5); background: linear-gradient(rgba(226,194,122,.13), rgba(226,194,122,.13)), var(--bar); color: var(--gold); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.banner.sv .small { color: var(--tx); opacity: .85; }
+.banner.sv svg { color: var(--gold); }
+.sv-head { display: flex; justify-content: center; color: var(--gold); margin: 4px 0 6px; }
+.sv-head svg { width: 46px; height: 46px; }
+/* side quests that count today */
+.q.due { box-shadow: inset 3px 0 0 var(--gold); }
+.q.due .qb { cursor: pointer; }
+.q.due .btn-s { flex: none; }
+.q.due.locked { opacity: .55; }
+/* backup question sheet */
+.bk-steps { margin: 10px 0 0; padding-left: 20px; }
+.bk-steps li { margin: 3px 0; }
+.bk-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.bk-btns button { width: 100%; justify-content: center; }
+.home-st + .home-st { margin-top: 8px; }
+
+/* ===== v12: log amounts (reps…), own targets + raise suggestions, skill ranks ===== */
+.q .qplus { flex: none; width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--line2); color: var(--ac); }
+.q .qplus svg { width: 15px; height: 15px; }
+.q.done .qplus { opacity: .55; }
+.ql-chips { margin-top: 8px; }
+.own-box { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(127,127,127,.05); }
+.own-box label { margin-top: 0; }
+.own-box .row input { flex: 1; min-width: 0; }
+.own-box .row .mu { flex: none; }
+.banner.up { border-color: rgba(98,214,160,.5); background: linear-gradient(rgba(98,214,160,.12), rgba(98,214,160,.12)), var(--bar); color: #9fe3bf; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.banner.up svg { color: #7fdcae; }
+.banner.up .small { color: var(--tx); opacity: .85; }
+html[data-ui=light] .banner.up { color: #23704a; }
+html[data-ui=light] .banner.up svg { color: #2b8a5a; }
+.sk-rank { margin-top: 1px; }
+#wRep[hidden], #wTime[hidden] { display: none; }
+
+/* =====================================================================================================================
+   v13: UI STYLES. html[data-sty=<id>] restyles the app; .pv[data-pv=<id>] .pv-* is the same look on the mini previews in
+   Settings > Themes & display. Broad element rules use :where() so they never beat a component's own class (chips, nav…).
+   Fonts: fonts/*.woff2 (Latin subsets from Fontsource, SIL Open Font License: fonts/LICENSE.txt); CJK falls back to Noto.
+   ===================================================================================================================== */
+@font-face { font-family: 'D Orbitron'; src: url(fonts/orbitron-latin-700-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D ShareTech'; src: url(fonts/share-tech-mono-latin-400-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Fraktur'; src: url(fonts/unifrakturmaguntia-latin-400-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Garamond'; src: url(fonts/eb-garamond-latin-400-normal.woff2) format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'D Garamond'; src: url(fonts/eb-garamond-latin-600-normal.woff2) format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'D Yuji'; src: url(fonts/yuji-boku-latin-400-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Fraunces'; src: url(fonts/fraunces-latin-600-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Fraunces'; src: url(fonts/fraunces-latin-600-italic.woff2) format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
+@font-face { font-family: 'D Caveat'; src: url(fonts/caveat-latin-600-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Courier'; src: url(fonts/courier-prime-latin-400-normal.woff2) format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'D Courier'; src: url(fonts/courier-prime-latin-700-normal.woff2) format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'D Rajdhani'; src: url(fonts/rajdhani-latin-600-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Press'; src: url(fonts/press-start-2p-latin-400-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D VT323'; src: url(fonts/vt323-latin-400-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Cormorant'; src: url(fonts/cormorant-garamond-latin-600-normal.woff2) format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'D Cormorant'; src: url(fonts/cormorant-garamond-latin-600-italic.woff2) format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
+@font-face { font-family: 'D Fredoka'; src: url(fonts/fredoka-latin-500-normal.woff2) format('woff2'); font-weight: 100 550; font-display: swap; }
+@font-face { font-family: 'D Fredoka'; src: url(fonts/fredoka-latin-600-normal.woff2) format('woff2'); font-weight: 551 900; font-display: swap; }
+@font-face { font-family: 'D Comic'; src: url(fonts/comic-neue-latin-400-normal.woff2) format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'D Comic'; src: url(fonts/comic-neue-latin-700-normal.woff2) format('woff2'); font-weight: 700; font-display: swap; }
+
+/* text on the accent color follows the accent (your colors can be anything) */
+.btn-p, html[data-ui=light] .btn-p { color: var(--ac-tx, #10161a); }
+.chk svg, html[data-ui=light] .chk svg, html[data-ui=light] .lockbox svg { color: var(--ac-tx, #10161a); }
+
+/* Settings > Themes & display */
+.set-seg { margin-top: 14px; }
+button.set-link { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; color: var(--tx); font: inherit; }
+.set-link small { display: block; margin-top: 2px; font-size: 12.5px; }
+.sty-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+button.sty-tile { display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 6px; gap: 3px; border-radius: 12px; background: rgba(127,127,127,.06); border: 1px solid var(--line2); color: var(--tx); font: 13px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-transform: none; letter-spacing: 0; box-shadow: none; clip-path: none; }
+button.sty-tile.on { border-color: var(--ac); box-shadow: 0 0 0 1.5px var(--ac) inset; }
+.sty-tile b { font-size: 13.5px; padding: 2px 4px 0; font-weight: 600; }
+.sty-tile small { font-size: 11.5px; color: var(--mu); padding: 0 4px 4px; line-height: 1.3; }
+.pill.joke { background: #ffe14d; color: #222; border-color: #c9a800; font-weight: 700; letter-spacing: .04em; }
+.pv { background: linear-gradient(160deg, var(--bg), var(--s2)); border-radius: 8px; padding: 9px 8px 10px; color: var(--tx); font: 13px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; pointer-events: none; }
+.pv-card { background: var(--s1s); border: 1px solid var(--line); border-radius: 10px; padding: 8px; position: relative; }
+.pv-h { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; color: var(--tx); }
+.pv-q { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--s2); }
+.pv-q b { margin-left: auto; color: var(--gold); font-weight: 500; font-size: 11px; }
+.pv-chk { width: 13px; height: 13px; border: 1.5px solid var(--line2); border-radius: 4px; flex: none; display: inline-block; }
+.pv-row { display: flex; gap: 6px; margin-top: 7px; align-items: center; }
+.pv-btn { background: var(--ac); color: var(--ac-tx); border-radius: 7px; padding: 3px 10px; font-size: 11.5px; font-weight: 600; border: 1px solid var(--ac); }
+.pv-chip { border: 1px solid var(--line2); border-radius: 99px; padding: 2px 8px; font-size: 11px; color: var(--mu); }
+.lk-rows { margin-top: 12px; border-top: 1px solid var(--line); }
+.lk-row { border-bottom: 1px solid var(--line); }
+button.lk-head { display: flex; align-items: center; gap: 12px; width: 100%; background: none; border: 0; border-radius: 0; padding: 11px 2px; text-align: left; color: var(--tx); clip-path: none; box-shadow: none; text-transform: none; letter-spacing: 0; }
+.lk-head b { font-weight: 600; }
+.lk-head small { display: block; font-size: 12px; color: var(--mu); margin-top: 1px; }
+.lk-sw { width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(127,127,127,.55); flex: none; box-shadow: inset 0 0 0 2px rgba(255,255,255,.28); display: inline-block; }
+.lk-body { padding: 2px 0 12px; }
+
+/* ---------- Retro Tech ---------- */
+:where(html[data-sty=retro]) body, .pv[data-pv=retro] { font-family: 'D ShareTech', ui-monospace, "SF Mono", Menlo, monospace; }
+html[data-sty=retro] h3, .pv[data-pv=retro] .pv-h { font-family: 'D Orbitron', 'D ShareTech', monospace; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 13.5px; }
+html[data-sty=retro] main h2 { letter-spacing: .22em; }
+html[data-sty=retro] main h2::before { content: '// '; color: var(--ac); }
+html[data-sty=retro] :is(.card, .stat, .q, .sheet, .toast), .pv[data-pv=retro] :is(.pv-card, .pv-q) {
+  border-radius: 0; border-color: var(--acB); box-shadow: inset 0 0 22px var(--acA);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  background-image: linear-gradient(225deg, transparent 6.4px, var(--ac) 6.4px 7.7px, transparent 7.7px), linear-gradient(45deg, transparent 6.4px, var(--ac) 6.4px 7.7px, transparent 7.7px), repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 3px); }
+html[data-sty=retro] .banner { border-radius: 0; clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); }
+:where(html[data-sty=retro]) button { border-radius: 0; text-transform: uppercase; letter-spacing: .06em; font-size: 12.5px; }
+html[data-sty=retro] .btn-p, .pv[data-pv=retro] .pv-btn { border-radius: 0; clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px); box-shadow: 0 0 14px var(--acG); text-transform: uppercase; letter-spacing: .08em; }
+html[data-sty=retro] :is(.chip, .pill, .hs, .streak, .coins, .title-badge, .cal .d, .lk-sw), .pv[data-pv=retro] .pv-chip { border-radius: 0; }
+html[data-sty=retro] .chk, .pv[data-pv=retro] .pv-chk { border-radius: 0; border-color: var(--acB); }
+html[data-sty=retro] .seg { border-radius: 0; border-color: var(--acB); }
+html[data-sty=retro] .seg button { border-radius: 0; }
+html[data-sty=retro] .seg button.on { box-shadow: inset 0 -2px 0 var(--ac); background: var(--acA); }
+:where(html[data-sty=retro]) :is(input, select, textarea) { border-radius: 0; border-color: var(--acB); }
+html[data-sty=retro] :is(.bar, .prog) { border-radius: 0; height: 5px; }
+html[data-sty=retro] :is(.bar > i, .prog i) { border-radius: 0; background: repeating-linear-gradient(90deg, var(--ac) 0 5px, transparent 5px 7px); }
+html[data-sty=retro] .bar.gold > i { background: repeating-linear-gradient(90deg, var(--gold) 0 5px, transparent 5px 7px); }
+html[data-sty=retro] #top { border-bottom-color: var(--acB); box-shadow: 0 1px 14px var(--acA); }
+html[data-sty=retro] #nav { border-top-color: var(--acB); }
+html[data-sty=retro] #nav button { text-transform: uppercase; font-size: 9.5px; letter-spacing: .08em; }
+html[data-sty=retro] #nav svg * { stroke-linecap: square; stroke-linejoin: miter; }
+html[data-sty=retro] #nav button.on svg { filter: drop-shadow(0 0 4px var(--ac)); }
+html[data-sty=retro] #nav button.on::before { border-radius: 0; left: 18%; right: 18%; box-shadow: 0 0 8px var(--ac); }
+html[data-sty=retro] .sheet::before { border-radius: 0; background: var(--acB); }
+html[data-sty=retro] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Orbitron', sans-serif; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+html[data-sty=retro] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 28px; }
+html[data-sty=retro] .home .ht.clock .sz-h { font-size: 52px; }
+html[data-sty=retro] .toast::before { content: '> '; color: var(--ac); }
+
+/* ---------- Illuminated (medieval manuscript) ---------- */
+:where(html[data-sty=illum]) body, .pv[data-pv=illum] { font-family: 'D Garamond', 'EB Garamond', Garamond, "Noto Serif", Georgia, serif; }
+:where(html[data-sty=illum]) body { font-size: 16px; }
+html[data-sty=illum] h3, .pv[data-pv=illum] .pv-h { font-family: 'D Fraktur', 'D Garamond', serif; font-weight: 400; font-size: 21px; letter-spacing: .01em; line-height: 1.15; }
+.pv[data-pv=illum] .pv-h { font-size: 15px; }
+html[data-sty=illum] h3::first-letter, .pv[data-pv=illum] .pv-h::first-letter { color: var(--ac); font-size: 1.3em; }
+html[data-sty=illum] main h2 { font-family: 'D Garamond', serif; font-variant: small-caps; text-transform: lowercase; letter-spacing: .14em; font-size: 15.5px; font-weight: 600; }
+html[data-sty=illum] main h2::before { content: '❧ '; color: var(--gold); }
+html[data-sty=illum] .qt { font-weight: 600; font-size: 16.5px; }
+html[data-sty=illum] :is(.num, .mono, .stat b, .qx) { font-family: 'D Garamond', serif; font-variant-numeric: lining-nums tabular-nums; }
+html[data-sty=illum] :is(.card, .stat, .q, .sheet), .pv[data-pv=illum] :is(.pv-card, .pv-q) { border-radius: 3px; border: 1px solid var(--goldB); box-shadow: inset 0 0 0 3px var(--s1s), inset 0 0 0 4px var(--goldA), 0 2px 10px rgba(50,30,10,.22); background-image: radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(110,70,20,.14)); }
+html[data-sty=illum] .card { position: relative; }
+html[data-sty=illum] .card::before, html[data-sty=illum] .card::after { content: '✦'; position: absolute; font-size: 8px; line-height: 1; color: var(--gold); opacity: .85; pointer-events: none; }
+html[data-sty=illum] .card::before { top: 6px; left: 7px; }
+html[data-sty=illum] .card::after { bottom: 6px; right: 7px; }
+:where(html[data-sty=illum]) button { border-radius: 3px; font-variant: small-caps; letter-spacing: .04em; }
+html[data-sty=illum] .btn-p, .pv[data-pv=illum] .pv-btn { border-radius: 3px; border: 1px solid var(--gold); box-shadow: inset 0 0 0 2px rgba(255,255,255,.12), 0 1px 3px rgba(60,20,10,.3); font-variant: small-caps; letter-spacing: .06em; }
+html[data-sty=illum] :is(.chip, .pill, .title-badge, .hs), .pv[data-pv=illum] .pv-chip { border-radius: 3px; }
+html[data-sty=illum] .chk, .pv[data-pv=illum] .pv-chk { border-radius: 50%; border-color: var(--goldB); }
+html[data-sty=illum] .q.done .chk { box-shadow: 0 0 0 2px var(--goldA); }
+html[data-sty=illum] .seg { border-radius: 3px; }
+html[data-sty=illum] .seg button { border-radius: 2px; font-variant: small-caps; letter-spacing: .05em; font-size: 14.5px; }
+:where(html[data-sty=illum]) :is(input, select, textarea) { border-radius: 3px; }
+html[data-sty=illum] :is(.bar, .prog, .bar > i, .prog i) { border-radius: 0; }
+html[data-sty=illum] #nav button { font-variant: small-caps; font-size: 11.5px; letter-spacing: .04em; }
+html[data-sty=illum] #nav svg * { stroke-width: 1.9; }
+html[data-sty=illum] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Fraktur', serif; font-weight: 400; letter-spacing: .01em; }
+html[data-sty=illum] .home :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-size: 44px; }
+html[data-sty=illum] .toast { border-radius: 3px; border-color: var(--goldB); }
+
+/* ---------- Ink & Brush (classical East Asian calligraphy) ---------- */
+:where(html[data-sty=ink]) body, .pv[data-pv=ink] { font-family: "Noto Serif", "Noto Serif CJK KR", "Noto Serif CJK JP", Georgia, serif; }
+html[data-sty=ink] h3, .pv[data-pv=ink] .pv-h { font-family: 'D Yuji', "Noto Serif CJK JP", serif; font-weight: 400; font-size: 19px; letter-spacing: .02em; }
+.pv[data-pv=ink] .pv-h { font-size: 14px; }
+html[data-sty=ink] :is(.card, .sheet) > h3::after, .pv[data-pv=ink] .pv-h::after { content: ''; display: block; width: 74px; height: 7px; margin-top: 3px; background: var(--gold); opacity: .9;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'%3E%3Cpath d='M1 6C18 2 42 2.6 68 3.6S94 4.6 99 2.6L98.4 5.8C82 8 52 9.4 26 8.4S6 7.8 1 6Z'/%3E%3C/svg%3E") no-repeat 0 0 / 100% 100%;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'%3E%3Cpath d='M1 6C18 2 42 2.6 68 3.6S94 4.6 99 2.6L98.4 5.8C82 8 52 9.4 26 8.4S6 7.8 1 6Z'/%3E%3C/svg%3E") no-repeat 0 0 / 100% 100%; }
+.pv[data-pv=ink] .pv-h::after { width: 44px; height: 5px; }
+html[data-sty=ink] main h2 { font-family: 'D Yuji', serif; text-transform: none; letter-spacing: .12em; font-size: 14.5px; font-weight: 400; }
+html[data-sty=ink] main h2::before { content: ''; display: inline-block; width: 9px; height: 9px; margin: 0 8px 2px 0; background: var(--gold); border-radius: 2px; vertical-align: middle; box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.35); }
+html[data-sty=ink] :is(.card, .stat, .q, .sheet), .pv[data-pv=ink] :is(.pv-card, .pv-q) { border: 0; border-radius: 3px 12px 4px 14px; box-shadow: 0 1px 0 rgba(0,0,0,.06), 0 8px 20px rgba(30,20,10,.16);
+  background-image: radial-gradient(rgba(90,70,40,.07) 1px, transparent 1.3px), radial-gradient(rgba(90,70,40,.045) 1px, transparent 1.3px); background-size: 7px 7px, 11px 11px; background-position: 0 0, 3px 5px; }
+html[data-sty=ink] .banner { border-radius: 3px 12px 4px 14px; }
+:where(html[data-sty=ink]) button { border-radius: 2px 9px 3px 10px; }
+html[data-sty=ink] .btn-p, .pv[data-pv=ink] .pv-btn { border: 0; border-radius: 2px 10px 3px 11px; letter-spacing: .06em; }
+html[data-sty=ink] :is(.chip, .pill, .title-badge, .hs), .pv[data-pv=ink] .pv-chip { border-radius: 3px 9px 3px 9px; }
+html[data-sty=ink] .chk, .pv[data-pv=ink] .pv-chk { border-radius: 50%; border: 2px solid var(--mu); }
+html[data-sty=ink] .q.done .chk { background: var(--gold); border-color: var(--gold); }
+html[data-sty=ink] .q.done .chk svg { color: #fff; }
+html[data-sty=ink] .seg { border-radius: 3px 12px 4px 12px; }
+html[data-sty=ink] .seg button { border-radius: 2px 9px 3px 9px; }
+:where(html[data-sty=ink]) :is(input, select, textarea) { border-radius: 2px 8px 3px 8px; }
+html[data-sty=ink] :is(.bar, .prog) { border-radius: 2px; }
+html[data-sty=ink] :is(.bar > i, .prog i) { border-radius: 1px 6px 2px 6px; background: linear-gradient(90deg, var(--tx), var(--tx) 82%, transparent); }
+html[data-sty=ink] .bar.gold > i { background: linear-gradient(90deg, var(--gold), var(--gold) 82%, transparent); }
+html[data-sty=ink] #nav svg * { stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+html[data-sty=ink] #nav button.on::before { left: calc(50% - 3px); right: auto; width: 6px; height: 6px; top: 6px; border-radius: 1px; background: var(--gold); }
+html[data-sty=ink] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Yuji', serif; font-weight: 400; letter-spacing: .02em; }
+html[data-sty=ink] .toast { border-radius: 3px 12px 4px 12px; }
+
+/* ---------- Storybook (cottage) ---------- */
+html[data-sty=story] h3, .pv[data-pv=story] .pv-h { font-family: 'D Fraunces', Georgia, serif; font-weight: 600; font-size: 17px; letter-spacing: 0; }
+html[data-sty=story] main h2 { font-family: 'D Fraunces', Georgia, serif; font-style: italic; text-transform: none; letter-spacing: .02em; font-size: 15.5px; font-weight: 600; }
+html[data-sty=story] main h2::before { content: '✿ '; color: var(--ac); font-style: normal; }
+html[data-sty=story] :is(.num, .stat b, .qx) { font-family: 'D Fraunces', Georgia, serif; font-variant-numeric: lining-nums tabular-nums; }
+html[data-sty=story] :is(.card, .stat, .sheet), .pv[data-pv=story] .pv-card { border-radius: 20px; border: 1.5px solid var(--line2); outline: 1.5px dashed var(--acB); outline-offset: -7px; box-shadow: 0 3px 0 rgba(80,60,30,.12), 0 8px 20px rgba(60,40,20,.12); }
+html[data-sty=story] .stat, .pv[data-pv=story] .pv-card { outline-offset: -5px; }
+html[data-sty=story] .q, .pv[data-pv=story] .pv-q { border-radius: 16px; border: 1.5px solid var(--line2); box-shadow: 0 2px 0 rgba(80,60,30,.1); }
+:where(html[data-sty=story]) button { border-radius: 99px; }
+html[data-sty=story] .btn-p, .pv[data-pv=story] .pv-btn { border-radius: 99px; box-shadow: 0 3px 0 rgba(40,70,30,.35); }
+html[data-sty=story] :is(.chip, .pill), .pv[data-pv=story] .pv-chip { border-style: dashed; }
+html[data-sty=story] .chk, .pv[data-pv=story] .pv-chk { border-radius: 3px 13px 3px 13px; }
+html[data-sty=story] .seg, html[data-sty=story] .seg button { border-radius: 99px; }
+:where(html[data-sty=story]) :is(input, select, textarea) { border-radius: 12px; }
+html[data-sty=story] :is(.bar, .prog) { height: 6px; border-radius: 99px; }
+html[data-sty=story] :is(.bar > i, .prog i) { border-radius: 99px; }
+html[data-sty=story] #nav svg * { stroke-width: 1.9; }
+html[data-sty=story] #nav button.on::before { left: calc(50% - 10px); right: auto; width: 20px; height: 3px; border-radius: 99px; }
+html[data-sty=story] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Fraunces', Georgia, serif; font-style: italic; font-weight: 600; }
+html[data-sty=story] .toast { border-radius: 16px; }
+
+/* ---------- Analog (paper planner) ---------- */
+:where(html[data-sty=analog]) body, .pv[data-pv=analog] { font-family: 'D Courier', 'Courier Prime', 'Courier New', monospace; }
+:where(html[data-sty=analog]) body { font-size: 14.5px; }
+html[data-sty=analog] h3, .pv[data-pv=analog] .pv-h { font-family: 'D Caveat', 'Segoe Print', cursive; font-weight: 600; font-size: 25px; line-height: 1; color: var(--ac); letter-spacing: 0; }
+.pv[data-pv=analog] .pv-h { font-size: 19px; }
+html[data-sty=analog] main h2 { font-family: 'D Caveat', cursive; font-weight: 600; font-size: 21px; text-transform: none; letter-spacing: .01em; color: #2a2a2a; opacity: 1; text-shadow: none; display: inline-block; background: rgba(250,246,232,.93); padding: 0 10px 1px; transform: rotate(-1.2deg); box-shadow: 0 1px 3px rgba(0,0,0,.22); }
+html[data-sty=analog] .qhead h2 { margin: 0; }
+html[data-sty=analog] :is(.num, .mono, .stat b, .qx) { font-family: 'D Courier', monospace; }
+html[data-sty=analog] :is(.card, .sheet), .pv[data-pv=analog] .pv-card { border-radius: 2px; border: 0; box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 6px 16px rgba(0,0,0,.18);
+  background-image: linear-gradient(90deg, transparent 18px, rgba(214,64,64,.42) 18px 19.5px, transparent 19.5px), repeating-linear-gradient(180deg, transparent 0 25px, rgba(70,110,190,.2) 25px 26px); background-position: 0 0, 0 12px; padding-left: 30px; }
+.pv[data-pv=analog] .pv-card { background-image: linear-gradient(90deg, transparent 10px, rgba(214,64,64,.42) 10px 11px, transparent 11px), repeating-linear-gradient(180deg, transparent 0 15px, rgba(70,110,190,.2) 15px 16px); padding-left: 18px; }
+html[data-sty=analog] .card { position: relative; margin-top: 6px; }
+html[data-sty=analog] .card::before { content: ''; position: absolute; top: -8px; left: 50%; width: 70px; height: 17px; margin-left: -35px; background: var(--acB); opacity: .5; transform: rotate(-2.5deg); box-shadow: 0 1px 1px rgba(0,0,0,.08); pointer-events: none; }
+html[data-sty=analog] .card:nth-of-type(even)::before { transform: rotate(2deg); left: 32%; }
+html[data-sty=analog] :is(.q, .stat), .pv[data-pv=analog] .pv-q { border-radius: 2px; border: 0; box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+:where(html[data-sty=analog]) button { border-radius: 3px; border: 1.5px solid var(--tx); }
+html[data-sty=analog] .btn-p, .pv[data-pv=analog] .pv-btn { border: 0; border-radius: 3px; font-family: 'D Courier', monospace; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #fff; text-shadow: 0 -1px 0 rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), inset 0 -1px 0 rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.3); }
+html[data-sty=analog] :is(.chip, .pill, .title-badge, .hs), .pv[data-pv=analog] .pv-chip { border-radius: 2px; border-style: dashed; }
+html[data-sty=analog] .chk, .pv[data-pv=analog] .pv-chk { border: 2px solid var(--tx); border-radius: 2px 5px 3px 4px; transform: rotate(-3deg); background: none; }
+html[data-sty=analog] .q.done .chk { background: none; border-color: var(--ac); }
+html[data-sty=analog] .q.done .chk svg { color: var(--ac); }
+html[data-sty=analog] .seg, html[data-sty=analog] .seg button { border-radius: 2px; }
+html[data-sty=analog] .seg button { border: 0; }
+html[data-sty=analog] .seg button.on { background: var(--acA); box-shadow: inset 0 -2px 0 var(--ac); }
+:where(html[data-sty=analog]) :is(input, select, textarea) { border-radius: 2px; }
+html[data-sty=analog] :is(.bar, .prog, .bar > i, .prog i) { border-radius: 0; }
+html[data-sty=analog] :is(.bar, .prog) { height: 6px; }
+html[data-sty=analog] #nav button { font-family: 'D Courier', monospace; }
+html[data-sty=analog] #nav svg * { stroke-width: 1.8; }
+html[data-sty=analog] #nav button.on::before { height: 3px; border-radius: 50%; transform: rotate(-2deg); }
+html[data-sty=analog] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Caveat', cursive; font-weight: 600; letter-spacing: 0; line-height: 1; }
+html[data-sty=analog] .home :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-size: 54px; }
+html[data-sty=analog] .toast { border-radius: 2px; border: 0; background: #fff6c8; color: #333; box-shadow: 0 6px 16px rgba(0,0,0,.3); }
+
+/* ---------- System (manhwa status windows) ---------- */
+html[data-sty=system] h3, .pv[data-pv=system] .pv-h { font-family: 'D Rajdhani', system-ui, sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .14em; font-size: 15px; text-shadow: 0 0 10px var(--acG); }
+html[data-sty=system] main h2 { font-family: 'D Rajdhani', sans-serif; font-size: 13.5px; letter-spacing: .28em; color: var(--ac); opacity: 1; text-shadow: 0 0 8px var(--acG); }
+html[data-sty=system] main h2::before { content: '⟨ '; } html[data-sty=system] main h2::after { content: ' ⟩'; }
+html[data-sty=system] .qt { font-family: 'D Rajdhani', sans-serif; font-weight: 600; font-size: 16.5px; letter-spacing: .03em; }
+html[data-sty=system] :is(.card, .stat, .sheet), .pv[data-pv=system] .pv-card { border-radius: 3px; border: 1px solid var(--acB); background-image: linear-gradient(180deg, rgba(255,255,255,.05), transparent 40%); box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 0 16px var(--acA), inset 0 0 22px var(--acA); }
+html[data-sty=system] .card, .pv[data-pv=system] .pv-card { position: relative; }
+html[data-sty=system] .card::before, html[data-sty=system] .card::after, .pv[data-pv=system] .pv-card::before, .pv[data-pv=system] .pv-card::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid var(--ac); pointer-events: none; filter: drop-shadow(0 0 4px var(--ac)); }
+html[data-sty=system] .card::before, .pv[data-pv=system] .pv-card::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
+html[data-sty=system] .card::after, .pv[data-pv=system] .pv-card::after { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+html[data-sty=system] .q, .pv[data-pv=system] .pv-q { border-radius: 2px; border: 1px solid var(--acB); box-shadow: inset 0 0 14px var(--acA); }
+:where(html[data-sty=system]) button { border-radius: 2px; text-transform: uppercase; letter-spacing: .1em; font-family: 'D Rajdhani', sans-serif; font-weight: 600; font-size: 13.5px; border-color: var(--acB); background: var(--acA); }
+html[data-sty=system] .btn-p, .pv[data-pv=system] .pv-btn { border-radius: 2px; box-shadow: 0 0 16px var(--acG); text-transform: uppercase; letter-spacing: .1em; font-family: 'D Rajdhani', sans-serif; }
+html[data-sty=system] :is(.chip, .pill, .title-badge, .hs, .streak, .coins), .pv[data-pv=system] .pv-chip { border-radius: 2px; border-color: var(--acB); }
+html[data-sty=system] .chk, .pv[data-pv=system] .pv-chk { border-radius: 2px; border-color: var(--acB); box-shadow: 0 0 6px var(--acA); }
+html[data-sty=system] .q.done .chk { box-shadow: 0 0 10px var(--ac); }
+html[data-sty=system] .seg { border-radius: 3px; border-color: var(--acB); }
+html[data-sty=system] .seg button { border-radius: 2px; background: none; border: 0; }
+html[data-sty=system] .seg button.on { background: var(--acA); box-shadow: inset 0 0 0 1px var(--ac); }
+:where(html[data-sty=system]) :is(input, select, textarea) { border-radius: 2px; border-color: var(--acB); }
+html[data-sty=system] :is(.bar, .prog) { height: 3px; border-radius: 0; }
+html[data-sty=system] :is(.bar > i, .prog i) { border-radius: 0; box-shadow: 0 0 8px var(--ac); }
+html[data-sty=system] .bar.gold > i { box-shadow: 0 0 8px var(--gold); }
+html[data-sty=system] :is(#top, #nav) { border-color: var(--acB); }
+html[data-sty=system] #nav button { font-family: 'D Rajdhani', sans-serif; text-transform: uppercase; letter-spacing: .1em; font-size: 10.5px; }
+html[data-sty=system] #nav button.on svg { filter: drop-shadow(0 0 5px var(--ac)); }
+html[data-sty=system] #nav button.on::before { border-radius: 0; box-shadow: 0 0 8px var(--ac); }
+html[data-sty=system] .toast { border-radius: 2px; border-color: var(--acB); box-shadow: 0 0 18px var(--acG); }
+html[data-sty=system] .toast::before { content: 'SYSTEM'; display: block; font: 600 10px/1.4 'D Rajdhani', sans-serif; letter-spacing: .3em; color: var(--ac); }
+html[data-sty=system] .banner { border-radius: 2px; }
+html[data-sty=system] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Rajdhani', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; text-shadow: 0 0 18px var(--acG), 0 1px 3px rgba(0,0,0,.6); }
+
+/* ---------- Pixel Quest (8-bit RPG menus) ---------- */
+:where(html[data-sty=pixel]) body, .pv[data-pv=pixel] { font-family: 'D VT323', ui-monospace, monospace; }
+:where(html[data-sty=pixel]) body { font-size: 19px; line-height: 1.2; }
+html[data-sty=pixel] :is(.small, .qs, label, small, .chip, .pill, .stat span, .hs, .toast, .seg button, .btn-s, .lk-head small) { font-size: 16.5px; }
+html[data-sty=pixel] h3, .pv[data-pv=pixel] .pv-h { font-family: 'D Press', monospace; font-size: 11.5px; line-height: 1.6; font-weight: 400; letter-spacing: 0; }
+.pv[data-pv=pixel] .pv-h { font-size: 8.5px; }
+html[data-sty=pixel] main h2 { font-family: 'D Press', monospace; font-size: 9.5px; letter-spacing: .06em; }
+html[data-sty=pixel] .qt { font-size: 21px; }
+html[data-sty=pixel] :is(.num, .mono, .stat b, .qx) { font-family: 'D VT323', monospace; font-size: 1.15em; }
+html[data-sty=pixel] :is(.card, .stat, .q, .sheet, .toast), .pv[data-pv=pixel] :is(.pv-card, .pv-q) { border-radius: 0; border: 3px solid #f1f1f1; box-shadow: 0 0 0 2px #000, inset 0 0 0 2px #000, 4px 4px 0 2px rgba(0,0,0,.35); background-image: linear-gradient(180deg, rgba(255,255,255,.08), rgba(0,0,0,.14)); }
+.pv[data-pv=pixel] :is(.pv-card, .pv-q) { border-width: 2px; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #000; }
+html[data-sty=pixel] .q { margin-bottom: 10px; }
+:where(html[data-sty=pixel]) button { border-radius: 0; border: 2px solid var(--tx); background: rgba(0,0,0,.25); font-size: 19px; padding: 6px 12px; }
+html[data-sty=pixel] .btn-p, .pv[data-pv=pixel] .pv-btn { border-radius: 0; border: 2px solid #000; box-shadow: 3px 3px 0 #000; }
+html[data-sty=pixel] .btn-p::before { content: '▶'; font-size: .65em; margin-right: 6px; vertical-align: 2px; }
+html[data-sty=pixel] .btn-p:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
+html[data-sty=pixel] :is(.chip, .pill, .title-badge, .hs, .streak, .coins, .cal .d, .lk-sw), .pv[data-pv=pixel] .pv-chip { border-radius: 0; border-width: 2px; }
+html[data-sty=pixel] .chk, .pv[data-pv=pixel] .pv-chk { border-radius: 0; border: 2px solid var(--tx); }
+html[data-sty=pixel] .q.done .chk { border-color: #000; }
+html[data-sty=pixel] .seg { border-radius: 0; border: 2px solid var(--line2); }
+html[data-sty=pixel] .seg button { border-radius: 0; border: 0; background: none; }
+html[data-sty=pixel] .seg button.on { background: var(--ac); color: var(--ac-tx); box-shadow: none; }
+:where(html[data-sty=pixel]) :is(input, select, textarea) { border-radius: 0; border-width: 2px; font-size: 19px; }
+html[data-sty=pixel] :is(.bar, .prog) { border-radius: 0; height: 9px; border: 2px solid #000; background: #000; }
+html[data-sty=pixel] :is(.bar > i, .prog i) { border-radius: 0; background-image: repeating-linear-gradient(90deg, transparent 0 5px, rgba(0,0,0,.35) 5px 6px); }
+html[data-sty=pixel] #nav { border-top: 3px solid #f1f1f1; box-shadow: 0 -2px 0 #000; }
+html[data-sty=pixel] #nav button { font-size: 15px; }
+html[data-sty=pixel] #nav svg { shape-rendering: crispEdges; }
+html[data-sty=pixel] #nav svg * { stroke-linecap: square; stroke-linejoin: miter; stroke-width: 2; }
+html[data-sty=pixel] #nav button.on::before { border-radius: 0; height: 3px; }
+html[data-sty=pixel] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Press', monospace; letter-spacing: 0; line-height: 1.45; font-weight: 400; }
+html[data-sty=pixel] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 20px; }
+html[data-sty=pixel] .home .ht.clock .sz-h { font-size: 34px; }
+html[data-sty=pixel] .sz-prev .sz-h.lat, html[data-sty=pixel] .ht-prev .sz-h { font-size: 15px; }
+html[data-sty=pixel] .sheet::before { border-radius: 0; }
+
+/* ---------- Otome (romance-game elegance) ---------- */
+html[data-sty=otome] h3, .pv[data-pv=otome] .pv-h { font-family: 'D Cormorant', 'Cormorant Garamond', Georgia, serif; font-style: italic; font-weight: 600; font-size: 21px; letter-spacing: .01em; line-height: 1.15; }
+.pv[data-pv=otome] .pv-h { font-size: 15px; }
+html[data-sty=otome] .card > h3::after, .pv[data-pv=otome] .pv-h::after { content: ''; display: block; width: 64px; height: 1px; margin-top: 6px; background: linear-gradient(90deg, var(--gold), transparent); }
+html[data-sty=otome] main h2 { font-family: 'D Cormorant', serif; font-weight: 600; font-size: 14px; letter-spacing: .26em; }
+html[data-sty=otome] main h2::before { content: '✧ '; color: var(--gold); } html[data-sty=otome] main h2::after { content: ' ✧'; color: var(--gold); }
+html[data-sty=otome] .qt { font-family: 'D Cormorant', serif; font-weight: 600; font-size: 17.5px; }
+html[data-sty=otome] :is(.num, .stat b, .qx) { font-family: 'D Cormorant', serif; font-variant-numeric: lining-nums tabular-nums; font-weight: 600; }
+html[data-sty=otome] :is(.card, .stat, .sheet), .pv[data-pv=otome] .pv-card { border-radius: 20px; border: 1px solid var(--goldB); box-shadow: inset 0 0 0 4px var(--s1), inset 0 0 0 5px var(--goldA), 0 8px 26px rgba(180,86,111,.16); background-image: linear-gradient(160deg, rgba(255,255,255,.55), rgba(255,255,255,0) 45%); }
+html[data-sty=otome] .card { position: relative; }
+html[data-sty=otome] .card::after, .pv[data-pv=otome] .pv-card::after { content: '✦'; position: absolute; top: 5px; right: 9px; font-size: 9px; line-height: 1; color: var(--gold); opacity: .8; pointer-events: none; }
+html[data-sty=otome] .q, .pv[data-pv=otome] .pv-q { border-radius: 16px; border: 1px solid var(--goldA); box-shadow: 0 3px 12px rgba(180,86,111,.1); }
+:where(html[data-sty=otome]) button { border-radius: 99px; letter-spacing: .02em; }
+html[data-sty=otome] .btn-p, .pv[data-pv=otome] .pv-btn { border: 0; border-radius: 99px; background: linear-gradient(135deg, var(--ac), var(--ac2)); box-shadow: 0 4px 14px var(--acG); }
+html[data-sty=otome] :is(.chip, .pill), .pv[data-pv=otome] .pv-chip { border-color: var(--goldB); }
+html[data-sty=otome] .chk, .pv[data-pv=otome] .pv-chk { border-radius: 50%; border: 1.5px solid var(--goldB); }
+html[data-sty=otome] .q.done .chk { background: linear-gradient(135deg, var(--ac), var(--gold)); border-color: transparent; }
+html[data-sty=otome] .seg, html[data-sty=otome] .seg button { border-radius: 99px; }
+:where(html[data-sty=otome]) :is(input, select, textarea) { border-radius: 14px; }
+html[data-sty=otome] :is(.bar, .prog, .bar > i, .prog i) { border-radius: 99px; }
+html[data-sty=otome] :is(.bar > i, .prog i) { background: linear-gradient(90deg, var(--ac), var(--gold)); }
+html[data-sty=otome] #nav svg * { stroke-width: 1.4; }
+html[data-sty=otome] #nav button { font-family: 'D Cormorant', serif; font-style: italic; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
+html[data-sty=otome] #nav button.on::before { left: calc(50% - 3px); right: auto; width: 6px; height: 6px; top: 5px; border-radius: 1px; transform: rotate(45deg); }
+html[data-sty=otome] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Cormorant', serif; font-style: italic; font-weight: 600; letter-spacing: .01em; }
+html[data-sty=otome] .home :is(.sz-h.lat, .ht.custom .sz-h) { font-size: 48px; }
+html[data-sty=otome] .toast { border-radius: 18px; border-color: var(--goldB); }
+
+/* ---------- Pastel Pop (cutesy) ---------- */
+:where(html[data-sty=pastel]) body, .pv[data-pv=pastel] { font-family: 'D Fredoka', 'Nunito', system-ui, sans-serif; font-weight: 500; }
+html[data-sty=pastel] h3, .pv[data-pv=pastel] .pv-h { font-family: 'D Fredoka', sans-serif; font-weight: 600; font-size: 17.5px; letter-spacing: .01em; }
+html[data-sty=pastel] main h2 { font-family: 'D Fredoka', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: .08em; }
+html[data-sty=pastel] main h2::before { content: '★ '; color: var(--ac); }
+html[data-sty=pastel] :is(.num, .stat b, .qx) { font-family: 'D Fredoka', sans-serif; font-weight: 600; }
+html[data-sty=pastel] :is(.card, .stat, .sheet), .pv[data-pv=pastel] .pv-card { border-radius: 24px; border: 2.5px solid var(--line2); box-shadow: 0 5px 0 var(--line2); }
+html[data-sty=pastel] .sheet { box-shadow: none; }
+html[data-sty=pastel] .q, .pv[data-pv=pastel] .pv-q { border-radius: 18px; border: 2px solid var(--line2); box-shadow: 0 3px 0 var(--line2); }
+html[data-sty=pastel] .q { margin-bottom: 9px; }
+:where(html[data-sty=pastel]) button { border-radius: 99px; border-width: 2px; box-shadow: 0 3px 0 var(--line2); font-weight: 600; }
+:where(html[data-sty=pastel]) button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line2); }
+html[data-sty=pastel] .btn-p, .pv[data-pv=pastel] .pv-btn { border-radius: 99px; box-shadow: 0 4px 0 rgba(110,20,60,.25); }
+html[data-sty=pastel] :is(.chip, .pill), .pv[data-pv=pastel] .pv-chip { border-width: 2px; }
+html[data-sty=pastel] .chk, .pv[data-pv=pastel] .pv-chk { border-radius: 10px; border: 2.5px solid var(--line2); }
+html[data-sty=pastel] .seg { border-radius: 99px; border-width: 2px; }
+html[data-sty=pastel] .seg button { border-radius: 99px; box-shadow: none; border: 0; }
+html[data-sty=pastel] .seg button.on { background: var(--ac); color: var(--ac-tx); }
+:where(html[data-sty=pastel]) :is(input, select, textarea) { border-radius: 16px; border-width: 2px; }
+html[data-sty=pastel] :is(.bar, .prog) { height: 9px; border-radius: 99px; }
+html[data-sty=pastel] :is(.bar > i, .prog i) { border-radius: 99px; background-image: repeating-linear-gradient(-45deg, rgba(255,255,255,.38) 0 5px, transparent 5px 10px); }
+html[data-sty=pastel] #nav svg * { stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+html[data-sty=pastel] #nav button.on::before { left: calc(50% - 12px); right: auto; width: 24px; height: 4px; border-radius: 99px; top: 2px; }
+html[data-sty=pastel] .hs { border-width: 2px; }
+html[data-sty=pastel] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Fredoka', sans-serif; font-weight: 600; letter-spacing: .01em; }
+html[data-sty=pastel] .toast { border-radius: 18px; border: 2.5px solid var(--line2); }
+
+/* ---------- Minimal ---------- */
+html[data-sty=minimal] :is(.card, .stat, .q, .seg, .hs, #top, #nav, .cal .d, .toast), .pv[data-pv=minimal] :is(.pv-card, .pv-q) { -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+html[data-sty=minimal] :is(.card, .stat, .q, .seg, .cal .d, .hs), .pv[data-pv=minimal] :is(.pv-card, .pv-q) { background: var(--s1s); }
+html[data-sty=minimal] :is(.card, .stat, .seg), .pv[data-pv=minimal] .pv-card { border-radius: 8px; }
+html[data-sty=minimal] .q, .pv[data-pv=minimal] .pv-q { border-radius: 6px; }
+html[data-sty=minimal] :is(#top, #nav) { background: var(--s1s); }
+html[data-sty=minimal] .banner { background-color: var(--s1s) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; border-radius: 8px; }
+:where(html[data-sty=minimal]) button { border-radius: 6px; }
+html[data-sty=minimal] .btn-p, .pv[data-pv=minimal] .pv-btn { border-radius: 6px; }
+html[data-sty=minimal] :is(.chip, .pill, .title-badge), .pv[data-pv=minimal] .pv-chip { border-radius: 6px; }
+html[data-sty=minimal] .chk, .pv[data-pv=minimal] .pv-chk { border-radius: 5px; }
+html[data-sty=minimal] .seg button { border-radius: 6px; }
+html[data-sty=minimal] main h2 { letter-spacing: .1em; }
+html[data-sty=minimal] #bg::after { background: rgba(0,0,0,.45); }
+html[data-ui=light][data-sty=minimal] #bg::after { background: rgba(250,246,238,.4); }
+
+/* ---------- Web 1.0 (joke) ---------- */
+:where(html[data-sty=web1]) body, .pv[data-pv=web1] { font-family: 'D Comic', 'Comic Sans MS', 'Comic Neue', cursive; }
+html[data-sty=web1] h3, .pv[data-pv=web1] .pv-h { font-family: 'D Comic', 'Comic Sans MS', cursive; font-weight: 700; font-size: 18px; background: linear-gradient(90deg, #ff0000, #ff8a00, #e6d200, #12b300, #0a6cff, #8f00ff); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(1px 1px 0 rgba(0,0,0,.6)); }
+html[data-sty=web1] .sheet > h3 { background: linear-gradient(90deg, #000080, #1084d0); -webkit-background-clip: border-box; background-clip: border-box; color: #fff; filter: none; padding: 3px 8px; margin: -4px -4px 10px; font-size: 15px; }
+html[data-sty=web1] main h2 { font-family: 'D Comic', cursive; font-weight: 700; font-size: 12.5px; text-transform: none; letter-spacing: 0; color: #fff; opacity: 1; text-shadow: none; background: linear-gradient(90deg, #000080, #1084d0); padding: 2px 8px; }
+html[data-sty=web1] .qhead h2 { flex: 1; }
+html[data-sty=web1] :is(.card, .stat, .q, .sheet, .seg, .cal .d), .pv[data-pv=web1] :is(.pv-card, .pv-q) { border-radius: 0; background-color: #c0c0c0; border: 2px solid; border-color: #ffffff #404040 #404040 #ffffff; box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #dfdfdf; -webkit-backdrop-filter: none; backdrop-filter: none; }
+:where(html[data-sty=web1]) button { border-radius: 0; background: #c0c0c0; color: #000; border: 2px solid; border-color: #ffffff #404040 #404040 #ffffff; box-shadow: inset -1px -1px 0 #808080; }
+:where(html[data-sty=web1]) button:active { border-color: #404040 #ffffff #ffffff #404040; }
+html[data-sty=web1] .btn-p, .pv[data-pv=web1] .pv-btn { background: #c0c0c0; color: #000080; font-weight: 700; border: 2px solid; border-color: #ffffff #000000 #000000 #ffffff; outline: 1px dotted #000; outline-offset: -5px; border-radius: 0; }
+html[data-sty=web1] :is(.chip, .pill, .title-badge, .hs, .streak, .coins), .pv[data-pv=web1] .pv-chip { border-radius: 0; }
+html[data-sty=web1] .chip.on { background: #000080; color: #fff; border-color: #000080; }
+html[data-sty=web1] .pill.gold { animation: w1blink 1s steps(1) infinite; }
+@keyframes w1blink { 50% { visibility: hidden; } }
+html[data-sty=web1] .chk, .pv[data-pv=web1] .pv-chk { border-radius: 0; background: #fff; border: 2px solid; border-color: #404040 #ffffff #ffffff #404040; }
+html[data-sty=web1] .q.done .chk { background: #fff; border-color: #404040 #ffffff #ffffff #404040; }
+html[data-sty=web1] .q.done .chk svg { color: #000; }
+html[data-sty=web1] .seg button { border: 0; background: none; box-shadow: none; }
+html[data-sty=web1] .seg button.on { background: #c0c0c0; border: 2px solid; border-color: #404040 #ffffff #ffffff #404040; color: #000; }
+:where(html[data-sty=web1]) :is(input, select, textarea) { border-radius: 0; background: #fff; color: #000; border: 2px solid; border-color: #404040 #ffffff #ffffff #404040; }
+html[data-sty=web1] :is(.bar, .prog) { height: 14px; border-radius: 0; background: #fff; border: 2px solid; border-color: #808080 #ffffff #ffffff #808080; }
+html[data-sty=web1] :is(.bar > i, .prog i) { border-radius: 0; background: repeating-linear-gradient(90deg, #000080 0 9px, transparent 9px 11px); }
+html[data-sty=web1] #top { background: linear-gradient(90deg, #000080, #1084d0); border: 0; color: #fff; overflow: hidden; }
+html[data-sty=web1] #top .topbar .lv small { color: #ffff00; }
+html[data-sty=web1] #top::after { content: 'Welcome to my homepage!!! You are visitor #000042 ~ Best viewed in Netscape Navigator 4.0 at 800x600 ~ Sign my guestbook!'; display: block; white-space: nowrap; font: 700 11px 'D Comic', cursive; color: #ffff00; margin-top: 6px; animation: w1mq 16s linear infinite; }
+@keyframes w1mq { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }
+@media (prefers-reduced-motion: reduce) { html[data-sty=web1] #top::after { animation: none; } html[data-sty=web1] .pill.gold { animation: none; } }
+html[data-sty=web1] #nav { background: #c0c0c0; border-top: 2px solid #ffffff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-sty=web1] #nav button { color: #000; font-family: 'D Comic', cursive; font-weight: 700; }
+html[data-sty=web1] #nav button.on { color: #000080; }
+html[data-sty=web1] #nav button.on::before { border-radius: 0; background: #000080; }
+html[data-sty=web1] .hs { background: #c0c0c0; color: #000; border: 2px solid; border-color: #ffffff #404040 #404040 #ffffff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html[data-sty=web1] .hs.gold { color: #b000b0; }
+html[data-sty=web1] .banner { border-radius: 0; background: #ffffe1 !important; color: #000; border: 1px solid #000; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+html[data-sty=web1] .toast { border-radius: 0; background: #ffffe1; color: #000; border: 1px solid #000; box-shadow: 2px 2px 0 #000; }
+html[data-sty=web1] .toast::before { content: '⚠ '; }
+html[data-sty=web1] :is(.sz-h.lat, .ht .sz-h, .sz-mini b.lat) { font-family: 'D Comic', cursive; font-weight: 700; letter-spacing: 0; background: linear-gradient(90deg, #ff0000, #ff8a00, #e6d200, #12b300, #0a6cff, #8f00ff); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; filter: drop-shadow(2px 2px 0 #000); }
+button.th-tile { text-transform: none; letter-spacing: 0; }
+html[data-sty=pixel] .sz-mini b.lat { font-size: 11px; line-height: 1.5; }
+html[data-sty=retro] .sz-mini b.lat { font-size: 13.5px; }
+html[data-sty=system] .sz-mini b.lat { font-size: 16px; }
+/* the UI's brightness disagrees with the picture: a stronger veil keeps text outside the cards readable (not on Home) */
+html[data-ui=dark][data-bgl="1"] #bg::after { background: rgba(0,0,0,.52); }
+html[data-ui=light][data-bgl="0"] #bg::after { background: rgba(250,246,238,.46); }

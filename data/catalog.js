@@ -4,6 +4,7 @@
 (function () {
   // f = the Workout subfolder the activity is listed under (same ids as the skill folders below)
   const A = (id, name, f, met, skill) => ({ id, name, f, met, skill });
+  const R = (id, name, skill, rs, met = [2.8, 3.8, 8.0]) => Object.assign(A(id, name, 'strength', met, skill), { reps: rs }); // counted in reps
   const ACTIVITIES = [
     A('bjj_drill', 'Brazilian Jiu-Jitsu — Drills', 'combat', [4.0, 5.3, 6.5], 'bjj'),
     A('bjj_spar', 'Brazilian Jiu-Jitsu — Sparring (rolling)', 'combat', [7.0, 8.0, 10.3], 'bjj'),
@@ -37,6 +38,10 @@
     A('olylift', 'Olympic weightlifting', 'strength', [4.0, 5.5, 6.5], 'olylifting'),
     A('kettlebell', 'Kettlebells', 'strength', [5.0, 7.0, 9.8], 'kettlebells'),
     A('calis', 'Calisthenics (push-ups, pull-ups, squats)', 'strength', [2.8, 3.8, 8.0], 'calisthenics'),
+    // v12: rep exercises, logged in reps (reps = seconds per rep, used for the time and calorie estimate)
+    R('pushups', 'Push-ups', 'pushups', 2.5), R('pullups', 'Pull-ups', 'pullups', 3), R('squats', 'Squats', 'squats', 2.5),
+    R('burpees', 'Burpees', null, 5, [5.0, 8.0, 10.0]), R('situps', 'Sit-ups / crunches', null, 2.5), R('dips', 'Dips', null, 3),
+    R('lunges', 'Lunges', null, 3), R('jacks', 'Jumping jacks', null, 1.2), R('kbswing', 'Kettlebell swings', 'kettlebells', 2, [5.0, 7.0, 9.8]),
     A('hiit', 'HIIT / circuit', 'strength', [6.0, 8.0, 10.0], null),
     A('jumprope', 'Jump rope', 'strength', [8.8, 11.8, 12.3], 'jumprope'),
     A('rowing', 'Rowing machine', 'strength', [4.8, 7.0, 8.5], null),
