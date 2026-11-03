@@ -489,7 +489,7 @@ const HT_POS = [['', 'Off'], ['above', 'Above'], ['below', 'Below'], ['left', 'L
 const htOpts = () => { const o = Object.assign({ mode: 'season', main: '', sub: '', time: '12', date: 'long' }, S.homeText || {}); o.extra = Object.assign({ season: null, clock: null, custom: null }, o.extra || {}); return o; };
 const HT_MODES = [['season', 'Season names'], ['clock', 'Date & time'], ['custom', 'My own words']];
 const HT_TIMES = [['12', '12-hour'], ['24', '24-hour'], ['off', 'No time']];
-const HT_DATES = ['long', 'med', 'short', 'us', 'eu', 'iso', 'ko', 'ja', 'off'];
+const HT_DATES = ['long', 'med', 'short', 'us', 'eu', 'iso', 'ko', 'ja', 'zh', 'off'];
 const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WDL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function htDate(d, f) {
@@ -501,8 +501,10 @@ function htDate(d, f) {
     case 'us': return `${pad(m + 1)}/${pad(dd)}/${y}`;
     case 'eu': return `${pad(dd)}/${pad(m + 1)}/${y}`;
     case 'iso': return `${y}-${pad(m + 1)}-${pad(dd)}`;
-    case 'ko': return `${y}년 ${m + 1}월 ${dd}일 (${'일월화수목금토'[w]})`;
-    case 'ja': return `${y}年${m + 1}月${dd}日（${'日月火水木金土'[w]}）`;
+    // v15: the weekday in full, no brackets (on Mondays "(월)" / "（月）" read like a second month marker)
+    case 'ko': return `${y}년 ${m + 1}월 ${dd}일 ${'일월화수목금토'[w]}요일`;
+    case 'ja': return `${y}年${m + 1}月${dd}日 ${'日月火水木金土'[w]}曜日`;
+    case 'zh': return `${y}年${m + 1}月${dd}日 星期${'日一二三四五六'[w]}`;
     default: return '';
   }
 }
@@ -517,7 +519,7 @@ const htLines = v => { const ls = String(v || '').replace(/\r/g, '').split('\n')
 function htMainHtml(o, preview) { // the main (big) text
   if (o.mode === 'clock') {
     const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date), big = t || dt, small = t ? dt : '';
-    return `<div class="season ht clock${preview ? ' prev' : ''}"><div class="sz-h lat" data-clk="${t ? 't' : 'd'}">${esc(big || ' ')}</div>${small ? `<div class="sz-g" data-clk="d"${/^(ko|ja)$/.test(o.date) ? ` lang="${o.date}"` : ''}>${esc(small)}</div>` : ''}</div>`;
+    return `<div class="season ht clock${preview ? ' prev' : ''}"><div class="sz-h lat" data-clk="${t ? 't' : 'd'}">${esc(big || ' ')}</div>${small ? `<div class="sz-g" data-clk="d"${/^(ko|ja|zh)$/.test(o.date) ? ` lang="${o.date}"` : ''}>${esc(small)}</div>` : ''}</div>`;
   }
   if (o.mode === 'custom') {
     const main = (o.main || '').trim() || (preview ? HT_EX : ''), sub = htLines(o.sub).trim();
@@ -528,7 +530,7 @@ function htMainHtml(o, preview) { // the main (big) text
 function htSubHtml(m, o, preview) { // one of the other two, small
   if (m === 'clock') {
     const now = new Date(), t = htTime(now, o.time), dt = htDate(now, o.date); if (!t && !dt) return '';
-    const dl = /^(ko|ja)$/.test(o.date) ? ` lang="${o.date}"` : '';
+    const dl = /^(ko|ja|zh)$/.test(o.date) ? ` lang="${o.date}"` : '';
     return `<div class="hts hts-clock">${t ? `<div class="hts-m" data-clk="t">${esc(t)}</div>` : ''}${dt ? `<div class="${t ? 'hts-s' : 'hts-m'}" data-clk="d"${dl}>${esc(dt)}</div>` : ''}</div>`;
   }
   if (m === 'custom') {
