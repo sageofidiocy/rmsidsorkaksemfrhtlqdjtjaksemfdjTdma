@@ -55,7 +55,7 @@ const ICON = {
   sliders: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
   lock: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 018 0v3"/></svg>',
   pick: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8M16 16l2-2M19 19l2-2"/></svg>',
-  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
 };
 
 /* ---------- state ---------- */
@@ -965,7 +965,17 @@ function scopeTxt(p) {
   if (p.all) return 'everything';
   return [...(p.lists || []), ...(p.skills || []).map(id => SK[id] ? SK[id].name : id), ...(p.tasks || []).map(id => S.tasks[id] ? S.tasks[id].name : id)].join(', ') || 'nothing';
 }
-const PAUSE_NAME = { vacation: 'Vacation', emergency: 'Emergency', pass: 'Rest pass', school: 'School break' };
+const PAUSE_NAME = { vacation: 'Vacation', emergency: 'Emergency', pass: 'Rest pass', school: 'School break', start: 'Free first day' };
+/* v19.5: a bedtime that's less than 8 hours after waking is almost always AM/PM mixed up (e.g. 10:30 instead of 22:30) */
+function bedSanity(wake, sleep) {
+  const m = t => { const [h, mi] = (t || '0:0').split(':').map(Number); return h * 60 + mi; };
+  const gap = (m(sleep) - m(wake) + 1440) % 1440;
+  if (gap >= 8 * 60) return sleep;
+  const pm = ((m(sleep) + 720) % 1440), fix = `${String(Math.floor(pm / 60)).padStart(2, '0')}:${String(pm % 60).padStart(2, '0')}`;
+  const awake = ((pm - m(wake) + 1440) % 1440) >= 8 * 60;
+  if (awake && confirm(`Bedtime ${fmtTime(sleep)} is only ${Math.round(gap / 6) / 10} hours after you wake (${fmtTime(wake)}), so your quest list would close then. Did you mean ${fmtTime(fix)}?\n\nOK = use ${fmtTime(fix)} · Cancel = keep ${fmtTime(sleep)}`)) return fix;
+  return sleep;
+}
 /* v19 Phase D: School Break, students only. 180 days a calendar year; it pauses only the Schoolwork list (and stops the clocks of
    Schoolwork side quests, see sidePauseStops). No coin extensions. */
 const SCHOOL_BREAK_DAYS = 180, STUDENT_LEVELS = [['k12', 'K–12'], ['undergrad', 'Undergraduate'], ['grad', 'Graduate'], ['other', 'Other']];
@@ -2002,6 +2012,9 @@ function renderSetup() {
   </div>
   <div class="card"><h3>Daily rhythm</h3><p class="mu small">Your day resets at wake time. "Phone away & asleep" locks 15 minutes after sleep time.</p>
     <div class="grid2"><div><label>Wake time</label><input name="wake" type="time" value="07:00"></div><div><label>Sleep time</label><input name="sleep" type="time" value="23:00"></div></div>
+    <label style="margin-top:12px">When do you want to start?</label>
+    <label class="check"><input type="radio" name="startWhen" value="tomorrow" checked> Tomorrow morning: today is a free day to look around and set things up</label>
+    <label class="check"><input type="radio" name="startWhen" value="today"> Today</label>
   </div>
   <div class="card"><h3>Skills to train</h3><p class="mu small">Tick what goes on your quest list, then pick your current level. Open a folder to see its skills. Weekdays can be changed later in Calendar → Weekly plan, and you can create your own skills and folders in Board → Skills.</p>
   <div class="lib su-tree">${tree(null)}</div>
@@ -2053,7 +2066,7 @@ function finishSetup() {
   const hIn = (+g('ft') || 0) * 12 + (+g('in') || 0); // v14: height & weight are optional (null = not given)
   p.heightCm = p.units === 'imperial' ? (hIn > 0 ? Math.round(hIn * 2.54) : null) : (+g('cm') > 0 ? +g('cm') : null);
   const w = num(g('weight')); p.weightKg = w ? (p.units === 'imperial' ? w / 2.20462 : w) : null;
-  p.goal = GOAL_NAME[g('goal')] ? g('goal') : 'none'; p.wake = g('wake') || '07:00'; p.sleep = g('sleep') || '23:00';
+  p.goal = GOAL_NAME[g('goal')] ? g('goal') : 'none'; p.wake = g('wake') || '07:00'; p.sleep = bedSanity(p.wake, g('sleep') || '23:00');
   if (look !== 'own') S.cal = look; // own theming keeps the names picked for its seasonal scenes (Korean unless changed)
   if (look === 'own' && !(S.theme && ['custom', 'seasonal'].includes(S.theme.id))) S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color' }) };
   const today = todayKey(); p.start = today;
@@ -2067,6 +2080,7 @@ function finishSetup() {
     const rv = [0, 3, 5, 7][lv]; s.stats.forEach(x => { if (x.t === 'r') st.r[x.k] = rv; });
   }
   skState('discipline');
+  if (g('startWhen') !== 'today') S.pauses.push({ id: uid(), type: 'start', start: today, end: today, all: true, lists: [], skills: [], tasks: [], note: '' }); // v19.5: free first day
   S.setup = true; S.lastEval = addDays(today, -1);
   window.scrollTo(0, 0);
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { }
@@ -2078,8 +2092,8 @@ function pauseBanner(p, tk) {
   const em = p.type === 'emergency';
   const until = p.end ? (p.end === tk ? 'Ends today' : 'Until ' + fmtDate(p.end)) : 'Until you end it';
   return `<div class="banner ${em ? 'em' : p.type === 'pass' ? 'ps' : ''}"><div class="row">${p.type === 'pass' ? ICON.gift : ICON.pause}<b class="sp">${PAUSE_NAME[p.type] || 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</b></div>
-    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : p.type === 'pass' ? `You earned this. Paused: ${esc(scopeTxt(p))}. No logging needed, no penalties.` : p.type === 'school' ? 'Schoolwork is paused; everything else keeps going.' : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
-    <div class="row" style="margin-top:10px;gap:8px">${p.start === tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">${em ? 'Resume today' : 'Cancel pause'}</button>` : ''}${p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">${em ? 'Resume tomorrow' : 'End early'}</button>` : ''}</div></div>`;
+    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : p.type === 'pass' ? `You earned this. Paused: ${esc(scopeTxt(p))}. No logging needed, no penalties.` : p.type === 'school' ? 'Schoolwork is paused; everything else keeps going.' : p.type === 'start' ? 'Your quests start tomorrow morning. Today is free: look around, adjust your skills and tasks, nothing counts yet.' : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
+    <div class="row" style="margin-top:10px;gap:8px">${p.start === tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">${em ? 'Resume today' : p.type === 'start' ? 'Start today instead' : 'Cancel pause'}</button>` : ''}${p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">${em ? 'Resume tomorrow' : 'End early'}</button>` : ''}</div></div>`;
 }
 function seasonMini(si) { // one-line season label for the Quests tab (the full header lives on Home)
   if (!si || (themeId() === 'custom' && htOpts().mode !== 'season')) return ''; // your own look: no season label
@@ -2578,7 +2592,7 @@ function viewCal() {
     ${sideDue.length ? `<div class="mu small" style="margin-top:10px">${sideDue.map(q => `<div class="list-item"><span class="rw-ic">${ICON.board}</span><span class="sp">${esc(q.title)}</span><span class="mu2 small">${effDue(q) === sel ? 'deadline' : 'checkpoint'}</span></div>`).join('')}</div>` : ''}
   </div>
   <h2>Pauses</h2>
-  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Emergency</span>' : p.type === 'pass' ? '<span class="gold">Rest pass</span>' : p.type === 'school' ? 'School break' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
+  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Emergency</span>' : p.type === 'pass' ? '<span class="gold">Rest pass</span>' : p.type === 'school' ? 'School break' : p.type === 'start' ? 'Free first day' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
       <div class="mu small">${fmtDate(p.start)} → ${p.end ? fmtDate(p.end) : 'until ended'} · ${esc(scopeTxt(p))}</div></div>
       ${p.start >= tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">Cancel</button>` : ''}${p.start <= tk && p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">End</button>` : ''}</div>`).join('') : '<div class="mu small">No upcoming pauses. Plan vacations ahead; paused quests don\'t count against you.</div>'}
     <div class="row" style="margin-top:12px;gap:8px"><button class="btn-s" data-a="vacNew">+ Vacation pause</button>${S.profile.student ? '<button class="btn-s" data-a="sbNew">+ School break</button>' : ''}</div></div>
@@ -3767,7 +3781,7 @@ const A = {
     p.units = f.get('units');
     const oldWake = p.wake; if (!isLocked('sleep', 'sleep')) p.wake = f.get('wake') || p.wake; // v19: the bed lock freezes wake too
     else if (f.get('wake') && f.get('wake') !== p.wake) toast(`Wake time is locked until ${fmtDate(lockEnd('sleep', 'sleep'))}`, 'bad');
-    if (!isLocked('sleep', 'sleep')) p.sleep = f.get('sleep') || p.sleep;
+    if (!isLocked('sleep', 'sleep')) p.sleep = f.get('sleep') && f.get('sleep') !== p.sleep ? bedSanity(p.wake, f.get('sleep')) : p.sleep;
     else if (f.get('sleep') && f.get('sleep') !== p.sleep) toast(`Sleep time is locked until ${fmtDate(lockEnd('sleep', 'sleep'))}`, 'bad');
     if (oldWake !== p.wake) { save(); boot(); } else { regenToday(); afterChange(); }
     toast('Saved');
