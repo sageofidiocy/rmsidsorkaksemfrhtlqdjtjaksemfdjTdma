@@ -1,10 +1,10 @@
-/* Deificatio — offline quest / training / skill tracker. All data lives in localStorage on this device. */
+/* Eutaxia — offline quest / training / skill tracker. All data lives in localStorage on this device. */
 'use strict';
-const { ACTIVITIES, SKILLS, FOLDERS, BELTS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES } = window.CATALOG;
+const { ACTIVITIES, SKILLS, FOLDERS, BELTS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES, SUBJECTS, SCHOOL_DATED } = window.CATALOG;
 let ACT = {}, ACTS = []; // built-in + the user's own workout types (rebuildACT)
 const TASK_DEF = Object.fromEntries(TASKS.map(t => [t.id, t]));
 const STORE = 'ascent.v1';
-const LIST_ORDER = ['Penalty', 'Due today', 'Faith', 'Morning', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Chores', 'Nutrition'];
+const LIST_ORDER = ['Penalty', 'Due today', 'Faith', 'Morning', 'Training', 'Study', 'Schoolwork', 'Craft', 'Work', 'Daily', 'Chores', 'Nutrition'];
 const DAY_CAP = 1440; // most minutes any one skill (or side quest, or all workouts) can log in one day: 24 h
 const DIET_BAND = { cut: [0.90, 1.05], maintain: [0.90, 1.10], bulk: [0.95, 1.10] };
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -54,20 +54,22 @@ const ICON = {
   camera: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3.5 8h4l1.8-2.5h5.4L16.5 8h4v11h-17z"/><circle cx="12" cy="13.3" r="3.6"/></svg>',
   sliders: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
   lock: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 018 0v3"/></svg>',
+  pick: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4"/><path d="M11 11l8 8M16 16l2-2M19 19l2-2"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
 };
 
 /* ---------- state ---------- */
 function fresh() {
   return {
     v: 3, setup: false,
-    profile: { name: '', sex: 'M', birthYear: 2003, heightCm: 178, weightKg: 75, units: 'imperial', wake: '07:00', sleep: '23:00', goal: 'maintain', dietQuest: true, start: null },
-    lists: ['Faith', 'Morning', 'Training', 'Study', 'Craft', 'Work', 'Daily', 'Chores'],
-    skills: {}, customSkills: [], events: [], days: {}, rest: [], pauses: [], lastEval: null,
+    profile: { name: '', sex: 'M', birthYear: 2003, heightCm: 178, weightKg: 75, units: 'imperial', wake: '07:00', sleep: '23:00', goal: 'maintain', dietQuest: true, start: null, time24: false },
+    lists: ['Faith', 'Morning', 'Training', 'Study', 'Schoolwork', 'Craft', 'Work', 'Daily', 'Chores'],
+    skills: {}, customSkills: [], events: [], days: {}, rest: [], pauses: [], locks: [], lastEval: null,
     tasks: {},      // task quests the user adopted or made: { id: { id, name, unit, sessions, base, max, diff, list, days, active, xp, done, logs, custom, lock } }
     side: [],       // one-time and time-limited quests
     rewards: [],    // rewards earned from side quests
     fx: null,       // { sound, haptic, cele } (null = all on)
-    streak: { cur: 0, best: 0 }, pendingPen: null, owed: [], xp: 0,
+    streak: { cur: 0, best: 0 }, pendingPen: null, owed: [], xp: 0, picks: 0,
     workouts: [], food: [], customFoods: [], favs: [], fasts: [], body: [], tests: {}, books: [],
     folders: [],    // the user's own skill folders { id, name, parent }
     hideSk: [], hideTk: [], // built-in skills / tasks the user deleted (hidden, restorable)
@@ -136,7 +138,7 @@ const taskTitle = t => t.lock === 'sleep' ? `${t.name} by ${fmtClock(S.profile.s
 function adoptTask(id, over = {}) { // copy a default task into the user's tasks (editable from then on)
   const d = TASK_DEF[id]; if (!d) return null;
   const exp = over.exp || 'some', base = d.unit === 'min' ? roundUnit(d.base * EXP_MULT[exp], 'min') : 0;
-  const t = Object.assign({ id: d.id, name: d.name, unit: d.unit, sessions: d.sessions, base, base0: base, max: d.max, diff: d.diff, list: d.list, days: d.days.slice(), lock: d.lock || null, exp, active: true, xp: 0, done: 0, logs: 0, custom: false }, over);
+  const t = Object.assign({ id: d.id, name: d.name, unit: d.unit, sessions: d.sessions, base, base0: base, max: d.max, diff: d.diff, list: d.list, days: d.days.slice(), lock: d.lock || null, exp, active: true, xp: 0, done: 0, logs: 0, custom: false }, d.school ? { school: Object.assign({}, d.school), f: d.f } : {}, over); // v19: school tasks keep their subject
   S.tasks[id] = t; if (t.list && !S.lists.includes(t.list)) S.lists.push(t.list);
   return t;
 }
@@ -148,8 +150,20 @@ function migrate() {
   // v11: coins (1 per perfect day; perfect days you already had count) and Streak Savers bought with them
   if (typeof S.coins !== 'number') S.coins = (S.stats && S.stats.perfect) || 0;
   if (typeof S.savers !== 'number') S.savers = 0;
+  if (typeof S.picks !== 'number') S.picks = 0; // v18.1: Lockpicks bought in the shop
+  if (!Array.isArray(S.locks)) S.locks = [];
   if (!S.coinTier) S.coinTier = coinRate((S.streak && S.streak.cur) || 0); // v16
-  if (S.profile && S.profile.student == null) S.profile.student = false; // v16: students get more vacation days
+  if (S.profile && S.profile.student == null) S.profile.student = false; // v16
+  // v19 Phase D: student level (School Break needs it) and the Schoolwork list
+  if (S.profile && S.profile.studentLevel === undefined) S.profile.studentLevel = S.profile.student ? 'other' : null;
+  if (S.profile) S.profile.student = !!S.profile.studentLevel;
+  if (Array.isArray(S.lists) && !S.lists.includes('Schoolwork')) S.lists.splice(Math.max(0, S.lists.indexOf('Study') + 1), 0, 'Schoolwork');
+  // v17.2: one global 12/24-hour setting; the Home clock now follows it instead of choosing its own
+  if (S.profile && S.profile.time24 == null) S.profile.time24 = false;
+  if (S.homeText) {
+    if (S.homeText.time === '24') S.profile.time24 = true;
+    if (S.homeText.time === '12' || S.homeText.time === '24') S.homeText.time = 'auto';
+  }
   // v14: custom penalties. Owed fixed penalties are { k: day, f: id, t: what was owed }; old days with "tier 4" (0%) are Tier III + the $5 donation
   if (!Array.isArray(S.owed)) S.owed = [];
   owedFix();
@@ -158,23 +172,30 @@ function migrate() {
   if (S.stats && !S.stats.paid && S.stats.donated) S.stats.paid = { $: S.stats.donated * 5 };
   // v14: the Otome UI style is now called Rosewood (same look, your colors kept)
   if (S.look) { const L = S.look; if (L.style === 'otome') L.style = 'rosewood'; ['own', 'colors'].forEach(k => { if (L[k] && L[k].otome != null) { if (L[k].rosewood == null) L[k].rosewood = L[k].otome; delete L[k].otome; } }); }
-  if ((S.v || 0) >= 3) return;
-  S.v = 3;
-  if (!S.setup) return;
-  ['teeth', 'shower', 'phone'].forEach(id => { if (!S.tasks[id]) adoptTask(id, id === 'teeth' ? { sessions: 1, list: 'Wind Down' } : { list: 'Wind Down' }); });
-  const ps = S.skills.prayer;
-  if (ps && ps.active && !S.tasks.pray) {
-    const base = roundUnit(SK.prayer.base * ps.load, 'min');
-    adoptTask('pray', { days: (ps.days || [0, 1, 2, 3, 4, 5, 6]).slice(), base, base0: base, done: ps.done || 0, logs: ps.done || 0, xp: (ps.done || 0) * 7 });
-    ps.active = false;
+  // v19: side-quest clocks stop during an emergency (and, later, during a School Break for Schoolwork quests).
+  // pausedDays is rebuilt from S.pauses whenever a date is read, so cancelling or ending a pause early moves dates back.
+  if (!Array.isArray(S.pauses)) S.pauses = [];
+  (S.side || []).forEach(q => { if (!Array.isArray(q.pausedDays)) q.pausedDays = []; });
+  if ((S.v || 0) < 3) {
+    S.v = 3;
+    if (S.setup) {
+      ['teeth', 'shower', 'phone'].forEach(id => { if (!S.tasks[id]) adoptTask(id, id === 'teeth' ? { sessions: 1, list: 'Wind Down' } : { list: 'Wind Down' }); });
+      const ps = S.skills.prayer;
+      if (ps && ps.active && !S.tasks.pray) {
+        const base = roundUnit(SK.prayer.base * ps.load, 'min');
+        adoptTask('pray', { days: (ps.days || [0, 1, 2, 3, 4, 5, 6]).slice(), base, base0: base, done: ps.done || 0, logs: ps.done || 0, xp: (ps.done || 0) * 7 });
+        ps.active = false;
+      }
+      S.events.forEach(e => { if (e.skill === 'prayer') e.skill = null; });
+      ['Morning', 'Chores'].forEach(l => { if (!S.lists.includes(l)) S.lists.push(l); });
+      const d = S.days[todayKey()];
+      if (d) { // carry today's progress over to the new quests
+        const map = { 'h:teeth': 't:teeth', 'h:shower': 't:shower', 'h:phone': 't:phone', 'skill:prayer': 't:pray' };
+        d.q.forEach(q => { if (map[q.key]) { q.key = map[q.key]; q.task = q.key.slice(2); if (q.task === 'pray') { delete q.skill; } q.sessions = 1; q.progress = q.done ? 1 : 0; q.xpPer = q.xp; } });
+      }
+    }
   }
-  S.events.forEach(e => { if (e.skill === 'prayer') e.skill = null; });
-  ['Morning', 'Chores'].forEach(l => { if (!S.lists.includes(l)) S.lists.push(l); });
-  const d = S.days[todayKey()];
-  if (d) { // carry today's progress over to the new quests
-    const map = { 'h:teeth': 't:teeth', 'h:shower': 't:shower', 'h:phone': 't:phone', 'skill:prayer': 't:pray' };
-    d.q.forEach(q => { if (map[q.key]) { q.key = map[q.key]; q.task = q.key.slice(2); if (q.task === 'pray') { delete q.skill; } q.sessions = 1; q.progress = q.done ? 1 : 0; q.xpPer = q.xp; } });
-  }
+  S.v = Math.max(S.v || 0, 19);
 }
 /* ---------- seasons (72 micro-seasons) & themes ---------- */
 const THEMES = {
@@ -384,9 +405,9 @@ function saveWallpaper() {
 }
 function wallpaperOut(cv) {
   cv.toBlob(b => {
-    const si = ui.season, name = `deificatio-wallpaper-${huNumber(si.idx)}.png`, file = new File([b], name, { type: 'image/png' });
+    const si = ui.season, name = `eutaxia-wallpaper-${huNumber(si.idx)}.png`, file = new File([b], name, { type: 'image/png' });
     const dl = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); a.remove(); toast('Wallpaper saved to Downloads'); };
-    if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'Deificatio wallpaper' }).catch(e => { if (!e || e.name !== 'AbortError') dl(); }); else dl();
+    if (navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: 'Eutaxia wallpaper' }).catch(e => { if (!e || e.name !== 'AbortError') dl(); }); else dl();
   }, 'image/png');
 }
 async function saveThemeWallpaper(r) {
@@ -489,9 +510,9 @@ function seasonHero(si, preview) {
    S.homeText = null (season names) | { mode 'season'|'clock'|'custom' (the main text), main, sub, time '12'|'24'|'off', date (HT_DATES id),
      extra: { season|clock|custom: null | 'above'|'below'|'left'|'right' } }  (v14: the other two can show as smaller subtexts) */
 const HT_POS = [['', 'Off'], ['above', 'Above'], ['below', 'Below'], ['left', 'Left'], ['right', 'Right']];
-const htOpts = () => { const o = Object.assign({ mode: 'season', main: '', sub: '', time: '12', date: 'long', wd: true }, S.homeText || {}); o.extra = Object.assign({ season: null, clock: null, custom: null }, o.extra || {}); return o; };
+const htOpts = () => { const o = Object.assign({ mode: 'season', main: '', sub: '', time: 'auto', date: 'long', wd: true }, S.homeText || {}); o.extra = Object.assign({ season: null, clock: null, custom: null }, o.extra || {}); return o; };
 const HT_MODES = [['season', 'Season names'], ['clock', 'Date & time'], ['custom', 'My own words']];
-const HT_TIMES = [['12', '12-hour'], ['24', '24-hour'], ['off', 'No time']];
+const HT_TIMES = [['auto', 'Follow setting'], ['off', 'No time']];
 const HT_DATES = ['long', 'med', 'short', 'us', 'eu', 'iso', 'ko', 'kohj', 'ja', 'zh', 'off'];
 const HT_WD = ['long', 'med', 'ko', 'kohj', 'ja', 'zh']; // formats that can show the weekday (v16: o.wd false hides it)
 // v16: the lang a date is written in (so the UI style's CJK font picks it up); kohj = Korean in hanja
@@ -517,9 +538,9 @@ function htDate(d, f, wd = true) {
   }
 }
 function htTime(d, f) {
-  if (f === '24') return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  if (f === '12') return `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
-  return '';
+  if (f === 'off') return '';
+  if (f === '24' || (f !== '12' && S.profile.time24)) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
 }
 const HT_EX = 'Carpe Diem';
 // the smaller custom line keeps at most three line breaks (four short lines)
@@ -825,17 +846,112 @@ function rankCard() { // v17: Settings > Themes & display > Rank style
 /* ---------- time ---------- */
 const imperial = () => S.profile.units === 'imperial';
 function todayKey(now = new Date()) { return dkey(new Date(now.getTime() - hm(S.profile.wake) * 60000)); }
+/* v19: a time earlier than the wake time belongs to the next calendar date. The logical day k begins at wake time. */
+function dayTime(k, hhmm) {
+  const d = dparse(k), t = hm(hhmm), w = hm(S.profile.wake);
+  if (t < w) d.setDate(d.getDate() + 1);
+  d.setHours(Math.floor(t / 60), t % 60, 0, 0); return d.getTime();
+}
+function bedAt(k) { return dayTime(k, S.profile.sleep); }
 function sleepDeadline(k) {
-  const d = dparse(k), s = hm(S.profile.sleep), w = hm(S.profile.wake);
-  if (s <= w) d.setDate(d.getDate() + 1);
-  d.setHours(Math.floor(s / 60), s % 60, 0, 0); return d.getTime();
+  const s = hm(S.profile.sleep), w = hm(S.profile.wake);
+  if (s !== w) return bedAt(k);
+  const d = dparse(k); d.setDate(d.getDate() + 1); d.setHours(Math.floor(s / 60), s % 60, 0, 0); return d.getTime();
 }
 const age = () => new Date().getFullYear() - (S.profile.birthYear || 2000);
 const latestWeightKg = () => { const b = [...S.body].sort((a, b) => a.date < b.date ? -1 : 1).reverse().find(x => x.w); return b ? b.w : S.profile.weightKg || 75; };
 const latestBF = () => { const b = [...S.body].sort((a, b) => a.date < b.date ? -1 : 1).reverse().find(x => x.bf != null); return b ? b.bf : null; };
 const isDeload = k => !!S.profile.start && Math.floor(daysBetween(S.profile.start, k) / 7) % 4 === 3;
 const fmtW = kg => imperial() ? (kg * 2.20462).toFixed(1) + ' lb' : kg.toFixed(1) + ' kg';
-function fmtClock(s) { const m = hm(s), h = Math.floor(m / 60); return `${(h % 12) || 12}:${pad(m % 60)} ${h < 12 ? 'AM' : 'PM'}`; }
+function fmtTime(hhmm) {
+  if (hhmm == null || hhmm === '') return '';
+  const m = hm(hhmm), h = Math.floor(m / 60);
+  return S.profile.time24 ? `${pad(h)}:${pad(m % 60)}` : `${(h % 12) || 12}:${pad(m % 60)} ${h < 12 ? 'AM' : 'PM'}`;
+}
+const fmtClock = s => fmtTime(s);
+const shortTime = hhmm => { if (!hhmm) return ''; const h = Math.floor(hm(hhmm) / 60); return S.profile.time24 ? pad(h) : `${(h % 12) || 12}${h < 12 ? 'a' : 'p'}`; };
+const hhmmOf = ms => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const GRACE_MIN = 30; // v19: a strict quest closes this long after its time
+const WD_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function byTime(list, k) { // v19: timed quests first, by time; the rest keep their order
+  return list.map((x, i) => [x, i, x.at ? dayTime(k, x.at) : Infinity]).sort((a, b) => a[2] - b[2] || a[1] - b[1]).map(r => r[0]);
+}
+/* v19 long press: hold a weekday chip in the weekly plan (450 ms) to set that day's time. A plain tap still toggles the day. */
+function bindLongPress(sel, ms, fn) {
+  let tm = null, sx = 0, sy = 0, el = null;
+  const stop = () => { clearTimeout(tm); tm = null; el = null; };
+  document.addEventListener('pointerdown', e => { const t = e.target.closest(sel); if (!t) return; ui.lpAt = 0; el = t; sx = e.clientX; sy = e.clientY; clearTimeout(tm); tm = setTimeout(() => { ui.lpAt = Date.now(); const x = el; stop(); fn(x); }, ms); });
+  document.addEventListener('pointermove', e => { if (tm && Math.hypot(e.clientX - sx, e.clientY - sy) > 8) stop(); });
+  ['pointerup', 'pointercancel', 'scroll'].forEach(n => document.addEventListener(n, () => { if (tm) stop(); }, true));
+  document.addEventListener('contextmenu', e => { if (e.target.closest(sel)) e.preventDefault(); });
+}
+const timeCfg = (kind, ref) => kind === 'skill' ? skState(ref) : S.tasks[ref];
+function timeModal(kind, ref, wd) { // v19: the time (and strict window) for one weekday of a skill or task
+  const c = timeCfg(kind, ref); if (!c) return;
+  if (!(c.days || []).includes(wd)) { // long press on an unscheduled day schedules it too
+    c.days = [...(c.days || []), wd].sort((a, b) => a - b); if (kind === 'skill') { c.active = true; } save(); regenToday(); render();
+  }
+  ui.tm = { kind, ref, wd };
+  const cur = (c.times || {})[wd] || '', dayLock = lockedDays(kind, ref).includes(wd), anyLock = isLocked(kind, ref), name = kind === 'skill' ? (SK[ref] || {}).name : c.name;
+  openModal(`<h3>${ICON.clock} ${esc(name || '')} · ${WD_LONG[wd]}</h3>
+    <p class="mu small">Optional. The quest shows this time and opens at it; it stays open until your bedtime (${fmtTime(S.profile.sleep)}).</p>
+    <label>Time</label><input type="time" id="tmT" value="${cur}" ${dayLock ? 'disabled' : ''}>
+    <label class="check"><input type="checkbox" id="tmAll" ${dayLock ? 'disabled' : ''}> Use this time on every scheduled day</label>
+    <label class="check"><input type="checkbox" id="tmStrict" ${c.strict ? 'checked' : ''} ${anyLock ? 'disabled' : ''}> Don't allow after the time (${GRACE_MIN}-minute grace)</label>
+    <div class="mu2 small">With this on, the quest closes ${GRACE_MIN} minutes after its time instead of at bedtime. It applies to every day of this ${kind}.</div>
+    ${anyLock ? `<div class="banner" style="margin-top:10px"><div class="small">${ICON.lock} ${dayLock ? `${WD_LONG[wd]} is locked until ${fmtDate(lockEnd(kind, ref))}: its time can't change.` : `Locked until ${fmtDate(lockEnd(kind, ref))}: you can set times on unlocked days, but the window rule can't change.`}</div><div class="row lk-row" style="margin-top:6px">${lockCtl(kind, ref)}</div></div>` : ''}
+    <div class="actions">${cur && !dayLock ? '<button data-a="tmClear">Remove time</button>' : ''}<button data-a="close">Cancel</button>${dayLock ? '' : '<button class="btn-p" data-a="tmSave">Save</button>'}</div>`);
+}
+function timeSave(clear) {
+  const T = ui.tm; if (!T) return; const c = timeCfg(T.kind, T.ref); if (!c) return;
+  const locked = lockedDays(T.kind, T.ref), anyLock = isLocked(T.kind, T.ref);
+  if (locked.includes(T.wd)) { lockRefuse(T.kind, T.ref, 'change a locked day\'s time'); return; }
+  const v = clear ? '' : ($('#tmT') || {}).value || '', all = !clear && ($('#tmAll') || {}).checked;
+  c.times = Object.assign({}, c.times || {});
+  const days = all ? (c.days || []).filter(d => !locked.includes(d)) : [T.wd];
+  days.forEach(d => { if (v) c.times[d] = v; else delete c.times[d]; });
+  if (!anyLock) { const st = ($('#tmStrict') || {}).checked; c.strict = !!st && Object.keys(c.times).length > 0; }
+  if (!Object.keys(c.times).length) delete c.times;
+  closeModal(true); regenToday(); afterChange();
+  toast(clear ? 'Time removed' : v ? `${all ? 'Every day' : WD_LONG[T.wd]}: ${fmtTime(v)}${all && locked.length ? ' (locked days kept)' : ''}` : 'Time removed');
+}
+
+/* v19: one source of truth for "can this quest be ticked now?" (see the Phase B rules in the v19 blueprint) */
+function questWindow(q, k) {
+  const start = dayTime(k, S.profile.wake), B = bedAt(k);
+  if (!q || q.auto || q.pen) return { from: null, until: null, why: '' }; // diet and penalty rows are unchanged
+  const t = q.task && S.tasks[q.task];
+  if (t && t.lock === 'sleep') return { from: null, until: B + 15 * 60000, why: 'bed' }; // the bed task may be ticked any time
+  const T = q.at ? dayTime(k, q.at) : null;
+  if (q.by) { // a side-quest deadline / checkpoint is a "by" time, not a start time
+    if (!T) return { from: start, until: B, why: 'bed' };
+    return q.strict ? { from: start, until: Math.min(T + GRACE_MIN * 60000, B), why: 'deadline' } : { from: start, until: B, why: 'bed' }; // soft unless strict
+  }
+  if (!T) return { from: start, until: B, why: 'bed' };
+  if (q.strict) { const end = T + GRACE_MIN * 60000; return { from: T, until: Math.min(end, B), why: end < B ? 'grace' : 'bed' }; }
+  return { from: T, until: B, why: 'bed' };
+}
+function canCheck(q, k, now = Date.now()) {
+  if (!q) return { ok: false, msg: 'That quest is gone' };
+  if (q.done) return { ok: true, msg: '' }; // unticking (undo) is always allowed
+  const w = questWindow(q, k);
+  if (w.from != null && now < w.from) return { ok: false, msg: `Opens at ${fmtTime(q.at)}` };
+  if (w.until != null && now > w.until) {
+    const msg = w.why === 'deadline' ? `Closed at ${fmtTime(hhmmOf(w.until))} (due ${fmtTime(q.at)} + ${GRACE_MIN}-min grace)`
+      : w.why === 'grace' ? `Closed at ${fmtTime(hhmmOf(w.until))} (${GRACE_MIN}-min window)`
+        : `Closed at ${fmtTime(S.profile.sleep)} (bedtime)`;
+    return { ok: false, msg };
+  }
+  return { ok: true, msg: '' };
+}
+function questState(q, k, now = Date.now()) {
+  if (!q || q.done || q.auto || q.pen) return '';
+  const w = questWindow(q, k);
+  if (w.from != null && now < w.from) return 'early';
+  if (w.until != null && now > w.until) return 'closed';
+  if (q.strict && q.at && w.until != null && now > w.until - GRACE_MIN * 60000) return 'grace';
+  return q.at ? 'due' : '';
+}
 
 /* ---------- pauses ---------- */
 const pausesOn = k => S.pauses.filter(p => k >= p.start && (!p.end || k <= p.end));
@@ -849,12 +965,35 @@ function scopeTxt(p) {
   if (p.all) return 'everything';
   return [...(p.lists || []), ...(p.skills || []).map(id => SK[id] ? SK[id].name : id), ...(p.tasks || []).map(id => S.tasks[id] ? S.tasks[id].name : id)].join(', ') || 'nothing';
 }
-const PAUSE_NAME = { vacation: 'Vacation', emergency: 'Extreme emergency', pass: 'Rest pass' };
-/* v16 limits: 12 extreme emergencies a calendar year; vacation days a year: 30 (153 for students), more for 10 coins a day.
+const PAUSE_NAME = { vacation: 'Vacation', emergency: 'Emergency', pass: 'Rest pass', school: 'School break' };
+/* v19 Phase D: School Break, students only. 180 days a calendar year; it pauses only the Schoolwork list (and stops the clocks of
+   Schoolwork side quests, see sidePauseStops). No coin extensions. */
+const SCHOOL_BREAK_DAYS = 180, STUDENT_LEVELS = [['k12', 'K–12'], ['undergrad', 'Undergraduate'], ['grad', 'Graduate'], ['other', 'Other']];
+const SUBJ = id => (SUBJECTS || []).find(x => x.id === id);
+function schoolDaysIn(y, skipId) {
+  const set = new Set();
+  S.pauses.filter(p => p.type === 'school' && p.id !== skipId).forEach(p => { let k = p.start; const e = p.end || p.start; while (k <= e) { if (k.slice(0, 4) === String(y)) set.add(k); k = addDays(k, 1); } });
+  return set;
+}
+function schoolNeed(start, end) { // per year: days the break would add beyond the 180
+  const by = {}; let k = start;
+  for (let n = 0; k <= end && n < 800; n++) { const y = k.slice(0, 4); (by[y] = by[y] || []).push(k); k = addDays(k, 1); }
+  return Object.entries(by).map(([y, ks]) => { const used = schoolDaysIn(y), add = ks.filter(x => !used.has(x)).length; return { y, add, used: used.size, over: Math.max(0, used.size + add - SCHOOL_BREAK_DAYS) }; });
+}
+function schoolModal() {
+  if (!S.profile.student) { toast('School breaks are for students (Settings → Profile)'); return; }
+  const tk = todayKey(), y = tk.slice(0, 4), left = Math.max(0, SCHOOL_BREAK_DAYS - schoolDaysIn(y).size);
+  openModal(`<h3>School break</h3><p class="mu small">Pauses only your <b>Schoolwork</b> quests (school skills, school tasks and dated school items, whose deadlines move later by the break). Everything else keeps going.</p>
+  <div class="dg-aim small"><b class="num">${left}</b> of ${SCHOOL_BREAK_DAYS} school-break days left in ${y}.</div>
+  <label>Label (optional)</label><input id="sbNote" placeholder="e.g. Winter break">
+  <div class="grid2"><div><label>First day</label><input id="sbStart" type="date" min="${tk}" value="${tk}"></div><div><label>Last day</label><input id="sbEnd" type="date" min="${tk}" value="${addDays(tk, 13)}"></div></div>
+  <div class="actions"><button data-a="close">Cancel</button><button class="btn-p" data-a="sbSave">Start school break</button></div>`);
+}
+/* v19 limits: 12 emergencies a calendar year; 30 vacation days a year for everyone, more for 30 coins a day.
    S.vacBought = { 'YYYY': extra days bought that year } (they stay in that year's allowance even if a vacation is cancelled) */
-const EM_PER_YEAR = 12, VAC_DAYS = { adult: 30, student: 153 }, VAC_EXTRA_COST = 10;
+const EM_PER_YEAR = 12, VAC_DAYS_YEAR = 30, VAC_EXTRA_COST = 30;
 const emUsed = y => S.pauses.filter(p => p.type === 'emergency' && (p.start || '').slice(0, 4) === String(y)).length;
-const vacAllow = y => (S.profile.student ? VAC_DAYS.student : VAC_DAYS.adult) + ((S.vacBought || {})[y] || 0);
+const vacAllow = y => VAC_DAYS_YEAR + ((S.vacBought || {})[y] || 0);
 function vacDaysIn(y, skipId) { // vacation days already planned or taken in year y (overlaps counted once)
   const set = new Set();
   S.pauses.filter(p => p.type === 'vacation' && p.id !== skipId).forEach(p => { let k = p.start; const e = p.end || p.start; while (k <= e) { if (k.slice(0, 4) === String(y)) set.add(k); k = addDays(k, 1); } });
@@ -866,30 +1005,102 @@ function vacNeed(start, end) { // per year: { y: [new days, already used, allowa
   return Object.entries(by).map(([y, n]) => ({ y, n, used: used[y].size, allow: vacAllow(y), extra: Math.max(0, used[y].size + n - vacAllow(y)) }));
 }
 
-/* ---------- schedule locks (v16) ----------
-   Daniel: lock in a commitment. S.locks = [{ id, kind 'skill'|'task'|'event', ref, days [weekdays locked], start, end (last day) }].
-   While a lock runs, its days can't be removed, the skill / task can't come off your quests or be deleted, and a locked event
-   can't be deleted or have its dates changed. More days can always be added; they aren't locked unless locked too (a new lock).
-   A lock can't be undone before its end. Quests done under a lock earn +25% XP (LOCK_BONUS). */
+/* ---------- v19: side-quest clocks ----------
+   A side quest's deadline and checkpoint days stop while an emergency covers them. School Breaks (later) stop only
+   Schoolwork quests. The skipped days are derived from S.pauses on every read and kept on q.pausedDays, so an
+   emergency that is cancelled or ended early moves the dates back without rewriting q.due. */
+function sidePauseStops(p, q) {
+  if (p.type === 'emergency') return true;
+  if (p.type === 'school') return q.list === 'Schoolwork';
+  return false;
+}
+function sidePausedDays(q) {
+  const out = new Set(), tk = todayKey();
+  (S.pauses || []).forEach(p => {
+    if (!p.start || !sidePauseStops(p, q)) return;
+    let k = p.start; const end = p.end || tk;
+    for (let n = 0; k <= end && n < 4000; n++) { if (k >= (q.start || k)) out.add(k); k = addDays(k, 1); }
+  });
+  return [...out].sort();
+}
+function effSideDate(q, d) {
+  if (!d || !q || !q.start) return d;
+  const pd = sidePausedDays(q); q.pausedDays = pd;
+  let n = 0; for (const x of pd) { if (x <= d) n++; else break; }
+  return n ? addDays(d, n) : d;
+}
+function refreshSidePauses() { (S.side || []).forEach(q => { q.pausedDays = sidePausedDays(q); }); }
+const effDue = q => effSideDate(q, q.due);
+const effCp = (q, c) => effSideDate(q, cpDateBase(q, c));
+const emergencyPause = (k = todayKey()) => {
+  const ps = (S.pauses || []).filter(p => p.type === 'emergency' && k >= p.start && (!p.end || k <= p.end));
+  return ps.sort((a, b) => (a.end || '9999-99-99') < (b.end || '9999-99-99') ? 1 : -1)[0] || null;
+};
+
+/* ---------- schedule locks (v16, extended v18.1) ----------
+   Daniel: lock in a commitment. S.locks = [{ id, kind 'skill'|'task'|'event'|'side'|'sleep', ref, days [weekdays locked],
+   start, end (last day) }]. While a lock runs, its days can't be removed, the skill / task can't come off your quests or
+   be deleted, a locked event can't be deleted or have its dates changed, a locked side quest can't be edited, given up or
+   deleted, and a locked bed schedule can't have its sleep time changed. More days can always be added; they aren't locked
+   unless locked too (a new lock). A lock can't be undone before its end, except with a Lockpick from the shop, which takes
+   back the bonus XP earned under that lock. Quests done under a lock earn +25% XP (LOCK_BONUS). */
 const LOCK_BONUS = .25, LOCK_UNITS = [['d', 'Days'], ['w', 'Weeks'], ['m', 'Months'], ['y', 'Years']];
 const locksOf = (kind, ref, k = todayKey()) => (S.locks || []).filter(l => l.kind === kind && l.ref === ref && k >= l.start && k <= l.end);
 const isLocked = (kind, ref) => locksOf(kind, ref).length > 0;
 const lockedDays = (kind, ref) => [...new Set(locksOf(kind, ref).flatMap(l => l.days || []))];
 const lockEnd = (kind, ref) => locksOf(kind, ref).reduce((a, l) => l.end > a ? l.end : a, '');
+const lockDayBased = kind => kind === 'skill' || kind === 'task';
 function lockRefuse(kind, ref, what) { if (!isLocked(kind, ref)) return false; toast(`Locked until ${fmtDate(lockEnd(kind, ref))}: you can't ${what}`, 'bad'); return true; }
-const lockBonusOn = (kind, ref, k) => { const wd = dparse(k).getDay(); return locksOf(kind, ref, k).some(l => kind === 'event' || (l.days || []).includes(wd)); };
+const lockBonusOn = (kind, ref, k) => { const wd = dparse(k).getDay(); return locksOf(kind, ref, k).some(l => kind === 'event' || kind === 'side' || kind === 'sleep' || (l.days || []).includes(wd)); };
 function lockBonus(q, kind, ref, k) { // +25% XP on a quest of a locked schedule (on a locked day)
-  if (!lockBonusOn(kind, ref, k)) return q;
-  if (q.xpPer) { q.xpPer = Math.round(q.xpPer * (1 + LOCK_BONUS)); q.xp = q.xpPer * (q.sessions || 1); } else q.xp = Math.round(q.xp * (1 + LOCK_BONUS));
+  const locks = locksOf(kind, ref, k).filter(l => kind === 'event' || kind === 'side' || kind === 'sleep' || (l.days || []).includes(dparse(k).getDay()));
+  if (!locks.length) return q;
+  const share = 1 / locks.length;
+  let extra = 0, extraPer = 0;
+  if (q.xpPer) { const per = q.xpPer, n = q.sessions || 1, np = Math.round(per * (1 + LOCK_BONUS)); extraPer = np - per; extra = extraPer * n; q.xpPer = np; q.xp = np * n; }
+  else { const old = q.xp || 0; q.xp = Math.round(old * (1 + LOCK_BONUS)); extra = q.xp - old; }
+  q.lockExtra = q.lockExtra || {};
+  locks.forEach(l => { const prev = q.lockExtra[l.id] || { xp: 0, per: 0 }; q.lockExtra[l.id] = { xp: prev.xp + extra * share, per: prev.per + extraPer * share }; });
   q.lockB = true; return q;
 }
-const lockName = (kind, ref) => kind === 'skill' ? (SK[ref] || {}).name : kind === 'task' ? (S.tasks[ref] || {}).name : ((S.events.find(e => e.id === ref) || {}).title);
+function forfeitLockBonus(lock) { // v18.1: a Lockpick ends the lock and takes back the bonus XP it earned
+  if (!lock) return 0;
+  let back = 0;
+  Object.entries(S.days || {}).forEach(([k, d]) => (d.q || []).forEach(q => {
+    if (q.side) { // side quest rows show the bonus; completion XP is tracked on the quest itself
+      const sq = (S.side || []).find(s => s.id === q.side);
+      if (sq) { q.xp = sideXpAt(sq, k); q.lockB = sideLockOn(sq, k); }
+      return;
+    }
+    const e = q.lockExtra && q.lockExtra[lock.id]; if (!e) return;
+    const xp = e.xp || 0, per = e.per || 0;
+    q.xp = Math.max(0, Math.round((q.xp || 0) - xp));
+    if (q.xpPer != null) q.xpPer = Math.max(0, Math.round(q.xpPer - per));
+    delete q.lockExtra[lock.id];
+    if (!Object.keys(q.lockExtra).length) { delete q.lockExtra; delete q.lockB; }
+    let got = 0;
+    if (q.task) { got = per * (q.done ? (q.sessions || 1) : Math.min(q.sessions || 1, q.progress || 0)); const t = S.tasks[q.task]; if (t) t.xp = Math.max(0, (t.xp || 0) - got); }
+    else if (q.done) got = xp;
+    if (got) { back += got; if (q.skill && SK[q.skill]) { const s = skState(q.skill); s.xp = Math.max(0, (s.xp || 0) - got); } }
+  }));
+  (S.side || []).forEach(q => {
+    const e = q.lockBonusGot && q.lockBonusGot[lock.id]; if (!e) return;
+    const xp = e.xp || 0; q.xpGot = Math.max(0, (q.xpGot || 0) - xp); back += xp;
+    delete q.lockBonusGot[lock.id]; if (!Object.keys(q.lockBonusGot).length) delete q.lockBonusGot;
+  });
+  if (back) addXp(null, -back, true);
+  return back;
+}
+const lockName = (kind, ref) => kind === 'skill' ? (SK[ref] || {}).name : kind === 'task' ? (S.tasks[ref] || {}).name : kind === 'side' ? ((S.side || []).find(q => q.id === ref) || {}).title : kind === 'sleep' ? 'Bed schedule' : ((S.events.find(e => e.id === ref) || {}).title);
 const lockDaysOf = (kind, ref) => kind === 'skill' ? (skState(ref).days || []) : kind === 'task' ? ((S.tasks[ref] || {}).days || []) : [];
 function lockModal(kind, ref) {
-  ui.lk = { kind, ref, n: 1, u: 'm' }; const days = lockDaysOf(kind, ref), cur = lockedDays(kind, ref), fresh = days.filter(d => !cur.includes(d));
+  ui.lk = { kind, ref, n: 1, u: 'm' }; const days = lockDaysOf(kind, ref), cur = lockedDays(kind, ref), fresh = days.filter(d => !cur.includes(d)), dayBased = lockDayBased(kind);
+  const onTxt = dayBased ? ` on <b>${days.map(d => WD[d]).join(' ') || 'no days'}</b>${cur.length && fresh.length ? ` (new: ${fresh.map(d => WD[d]).join(' ')})` : ''}` : '';
+  const what = kind === 'event' ? 'delete this event or change its dates' : kind === 'side' ? 'edit, give up or delete this quest' : kind === 'sleep' ? 'change your sleep time' : 'remove these days, take it off your quests or delete it';
+  const earn = kind === 'sleep' ? 'The sleep task earns' : kind === 'side' ? 'Finishing it under the lock earns' : 'Quests done under the lock earn';
   openModal(`<h3>${ICON.lock} Lock this schedule</h3>
-    <p class="small">Lock in your commitment to <b>${esc(lockName(kind, ref) || '')}</b>${kind === 'event' ? '' : ` on <b>${days.map(d => WD[d]).join(' ') || 'no days'}</b>`}${cur.length && fresh.length ? ` (new: ${fresh.map(d => WD[d]).join(' ')})` : ''}.</p>
-    <p class="mu small">Until it ends you can't ${kind === 'event' ? 'delete this event or change its dates' : 'remove these days, take it off your quests or delete it'}, and the lock itself can't be undone. You can still add more days; those aren't locked unless you lock them too. Quests done under the lock earn <b class="gold">+${Math.round(LOCK_BONUS * 100)}% XP</b>.</p>
+    <p class="small">Lock in your commitment to <b>${esc(lockName(kind, ref) || '')}</b>${onTxt}.</p>
+    <p class="mu small">Until it ends you can't ${what}, and the lock itself can't be undone without a Lockpick. ${dayBased ? 'You can still add more days; those aren\'t locked unless you lock them too. ' : ''}${earn} <b class="gold">+${Math.round(LOCK_BONUS * 100)}% XP</b>.</p>
     <label>Lock for</label><div class="row" style="gap:8px"><input type="number" inputmode="numeric" min="1" max="99" id="lkN" value="1" data-i="lk" style="width:80px;flex:none"><select id="lkU" data-c="lkU">${LOCK_UNITS.map(([v, n]) => `<option value="${v}" ${v === 'm' ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="dg-aim" id="lkEnd">${lockEndTxt()}</div>
     <label class="check"><input type="checkbox" id="lkOk"> I understand I can't undo this before it ends</label>
@@ -900,15 +1111,45 @@ function lockGo() {
   const L = ui.lk, n = Math.round(num($('#lkN').value) || 0), u = $('#lkU').value;
   if (n < 1 || n > 99) { toast('Pick how long: 1 to 99', 'bad'); return; }
   if (!$('#lkOk').checked) { toast('Tick the box to confirm', 'bad'); return; }
-  const days = lockDaysOf(L.kind, L.ref); if (L.kind !== 'event' && !days.length) { toast('Pick at least one day first', 'bad'); return; }
+  const dayBased = lockDayBased(L.kind), days = lockDaysOf(L.kind, L.ref); if (dayBased && !days.length) { toast('Pick at least one day first', 'bad'); return; }
+  if (L.kind === 'side') { const q = (S.side || []).find(x => x.id === L.ref); if (!q || q.status !== 'active') { toast('That quest is already over', 'bad'); return; } }
   const tk = todayKey(), end = addDur(tk, n, u);
-  S.locks = (S.locks || []).concat([{ id: uid(), kind: L.kind, ref: L.ref, days: days.slice(), start: tk, end }]);
+  // v19: remember the schedule as it was locked, so later edits can add days without changing the locked ones
+  let snap = null;
+  if (L.kind === 'skill' || L.kind === 'task') {
+    const cfg = L.kind === 'skill' ? skState(L.ref) : S.tasks[L.ref];
+    if (cfg) snap = { days: (cfg.days || []).slice(), times: Object.assign({}, cfg.times || {}), strict: !!cfg.strict };
+  } else if (L.kind === 'side') {
+    const q = (S.side || []).find(x => x.id === L.ref);
+    if (q) snap = { times: { due: q.dueTime || null, ...Object.fromEntries((q.cps || []).map(c => [c.id, c.time || null])) }, strict: !!q.strict };
+  } else if (L.kind === 'sleep') snap = { wake: S.profile.wake, sleep: S.profile.sleep };
+  S.locks = (S.locks || []).concat([{ id: uid(), kind: L.kind, ref: L.ref, days: dayBased ? days.slice() : [], start: tk, end, snap }]);
   closeModal(true); regenToday(); afterChange(); toast(`Locked through ${fmtDate(end)} · +${Math.round(LOCK_BONUS * 100)}% XP`, 'ti');
 }
-function lockCtl(kind, ref) { // the lock status / button in the weekly plan and on events
-  const on = isLocked(kind, ref), cur = lockedDays(kind, ref), fresh = lockDaysOf(kind, ref).filter(d => !cur.includes(d));
+function lockCtl(kind, ref) { // the lock status / button in the weekly plan, on events and side quests, and by the bed schedule
+  const on = isLocked(kind, ref), dayBased = lockDayBased(kind), cur = lockedDays(kind, ref), fresh = dayBased ? lockDaysOf(kind, ref).filter(d => !cur.includes(d)) : [];
   if (!on) return `<button class="btn-s lk-btn" data-a="lockNew" data-k="${kind}" data-id="${ref}">${ICON.lock} Lock</button>`;
-  return `<span class="pill gold lk-on">${ICON.lock} until ${fmtDate(lockEnd(kind, ref))}</span>${kind !== 'event' && fresh.length ? `<button class="btn-s lk-btn" data-a="lockNew" data-k="${kind}" data-id="${ref}">Lock new days</button>` : ''}`;
+  return `<span class="pill gold lk-on">${ICON.lock} until ${fmtDate(lockEnd(kind, ref))}</span><button class="btn-s lk-btn" data-a="pickOpen" data-k="${kind}" data-id="${ref}">${ICON.pick} Lockpick${S.picks ? ` (${S.picks})` : ''}</button>${dayBased && fresh.length ? `<button class="btn-s lk-btn" data-a="lockNew" data-k="${kind}" data-id="${ref}">Lock new days</button>` : ''}`;
+}
+function pickModal(kind, ref) {
+  const locks = locksOf(kind, ref); if (!locks.length) { toast('That lock has already ended'); return; }
+  ui.pick = { kind, ref };
+  const picks = S.picks || 0, c = S.coins || 0, name = lockName(kind, ref) || 'this';
+  openModal(`<h3>${ICON.pick} Lockpick</h3>
+    <p class="small">End the lock on <b>${esc(name)}</b> early. The <b>+${Math.round(LOCK_BONUS * 100)}% bonus XP earned under it is taken back</b>.</p>
+    <p class="mu small">You have <b>${picks}</b> Lockpick${picks === 1 ? '' : 's'} · <b>${c}</b> coin${c === 1 ? '' : 's'}.</p>
+    ${locks.map(l => `<div class="list-item"><div class="sp"><div>Locked through ${fmtDate(l.end)}</div><div class="mu small">${esc(lockName(kind, ref) || '')} · +${Math.round(LOCK_BONUS * 100)}% XP</div></div><button class="btn-s btn-p" data-a="pickGo" data-id="${l.id}" ${picks ? '' : 'disabled'}>${ICON.pick} Use one</button></div>`).join('')}
+    ${picks ? '' : `<div class="banner" style="margin-top:10px"><div class="small">You need a Lockpick. They cost ${SHOP_PICK} coins in the shop.</div>${c >= SHOP_PICK ? `<button class="btn-s btn-p" style="margin-top:8px" data-a="pickBuy">${ICON.coin} Buy a Lockpick · ${SHOP_PICK}</button>` : `<div class="mu2 small" style="margin-top:6px">You need ${SHOP_PICK - c} more coin${SHOP_PICK - c === 1 ? '' : 's'}. Perfect days earn coins.</div>`}</div>`}
+    <div class="actions"><button data-a="close">Cancel</button></div>`);
+}
+function pickGo(lockId) {
+  const lock = (S.locks || []).find(l => l.id === lockId); if (!lock) { toast('That lock has already ended'); return; }
+  if (!(S.picks > 0)) { toast('You need a Lockpick', 'bad'); return; }
+  if (!confirm(`Use a Lockpick to end this lock? The +${Math.round(LOCK_BONUS * 100)}% bonus XP earned under it will be taken back.`)) return;
+  S.picks -= 1; S.locks = (S.locks || []).filter(l => l.id !== lockId);
+  const back = forfeitLockBonus(lock);
+  closeModal(true); regenToday(); afterChange();
+  toast(back ? `Lock ended · ${Math.round(back)} bonus XP taken back` : 'Lock ended', 'ti');
 }
 
 /* ---------- schedule ---------- */
@@ -991,21 +1232,30 @@ function generate(k) {
       if (used.has(ev.skill)) continue; used.add(ev.skill);
       const sq = makeSkillQuest(ev.skill, k, ev.title, ev.list || SK[ev.skill].list);
       if (ev.target) { sq.target = ev.target; sq.xp = questXp(ev.skill, ev.target); }
+      if (ev.time) sq.at = ev.time; // v19: events can carry a time
       q.push(lockBonus(lockBonus(sq, 'event', ev.id, k), 'skill', ev.skill, k));
-    } else q.push(lockBonus({ key: 'ev:' + ev.id, title: ev.title, list: ev.list || 'Daily', unit: ev.unit || '', target: ev.target || 0, progress: 0, done: false, xp: 15 }, 'event', ev.id, k));
+    } else q.push(lockBonus({ key: 'ev:' + ev.id, title: ev.title, list: ev.list || 'Daily', unit: ev.unit || '', target: ev.target || 0, progress: 0, done: false, xp: 15, at: ev.time || undefined }, 'event', ev.id, k));
   }
   for (const c of SKL) {
     const s = S.skills[c.id];
     if (!s || !s.active || !isLib(c) || used.has(c.id) || !s.days.includes(wd)) continue;
     if (rest && c.list !== 'Faith') continue;
-    used.add(c.id); q.push(lockBonus(makeSkillQuest(c.id, k), 'skill', c.id, k));
+    used.add(c.id);
+    const sq = makeSkillQuest(c.id, k);
+    if (s.times && s.times[wd]) sq.at = s.times[wd]; // v19: per-weekday time and strict flag
+    if (s.strict) sq.strict = true;
+    q.push(lockBonus(sq, 'skill', c.id, k));
   }
   if (dietWanted(k)) q.push({ key: 'diet', title: 'Met diet requirements', list: 'Nutrition', progress: 0, done: false, xp: 15, auto: true });
   for (const t of activeTasks()) { // task quests also run on rest days: they're the everyday basics
     if (!(t.days || []).includes(wd)) continue;
-    const per = taskXpPer(t), n = Math.max(1, t.sessions || 1), tq = { key: 't:' + t.id, title: taskTitle(t), list: t.list || 'Daily', task: t.id, unit: t.unit === 'min' ? 'min' : '', target: taskTarget(t), sessions: n, progress: 0, done: false, xpPer: per, xp: per * n };
+    const per = taskXpPer(t), n = Math.max(1, t.sessions || 1); let tq = { key: 't:' + t.id, title: taskTitle(t), list: t.list || 'Daily', task: t.id, unit: t.unit === 'min' ? 'min' : '', target: taskTarget(t), sessions: n, progress: 0, done: false, xpPer: per, xp: per * n };
+    if (t.times && t.times[wd]) tq.at = t.times[wd];
+    if (t.strict) tq.strict = true;
     if (t.lock === 'sleep') tq.lockAt = sleepDeadline(k) + 15 * 60000;
-    q.push(lockBonus(tq, 'task', t.id, k));
+    tq = lockBonus(tq, 'task', t.id, k);
+    if (t.lock === 'sleep') tq = lockBonus(tq, 'sleep', 'sleep', k);
+    q.push(tq);
   }
   q.push(...sideDueQuests(k)); // v11: side quests due today (deadline / checkpoint day) count toward the day
   const pi = pauseInfo(k);
@@ -1063,13 +1313,13 @@ function ensureToday() {
   if (S.pendingPen && !(pi && pi.all)) { d.q = d.q.filter(q => !q.pen).concat(penaltyQuests(S.pendingPen)); d.penTier = S.pendingPen.tier; if ((S.pendingPen.fixed || []).length) d.penFixed = S.pendingPen.fixed; S.pendingPen = null; }
   const dq = d.q.find(q => q.key === 'diet'), want = dietWanted(k);
   if ((want && !dq) || (!want && dq && (!dq.done || fastOn(k)))) regenToday();
-  syncDiet(k, true); syncSide(k);
+  syncDiet(k, true); syncSide(k); refreshSidePauses();
   return d;
 }
 function regenToday() {
   const k = todayKey(), d = ensureDay(k), old = d.q, nq = generate(k), pi = pauseInfo(k);
   const byKey = Object.fromEntries(old.map(q => [q.key, q]));
-  const merged = nq.map(q => { const o = byKey[q.key]; if (!o) return q; const keep = o.done || (o.task && o.progress > 0); return Object.assign(q, { progress: o.progress, done: o.done, addMin: o.addMin, smAdd: o.smAdd, wid: o.wid, xp: keep ? o.xp : q.xp, xpPer: keep && o.xpPer ? o.xpPer : q.xpPer, target: keep ? o.target : q.target }, q.task && !o.done && o.progress > (q.sessions || 1) ? { progress: q.sessions } : {}); });
+  const merged = nq.map(q => { const o = byKey[q.key]; if (!o) return q; const keep = o.done || (o.task && o.progress > 0); return Object.assign(q, { progress: o.progress, done: o.done, addMin: o.addMin, smAdd: o.smAdd, wid: o.wid, xp: keep ? o.xp : q.xp, xpPer: keep && o.xpPer ? o.xpPer : q.xpPer, target: keep ? o.target : q.target, lockExtra: keep ? o.lockExtra : q.lockExtra, lockB: keep ? o.lockB : q.lockB, at: o.done ? (o.at ?? q.at) : q.at, strict: o.done ? o.strict : q.strict }, q.task && !o.done && o.progress > (q.sessions || 1) ? { progress: q.sessions } : {}); });
   const keys = new Set(merged.map(q => q.key)), fasting = !!fastOn(k);
   old.forEach(o => {
     if (keys.has(o.key)) return;
@@ -1157,6 +1407,7 @@ function toggleQuest(key, focus) {
   if (q.side) { sideTap(q); return; }
   if (q.auto) { ui.tab = 'log'; ui.logSeg = 'food'; render(); window.scrollTo(0, 0); toast('This quest checks itself from your food log'); return; }
   const c = q.skill && SK[q.skill] ? SK[q.skill] : null;
+  if (!q.done) { const win = canCheck(q, k); if (!win.ok) { toast(win.msg, 'bad'); return; } } // v19: quest times
   if (!q.done && q.lockAt && Date.now() > q.lockAt) { toast('Deadline passed. This one is locked.', 'bad'); return; }
   if (q.task) { stepTask(q, 1); return; }
   if (!q.done && c && c.custom && focus === undefined && (q.target || 0) > (q.progress || 0)) { focusModal(q, c); return; }
@@ -1196,6 +1447,7 @@ function taskXp(t, amt) {
 }
 function stepTask(q, dir) { // one session of a task quest forward (+1) or back (-1)
   const t = S.tasks[q.task], n = q.sessions || 1, per = q.xpPer || q.xp || 5;
+  if (dir > 0 && !q.done) { const win = canCheck(q, todayKey()); if (!win.ok) { toast(win.msg, 'bad'); return; } }
   if (dir > 0 && q.done) dir = -1; // tapping a finished task takes its last session back
   if (dir > 0) {
     if ((q.progress || 0) < n) { q.progress = (q.progress || 0) + 1; if (t) t.logs = (t.logs || 0) + 1; taskXp(t, per); addXp(null, per); }
@@ -1228,19 +1480,28 @@ function logAmount(id, n, keys = []) { // n in the skill's own unit (km for dist
   const q = (S.days[k] || { q: [] }).q.find(x => x.skill === id);
   if (act && m > 0) S.workouts.push({ id: uid(), date: k, act: act.id, min: m, int: 1, skill: id, xp: 0, kcal: workoutKcal(act.id, m, 1), practice: true, reps: u === 'reps' ? n : undefined, dist: u === 'km' ? n : null, fill: q ? n : 0 });
   addXp(id, u === 'reps' ? Math.max(1, Math.round(n / 10)) : Math.max(1, Math.round(m / 3)));
+  let blocked = null;
   if (q) {
     q.progress = amtRound((q.progress || 0) + n, u);
-    if (!q.done && q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, keys); return; }
+    if (!q.done && q.progress >= q.target) {
+      blocked = canCheck(q, k);
+      if (blocked.ok) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key, keys); return; }
+    }
   }
-  fx('tick'); toast(`Logged ${fmtTarget(n, u)} of ${c.name}${q && !q.done ? ` · ${fmtTarget(q.progress, u)} of ${fmtTarget(q.target, u)}` : ''}`); afterChange();
+  fx('tick'); toast(`Logged ${fmtTarget(n, u)} of ${c.name}${q && !q.done ? ` · ${fmtTarget(q.progress, u)} of ${fmtTarget(q.target, u)}` : ''}${blocked ? ' · ' + blocked.msg : ''}`, blocked ? 'bad' : ''); afterChange();
 }
 function logQuestAmount(q, n) { // penalty exercises and event quests with a target
-  q.progress = amtRound((q.progress || 0) + n, q.unit);
-  if (!q.done && q.progress >= q.target) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key); return; }
-  fx('tick'); toast(`Logged ${fmtTarget(n, q.unit)} · ${fmtTarget(q.progress, q.unit)} of ${fmtTarget(q.target, q.unit)}`); afterChange();
+  const k = todayKey(); q.progress = amtRound((q.progress || 0) + n, q.unit);
+  let blocked = null;
+  if (!q.done && q.progress >= q.target) {
+    blocked = canCheck(q, k);
+    if (blocked.ok) { toast('Quest complete: ' + q.title, 'ti'); toggleQuest(q.key); return; }
+  }
+  fx('tick'); toast(`Logged ${fmtTarget(n, q.unit)} · ${fmtTarget(q.progress, q.unit)} of ${fmtTarget(q.target, q.unit)}${blocked ? ' · ' + blocked.msg : ''}`, blocked ? 'bad' : ''); afterChange();
 }
 function qlogModal(key) { // the + on a quest with a number target
-  const d = S.days[todayKey()], q = d && d.q.find(x => x.key === key); if (!q) return;
+  const k = todayKey(), d = S.days[k], q = d && d.q.find(x => x.key === key); if (!q) return;
+  if (!q.done) { const win = canCheck(q, k); if (!win.ok) { toast(win.msg, 'bad'); return; } }
   const c = q.skill ? SK[q.skill] : null, u = q.unit, mi = u === 'km' && imperial(); ui.ql = key;
   const quick = (QUICK[u] || [1, 2, 3, 5, 10]).map(v => mi ? Math.round(v / 1.609 * 10) / 10 : v);
   openModal(`<h3>Log ${esc(q.title)}</h3><p class="mu small">Today: <b>${q.progress ? esc(fmtTarget(q.progress, u)) : '0'}</b> of ${esc(fmtTarget(q.target, u))}${q.done ? ' · done. Extra still counts toward a raise.' : ''}</p>
@@ -1274,7 +1535,7 @@ function logPractice(id, min, keys) {
   }
   fx('tick'); toast(`Logged ${min} min of ${c.name}`); afterChange();
 }
-function afterChange(full = true) { syncDiet(todayKey()); syncSide(todayKey()); checkTitles(); checkPerfect(); save(); if (full) render(); }
+function afterChange(full = true) { syncDiet(todayKey()); syncSide(todayKey()); refreshSidePauses(); checkTitles(); checkPerfect(); save(); if (full) render(); }
 
 /* ---------- titles ---------- */
 /* v12 (Daniel): skills have their OWN ladder, separate from the player ranks and paced for skill XP (one skill earns ~30 XP a
@@ -1326,7 +1587,7 @@ function titleTracks() {
   // consistency
   add('Consistency', S.streak.best, [[3, 'Kindled'], [7, 'Week Unbroken'], [14, 'Fortnight Will'], [30, 'Iron Month'], [60, 'Relentless'], [100, 'Centurion'], [180, 'Half-Year Ascetic'], [365, 'Unbroken Year']].map(([n, nm]) => stp(n, 'streak' + n, nm, `${n}-day streak`)),
     k => stp((k + 2) * 365, 'streaky' + (k + 2), `Unbroken · ${k + 2} Years`, `${(k + 2) * 365}-day streak`), v => v + ' d', { note: `Best streak counts · current ${S.streak.cur}` });
-  add('Commitment', yearsIn(), YEAR_BADGES.map(([n, nm]) => stp(n, 'yr' + n, nm, `${n} year${n > 1 ? 's' : ''} with Deificatio`)), null, v => v + (v === 1 ? ' year' : ' years'), { note: 'Years since you started', badge: true });
+  add('Commitment', yearsIn(), YEAR_BADGES.map(([n, nm]) => stp(n, 'yr' + n, nm, `${n} year${n > 1 ? 's' : ''} with Eutaxia`)), null, v => v + (v === 1 ? ' year' : ' years'), { note: 'Years since you started', badge: true });
   add('Consistency', S.stats.perfect, [[7, 'Flawless Week'], [30, 'Flawless Month'], [100, 'Hundred Perfect Days'], [365, 'Perfect Year']].map(([n, nm]) => stp(n, 'perf' + n, nm, `${n} perfect days`)), null, v => v + ' days');
   add('Consistency', S.stats.qdone, [10, 50, 100, 250, 500, 1000, 2500, 5000].map(n => stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`)),
     k => { const n = (k + 1) * 10000; return stp(n, 'q' + n, `${n.toLocaleString()} Quests`, `Complete ${n.toLocaleString()} quests`); });
@@ -1718,13 +1979,13 @@ function renderSetup() {
     return `<details class="su"><summary><span class="sp">${esc(f.name)}</span>${ICON.chev}</summary>${kids}${own.map(s => `
     <div class="skpick"><label><input type="checkbox" name="sk_${s.id}"> ${esc(s.name)}</label>
     <select name="lv_${s.id}"><option value="1">Beginner</option><option value="2">Intermediate</option><option value="3">Advanced</option></select></div>`).join('')}</details>`; }).join('');
-  $('#view').innerHTML = `<div class="hero"><img src="icons/icon-192.png" class="hero-icon" alt=""><h1>Deificatio</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
+  $('#view').innerHTML = `<div class="hero"><img src="icons/icon-192.png" class="hero-icon" alt=""><h1>Eutaxia</h1><p class="mu">Set up your profile. Everything stays on this phone.</p></div>
   <form id="setupForm" onsubmit="return false">
   <div class="card"><h3>Profile</h3>
     <label>Name</label><input name="name" placeholder="Your name" autocomplete="given-name">
     <div class="grid2"><div><label>Sex (for norms)</label><select name="sex"><option value="M">Male</option><option value="F">Female</option></select></div>
     <div><label>Birth year</label><input name="birthYear" type="number" inputmode="numeric" value="2003"></div></div>
-    <label class="check" style="margin-top:12px"><input type="checkbox" name="student"> I'm a student <span class="mu2 small">(${VAC_DAYS.student} vacation days a year instead of ${VAC_DAYS.adult}, for school breaks)</span></label>
+    <label style="margin-top:12px">Student?</label><select name="studentLevel"><option value="">Not a student</option>${STUDENT_LEVELS.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')}</select>
     <label>Units</label><select name="units" data-c="setupUnits"><option value="imperial">Imperial (lb, ft, mi)</option><option value="metric">Metric (kg, cm, km)</option></select>
     <p class="mu2 small" style="margin:12px 0 0">Height, weight and the goal are optional. They're only used for calorie estimates (the diet goal and workout calories), so skip them if you don't want the health tracking.</p>
     <div class="grid2" id="hw">${SU_HW.imperial}</div>
@@ -1746,7 +2007,8 @@ function renderSetup() {
   <div class="lib su-tree">${tree(null)}</div>
   </div>
   <div class="card"><h3>Daily tasks</h3><p class="mu small">Everyday basics with an XP bar and achievements instead of a hexagon. You can change these any time in Board → Tasks.</p>
-  ${TASKS.map(t => `<div class="skpick"><label><input type="checkbox" name="tk_${t.id}"> ${esc(t.name)}</label><span class="mu2 small">${esc(taskDesc(t))}</span></div>`).join('')}
+  ${TASKS.filter(t => !t.school).map(t => `<div class="skpick"><label><input type="checkbox" name="tk_${t.id}"> ${esc(t.name)}</label><span class="mu2 small">${esc(taskDesc(t))}</span></div>`).join('')}
+  <details class="su-school"><summary>Schoolwork (for students)</summary>${SUBJECTS.map(sb => `<div class="tg">${esc(sb.name)}</div>${TASKS.filter(t => t.school && t.school.subject === sb.id).map(t => `<div class="skpick"><label><input type="checkbox" name="tk_${t.id}"> ${esc(t.name)}</label><span class="mu2 small">${esc(taskDesc(t))}</span></div>`).join('')}`).join('')}</details>
   </div>
   <button class="btn-p btn-big" data-a="finishSetup">Start</button>
   </form>
@@ -1787,7 +2049,7 @@ function finishSetup() {
   if (ho.mode === 'clock' && ho.time === 'off' && ho.date === 'off') return stop('Pick a time or a date for Home', '#suLook');
   if (![...f.keys()].some(x => /^(sk|tk)_/.test(x)) && !confirm('You didn’t pick any skills or daily tasks, so your quest list starts almost empty. Start anyway? You can add them any time in Board.')) return;
   const p = S.profile;
-  p.name = (g('name') || '').trim(); p.sex = g('sex'); p.birthYear = +g('birthYear') || 2000; p.units = g('units'); p.student = !!g('student');
+  p.name = (g('name') || '').trim(); p.sex = g('sex'); p.birthYear = +g('birthYear') || 2000; p.units = g('units'); p.studentLevel = g('studentLevel') || null; p.student = !!p.studentLevel;
   const hIn = (+g('ft') || 0) * 12 + (+g('in') || 0); // v14: height & weight are optional (null = not given)
   p.heightCm = p.units === 'imperial' ? (hIn > 0 ? Math.round(hIn * 2.54) : null) : (+g('cm') > 0 ? +g('cm') : null);
   const w = num(g('weight')); p.weightKg = w ? (p.units === 'imperial' ? w / 2.20462 : w) : null;
@@ -1816,7 +2078,7 @@ function pauseBanner(p, tk) {
   const em = p.type === 'emergency';
   const until = p.end ? (p.end === tk ? 'Ends today' : 'Until ' + fmtDate(p.end)) : 'Until you end it';
   return `<div class="banner ${em ? 'em' : p.type === 'pass' ? 'ps' : ''}"><div class="row">${p.type === 'pass' ? ICON.gift : ICON.pause}<b class="sp">${PAUSE_NAME[p.type] || 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</b></div>
-    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : p.type === 'pass' ? `You earned this. Paused: ${esc(scopeTxt(p))}. No logging needed, no penalties.` : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
+    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : p.type === 'pass' ? `You earned this. Paused: ${esc(scopeTxt(p))}. No logging needed, no penalties.` : p.type === 'school' ? 'Schoolwork is paused; everything else keeps going.' : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
     <div class="row" style="margin-top:10px;gap:8px">${p.start === tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">${em ? 'Resume today' : 'Cancel pause'}</button>` : ''}${p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">${em ? 'Resume tomorrow' : 'End early'}</button>` : ''}</div></div>`;
 }
 function seasonMini(si) { // one-line season label for the Quests tab (the full header lives on Home)
@@ -1835,33 +2097,35 @@ function viewToday() {
     fst ? `<span class="pill gold">Fasting · day ${fastDay(fst, k)}/${fastLen(fst)}</span>` : ''].filter(Boolean).join(' ');
   const qrow = x => {
     if (x.side) return dueRow(x);
-    const locked = !x.done && x.lockAt && now > x.lockAt;
+    const st = questState(x, k, now), locked = (!x.done && x.lockAt && now > x.lockAt) || st === 'closed';
     const t = x.task ? S.tasks[x.task] : null, n = x.sessions || 1;
     const lv = x.skill && SK[x.skill] ? `Lv ${skLevel(x.skill).L}` : t ? `Lv ${taskLevel(t).L}` : '';
     const hasProg = x.progress > 0 && !x.done && !x.task;
     const prog = hasProg && x.target ? `<div class="prog"><i style="width:${Math.min(100, x.progress / x.target * 100)}%"></i></div>` : '';
     const sub = x.key === 'diet' ? dietSub(k) : [x.task ? (x.unit === 'min' ? fmtTarget(x.target, 'min') + (n > 1 ? ' each' : '') : '') : hasProg ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit), x.task && n > 1 ? `${x.progress || 0} of ${n}` : '', lv, locked ? 'locked' : ''].filter(Boolean).join(' · ');
+    const atTxt = x.at ? (st === 'early' ? `From ${fmtTime(x.at)}` : fmtTime(x.at)) : '', grace = st === 'grace' ? Math.max(1, Math.ceil((questWindow(x, k).until - now) / 60000)) : 0;
     const pips = x.task && n > 1 ? `<div class="pips">${Array.from({ length: n }, (_, i) => `<i class="${i < (x.progress || 0) ? 'on' : ''}"></i>`).join('')}</div>` : '';
     const minus = x.task && n > 1 && x.progress > 0 && !x.done ? `<button class="btn-g x" data-a="tqMinus" data-id="${esc(x.key)}" aria-label="Undo one">${ICON.minus}</button>` : '';
-    const plus = !x.task && !x.auto && !x.side && x.unit && x.target > 0 && !locked ? `<button class="btn-g x qplus" data-a="qLog" data-id="${esc(x.key)}" aria-label="Log ${esc(UNIT_NAME[x.unit] || 'amount')}">${ICON.plus}</button>` : '';
-    const chk = x.done ? ICON.check : x.task && n > 1 && x.progress ? `<span class="num chk-n">${x.progress}</span>` : '';
-    return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''} ${x.task ? 'task' : ''}"><button class="chk${x.task && n > 1 && x.progress && !x.done ? ' part' : ''}" data-a="tq" data-id="${esc(x.key)}" aria-label="Check ${esc(x.title)}">${chk}</button>
-      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${pips}${prog}</div>${minus}${plus}<div class="qx${x.lockB ? ' lkb' : ''}"${x.lockB ? ` title="Locked schedule: +${Math.round(LOCK_BONUS * 100)}% XP"` : ''}>${x.lockB ? ICON.lock : ''}+${x.xp}</div></div>`;
+    const plus = !x.task && !x.auto && !x.side && x.unit && x.target > 0 && !locked && st !== 'early' ? `<button class="btn-g x qplus" data-a="qLog" data-id="${esc(x.key)}" aria-label="Log ${esc(UNIT_NAME[x.unit] || 'amount')}">${ICON.plus}</button>` : '';
+    const chk = x.done ? ICON.check : x.task && n > 1 && x.progress ? `<span class="num chk-n">${x.progress}</span>` : st === 'early' ? `<span class="chk-clock">${ICON.clock}</span>` : '';
+    return `<div class="q ${x.done ? 'done' : ''} ${x.pen ? 'pen' : ''} ${x.auto ? 'auto' : ''} ${locked ? 'locked' : ''} ${x.task ? 'task' : ''}${st ? ' qst-' + st : ''}"><button class="chk${x.task && n > 1 && x.progress && !x.done ? ' part' : ''}" data-a="tq" data-id="${esc(x.key)}" aria-label="Check ${esc(x.title)}">${chk}</button>
+      <div class="qb"><div class="qt">${esc(x.title)}</div>${sub || atTxt ? `<div class="qs">${atTxt ? `<b class="q-at">${esc(atTxt)}</b>${sub ? ' · ' : ''}` : ''}${esc(sub)}</div>` : ''}${grace ? `<span class="pill gold q-grace">${grace} min left</span>` : ''}${pips}${prog}</div>${minus}${plus}<div class="qx${x.lockB ? ' lkb' : ''}"${x.lockB ? ` title="Locked schedule: +${Math.round(LOCK_BONUS * 100)}% XP"` : ''}>${x.lockB ? ICON.lock : ''}+${x.xp}</div></div>`;
   };
   const rw = (S.rewards || []).filter(r => !r.used), side = sideSection();
   const rwNew = rw.filter(r => !(S.rwHidden || []).includes(r.id)); // v16: ✕ hides the banner until a new reward arrives
   const rwBanner = rwNew.length ? `<div class="banner rw rw-x"><button class="rw-go" data-a="goBoard" data-id="rewards"><div class="row">${ICON.gift}<b class="sp">${rw.length === 1 ? 'You have a reward waiting' : rw.length + ' rewards waiting'}</b>${ICON.chev}</div><div class="small mu" style="margin-top:3px;text-align:left">${esc(rw.slice(0, 2).map(rewardName).join(' · '))}</div></button><button class="btn-g x rw-close" data-a="rwHide" aria-label="Hide until a new reward">✕</button></div>` : '';
   if (pi && pi.all) return `${seasonMini(ui.season)}${pi.ps.map(p => pauseBanner(p, k)).join('')}${streakNag(k)}${backupNag(k)}${rwBanner}<div class="empty">${pi.emergency ? 'Nothing today. Take care of what matters.' : pi.ps.some(p => p.type === 'pass') ? 'You earned this rest. Nothing to log today.' : 'Everything is paused. Enjoy the break.'}</div>
   ${side}<div class="row" style="justify-content:center;margin-top:12px"><button class="btn-s" data-a="tab" data-id="log">Log a workout anyway</button></div>`;
-  return `${seasonMini(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${streakNag(k)}${ownNag()}${backupNag(k)}${rwBanner}
+  const bedBanner = Date.now() > bedAt(k) ? `<div class="banner bed"><div class="row">${ICON.clock}<b class="sp">It's past your bedtime (${fmtTime(S.profile.sleep)})</b></div><div class="small mu" style="margin-top:3px">Today's list is closed. Quests left unticked can't be checked now.</div></div>` : '';
+  return `${seasonMini(ui.season)}${pi ? pi.ps.map(p => pauseBanner(p, k)).join('') : ''}${streakNag(k)}${ownNag()}${backupNag(k)}${rwBanner}${bedBanner}
   <div class="card ring"><div style="flex:none">${ringSvg(pct)}</div><div class="sp"><div class="mu2 small">Day ${dayN}</div><h3>${fmtDate(k)}</h3>
     <div class="mu small"><span class="num">${done}/${q.length}</span> quests · <span class="gold num">+${xpToday} XP</span></div>${badges ? `<div class="badges">${badges}</div>` : ''}</div></div>
   ${q.length ? lists.map(l => `<div class="qlist"><div class="qhead"><h2 class="${l === 'Penalty' ? 'bad' : ''}">${esc(l)}</h2><span class="mu2 small num">${q.filter(x => x.list === l && x.done).length}/${q.filter(x => x.list === l).length}</span></div>
-    ${q.filter(x => x.list === l).map(qrow).join('')}</div>`).join('') : `<div class="empty">${pi && pi.emergency ? 'Nothing today. Take care of what matters.' : 'Nothing scheduled today.'}</div>`}
+    ${byTime(q.filter(x => x.list === l), k).map(qrow).join('')}</div>`).join('') : `<div class="empty">${pi && pi.emergency ? 'Nothing today. Take care of what matters.' : 'Nothing scheduled today.'}</div>`}
   ${side}
   <div class="row" style="margin-top:16px"><button class="btn-s" data-a="regen">Refresh quests</button><span class="sp"></span><button class="btn-s" data-a="goBoard" data-id="tasks">Edit quests</button></div>
   <p class="mu2 small note">Targets adapt: finishing a skill raises it about 8% a week; missing lowers it 6%, unless you set your own target on its skill card. Every 4th week is a deload. Tap + to log reps, seconds or distance. Penalties: ${esc(penRulesTxt())} Change them in Profile → Settings → Penalties. Side quests count only on their due days (deadline or checkpoint day), unless you switch that off.</p>
-  ${pi && pi.emergency ? '' : '<div style="text-align:center;margin-top:6px"><button class="btn-g bad small" data-a="emNew">Extreme emergency</button></div>'}`;
+  ${pi && pi.emergency ? '' : '<div style="text-align:center;margin-top:6px"><button class="btn-g bad small" data-a="emNew">Emergency</button></div>'}`;
 }
 /* ---------- side quests: one-time & time-limited ----------
    S.side = [{ id, type 'once'|'timed', title, note, diff 1-4, start, due|null, durN, durU 'd'|'w'|'m'|'y'|'done',
@@ -1877,8 +2141,11 @@ const SIDE_DIFF = ['', 'Easy', 'Medium', 'Hard', 'Epic'];
 const DUR_U = { d: 'days', w: 'weeks', m: 'months', y: 'years' };
 const durTxt = (n, u) => `${n} ${n === 1 ? DUR_U[u].slice(0, -1) : DUR_U[u]}`;
 const sideXp = q => SIDE_XP[q.diff || 2] * (q.type === 'timed' ? 2 : 1);
+const sideLockOn = (q, k = todayKey()) => !!q && locksOf('side', q.id, k).length > 0;
+const sideXpAt = (q, k = todayKey()) => { const b = sideXp(q); return sideLockOn(q, k) ? b + Math.round(b * LOCK_BONUS) : b; };
 const sideMin = q => (q.log || []).reduce((a, l) => a + l.min, 0);
-const cpDate = (q, c) => c.day ? addDays(q.start, c.day - 1) : null;
+const cpDateBase = (q, c) => c.day ? addDays(q.start, c.day - 1) : null;
+const cpDate = (q, c) => effSideDate(q, cpDateBase(q, c));
 function addDur(k, n, u) {
   if (u === 'd') return addDays(k, n - 1);
   if (u === 'w') return addDays(k, n * 7 - 1);
@@ -1890,23 +2157,25 @@ function sideProg(q) {
   return q.status === 'done' ? 1 : 0;
 }
 function sideLeft(q) {
-  if (q.status !== 'active') return q.status === 'done' ? `Done ${fmtDate(q.doneOn)}` : q.status === 'expired' ? `${q.failed ? 'Failed' : 'Expired'} ${fmtDate(q.due)}` : 'Given up';
+  if (q.status !== 'active') return q.status === 'done' ? `Done ${fmtDate(q.doneOn)}` : q.status === 'expired' ? `${q.failed ? 'Failed' : 'Expired'} ${fmtDate(effDue(q))}` : 'Given up';
   if (q.start > todayKey()) return `Starts ${fmtDate(q.start)}`;
   if (!q.due) return q.type === 'timed' ? 'Until it’s done' : 'No deadline';
-  const n = daysBetween(todayKey(), q.due); return n === 0 ? 'Last day today' : n === 1 ? '1 day left' : n < 60 ? `${n} days left` : `Until ${fmtDate(q.due)}`;
+  const n = daysBetween(todayKey(), effDue(q)); return n === 0 ? `Last day today${q.dueTime ? ' · due ' + fmtTime(q.dueTime) : ''}` : n === 1 ? '1 day left' : n < 60 ? `${n} days left` : `Until ${fmtDate(effDue(q))}`;
 }
 const DUE_LIST = 'Due today';
 const sideCounts = q => q.req !== false;
-const sideHasDue = q => !!q.due || (q.track === 'cp' && (q.cps || []).some(c => c.day));
-const sideFutureDue = (q, k) => (q.due && q.due >= k) || (q.track === 'cp' && (q.cps || []).some(c => !c.done && cpDate(q, c) && cpDate(q, c) >= k));
+const sideHasDue = q => !!effDue(q) || (q.track === 'cp' && (q.cps || []).some(c => c.day));
+const sideFutureDue = (q, k) => { const d = effDue(q); return (d && d >= k) || (q.track === 'cp' && (q.cps || []).some(c => !c.done && cpDate(q, c) && cpDate(q, c) >= k)); };
 function sideDueQuests(k) { // the side quests that count toward day k
-  const out = [];
+  const out = [], pi = pauseInfo(k);
+  if (pi && pi.emergency) return out; // every side-quest clock is stopped
   for (const q of S.side || []) {
     if (!sideCounts(q) || !q.start || q.start > k || (q.created && q.created > k)) continue;
+    if (pi && pi.lists.has(q.list)) continue; // e.g. School Break stops Schoolwork side quests
     if ((q.status === 'done' || q.status === 'given') && q.doneOn < k) continue;
-    const gaveUp = q.status === 'given' && q.doneOn === k && sideFutureDue(q, k), last = q.due === k || gaveUp;
-    if (last) out.push({ key: 'sd:' + q.id, side: q.id, title: q.title, list: DUE_LIST, unit: '', target: 0, progress: 0, done: false, xp: sideXp(q) });
-    if (q.track === 'cp' && !last) (q.cps || []).forEach(c => { if (cpDate(q, c) === k && (!q.due || k < q.due)) out.push({ key: `sc:${q.id}:${c.id}`, side: q.id, cp: c.id, title: c.t || 'Checkpoint', list: DUE_LIST, unit: '', target: 0, progress: 0, done: false, xp: 10 }); });
+    const due = effDue(q), gaveUp = q.status === 'given' && q.doneOn === k && sideFutureDue(q, k), last = due === k || gaveUp;
+    if (last) out.push(Object.assign({ key: 'sd:' + q.id, side: q.id, title: q.title, list: DUE_LIST, unit: '', target: 0, progress: 0, done: false, xp: sideXpAt(q, k), lockB: sideLockOn(q, k), by: true }, q.dueTime && !gaveUp ? { at: q.dueTime } : {}, q.strict ? { strict: true } : {}));
+    if (q.track === 'cp' && !last) (q.cps || []).forEach(c => { if (cpDate(q, c) === k && (!due || k < due)) out.push(Object.assign({ key: `sc:${q.id}:${c.id}`, side: q.id, cp: c.id, title: c.t || 'Checkpoint', list: DUE_LIST, unit: '', target: 0, progress: 0, done: false, xp: 10, by: true }, c.time ? { at: c.time } : {}, q.strict ? { strict: true } : {})); });
   }
   return out;
 }
@@ -1933,6 +2202,7 @@ function cpToggle(q, c) {
 function sideTap(x) { // checking a "Due today" quest on the Quests tab
   const q = (S.side || []).find(s => s.id === x.side); if (!q) return;
   if (q.status !== 'active') { toast(q.status === 'done' ? 'Already complete' : q.status === 'given' ? 'You gave up on this one: it counts as failed today' : 'This quest is over', q.status === 'done' ? '' : 'bad'); return; }
+  if (!sideEntryDone(x, todayKey())) { const win = canCheck(x, todayKey()); if (!win.ok) { toast(win.msg, 'bad'); return; } } // v19 times + bedtime
   if (x.cp) { cpToggle(q, q.cps.find(z => z.id === x.cp)); return; }
   if (q.track === 'check') { if (confirm(`Complete "${q.title}"?`)) completeSide(q); return; }
   if (q.track === 'cp') { const c = q.cps.find(z => !z.done); if (c) cpToggle(q, c); return; }
@@ -1942,7 +2212,12 @@ function passName(p) { const d = p.days || 1; return `${d === 1 ? 'A complete re
 const rewardName = r => r.kind === 'pass' ? passName(r.pass || {}) : r.text || 'A treat';
 function completeSide(q) {
   const k = todayKey(); q.status = 'done'; q.doneOn = k;
-  const xp = sideXp(q); q.xpGot = (q.xpGot || 0) + xp; addXp(null, xp); addXp('discipline', 5, true);
+  const base = sideXp(q), locks = locksOf('side', q.id), extra = locks.length ? Math.round(base * LOCK_BONUS) : 0, xp = base + extra;
+  q.xpGot = (q.xpGot || 0) + xp;
+  if (extra) { q.lockBonusGot = q.lockBonusGot || {}; locks.forEach(l => { q.lockBonusGot[l.id] = { xp: extra / locks.length }; }); }
+  // v18.1: finishing the quest fulfils the commitment, so its lock ends here (the bonus stays earned)
+  if (locks.length) S.locks = (S.locks || []).filter(l => !(l.kind === 'side' && l.ref === q.id));
+  addXp(null, xp); addXp('discipline', 5, true);
   let rw = null;
   if (q.reward && (q.reward.kind === 'custom' || q.reward.kind === 'pass')) {
     rw = { id: uid(), qid: q.id, from: q.title, kind: q.reward.kind, text: q.reward.text || '', earned: k, used: null };
@@ -1953,34 +2228,39 @@ function completeSide(q) {
   celebrate('Quest complete', q.title + ` · +${xp} XP`, { reward: rw ? 'You earned: ' + rewardName(rw) : null, btn: rw ? 'Claim it later' : 'Keep going' });
 }
 function expireSide(quiet) {
-  const tk = todayKey();
+  const tk = todayKey(), pi = pauseInfo(tk);
+  if (pi && pi.emergency) return; // never expire while an emergency is running
   (S.side || []).forEach(q => {
-    if (q.status !== 'active' || !q.due || q.due >= tk) return;
+    const due = effDue(q);
+    if (q.status !== 'active' || !due || due >= tk) return;
     q.status = 'expired'; if (sideCounts(q)) q.failed = true;
-    if (!quiet) toast(q.failed ? `Quest failed: ${q.title} · it counted toward ${fmtShort(q.due)}` : 'Quest expired: ' + q.title + ' · no penalty', q.failed ? 'bad' : '');
+    if (!quiet) toast(q.failed ? `Quest failed: ${q.title} · it counted toward ${fmtShort(effDue(q))}` : 'Quest expired: ' + q.title + ' · no penalty', q.failed ? 'bad' : '');
   });
 }
 function dueRow(x) { // a side quest that counts toward today, in the Quests list
   const q = (S.side || []).find(s => s.id === x.side), over = q && q.status !== 'active' && !x.done;
   const sub = !q ? '' : x.cp ? `${q.title} · checkpoint due today` : [q.status === 'given' ? 'Given up · counts as failed' : 'Deadline today', SIDE_DIFF[q.diff || 2],
     q.track === 'cp' ? `${q.cps.filter(c => c.done).length}/${q.cps.length} checkpoints` : q.track === 'time' ? `${(sideMin(q) / 60).toFixed(1)}/${(q.goalMin / 60).toFixed(0)} h` : ''].filter(Boolean).join(' · ');
+  const st = questState(x, todayKey()), atTxt = x.at ? `Due ${fmtTime(x.at)}${x.strict ? ` (+${GRACE_MIN} min)` : ''}` : '';
   const time = q && !x.cp && q.track === 'time' && q.status === 'active' && !x.done;
   const ctl = time ? `<button class="btn-s" data-a="sideOpen" data-id="${q.id}">+ Time</button>` : `<button class="chk" data-a="tq" data-id="${esc(x.key)}" aria-label="Check ${esc(x.title)}"${over ? ' disabled' : ''}>${x.done ? ICON.check : ''}</button>`;
   const prog = q && !x.cp && q.track !== 'check' && !x.done ? `<div class="prog"><i style="width:${(sideProg(q) * 100).toFixed(1)}%"></i></div>` : '';
-  return `<div class="q due${x.done ? ' done' : ''}${over ? ' locked' : ''}">${ctl}<div class="qb"${q ? ` data-a="sideOpen" data-id="${q.id}" role="button"` : ''}><div class="qt">${esc(x.title)}</div>${sub ? `<div class="qs">${esc(sub)}</div>` : ''}${prog}</div>${q && q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic" title="Has a reward">${ICON.gift}</span>` : ''}<div class="qx">+${x.xp}</div></div>`;
+  return `<div class="q due${x.done ? ' done' : ''}${over || st === 'closed' ? ' locked' : ''}${st ? ' qst-' + st : ''}">${ctl}<div class="qb"${q ? ` data-a="sideOpen" data-id="${q.id}" role="button"` : ''}><div class="qt">${esc(x.title)}</div>${sub || atTxt ? `<div class="qs">${atTxt ? `<b class="q-at">${esc(atTxt)}</b>${sub ? ' · ' : ''}` : ''}${esc(sub)}</div>` : ''}${prog}</div>${q && q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic" title="Has a reward">${ICON.gift}</span>` : ''}<div class="qx${x.lockB ? ' lkb' : ''}"${x.lockB ? ` title="Locked side quest: +${Math.round(LOCK_BONUS * 100)}% XP"` : ''}>${x.lockB ? ICON.lock : ''}+${x.xp}</div></div>`;
 }
 function sideRowMini(q) { // compact card on the Quests tab
   const p = sideProg(q), tk = todayKey(), next = q.track === 'cp' ? q.cps.find(c => !c.done) : null, late = next && cpDate(q, next) && cpDate(q, next) < tk;
   const ctl = q.track === 'cp' && next ? `<button class="chk" data-a="cpTog" data-id="${q.id}" data-c="${next.id}" aria-label="Done: ${esc(next.t)}"></button>`
     : q.track === 'time' ? `<button class="btn-s" data-a="sideOpen" data-id="${q.id}">+ Time</button>` : `<button class="chk" data-a="sideDone" data-id="${q.id}" aria-label="Complete ${esc(q.title)}"></button>`;
   const sub = q.track === 'cp' ? (next ? `Next: ${next.t}${cpDate(q, next) ? ' · ' + (late ? 'was due ' : 'by ') + fmtShort(cpDate(q, next)) : ''}` : '') : q.track === 'time' ? `${(sideMin(q) / 60).toFixed(1)} of ${(q.goalMin / 60).toFixed(0)} h` : '';
-  return `<div class="q side${late ? ' late' : ''}">${ctl}<div class="qb" data-a="sideOpen" data-id="${q.id}" role="button"><div class="qt">${esc(q.title)}</div><div class="qs">${esc([sub, sideLeft(q)].filter(Boolean).join(' · '))}</div>${q.track !== 'check' ? `<div class="prog"><i style="width:${(p * 100).toFixed(1)}%"></i></div>` : ''}</div>${q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic" title="Has a reward">${ICON.gift}</span>` : ''}<div class="qx">+${sideXp(q)}</div></div>`;
+  const lk = sideLockOn(q, tk);
+  return `<div class="q side${late ? ' late' : ''}">${ctl}<div class="qb" data-a="sideOpen" data-id="${q.id}" role="button"><div class="qt">${esc(q.title)}${lk ? ` <span class="pill gold">${ICON.lock} Locked</span>` : ''}</div><div class="qs">${esc([sub, sideLeft(q)].filter(Boolean).join(' · '))}</div>${q.track !== 'check' ? `<div class="prog"><i style="width:${(p * 100).toFixed(1)}%"></i></div>` : ''}</div>${q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic" title="Has a reward">${ICON.gift}</span>` : ''}<div class="qx${lk ? ' lkb' : ''}"${lk ? ` title="Locked side quest: +${Math.round(LOCK_BONUS * 100)}% XP"` : ''}>${lk ? ICON.lock : ''}+${sideXpAt(q, tk)}</div></div>`;
 }
 function sideSection() {
   const tk = todayKey(), due = new Set(((S.days[tk] || {}).q || []).filter(x => x.side).map(x => x.side));
   const act = (S.side || []).filter(q => q.status === 'active' && q.start <= tk && !due.has(q.id));
+  if (emergencyPause(tk)) return ''; // the Quests tab shows the pause banner; Board shows the paused card
   if (!act.length) return '';
-  return `<div class="qlist"><div class="qhead"><h2>Side quests</h2><span class="mu2 small">${act.some(q => sideCounts(q) && sideHasDue(q)) ? 'count only on their due days' : 'don’t count toward today'}</span></div>${act.sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(sideRowMini).join('')}</div>`;
+  return `<div class="qlist"><div class="qhead"><h2>Side quests</h2><span class="mu2 small">${act.some(q => sideCounts(q) && sideHasDue(q)) ? 'count only on their due days' : 'don’t count toward today'}</span></div>${act.sort((a, b) => (effDue(a) || '9') < (effDue(b) || '9') ? -1 : 1).map(sideRowMini).join('')}</div>`;
 }
 function sideCard(q) { // full card on the Board
   const tk = todayKey(), open = ui.sideOpen === q.id, p = sideProg(q), act = q.status === 'active';
@@ -1990,17 +2270,17 @@ function sideCard(q) { // full card on the Board
     if (q.track === 'cp') body += `<div class="cps">${q.cps.map(c => { const dd = cpDate(q, c), late = !c.done && dd && dd < tk; return `<div class="cp${c.done ? ' done' : ''}${late ? ' late' : ''}"><button class="chk" ${act ? `data-a="cpTog" data-id="${q.id}" data-c="${c.id}"` : 'disabled'} aria-label="${esc(c.t)}">${c.done ? ICON.check : ''}</button><div class="sp"><div>${esc(c.t)}</div>${dd || c.done ? `<div class="mu2 small">${c.done ? 'Done ' + fmtShort(c.done) : `Day ${c.day} · ${fmtShort(dd)}${late ? ' · late' : ''}`}</div>` : ''}</div></div>`; }).join('')}</div>`;
     if (q.track === 'time') body += `<div class="mu small" style="margin-top:6px">${(sideMin(q) / 60).toFixed(1)} of ${(q.goalMin / 60).toFixed(0)} hours logged</div>${act ? `<div class="row" style="margin-top:8px"><input id="sl_${q.id}" type="number" inputmode="numeric" placeholder="Minutes" style="flex:1"><button class="btn-s btn-p" data-a="sideLog" data-id="${q.id}">Log time</button></div>` : ''}`;
     if (q.reward && q.reward.kind !== 'none') body += `<div class="rw-line">${ICON.gift}<span>${esc(q.reward.kind === 'pass' ? passName(q.reward) : q.reward.text)}</span></div>`;
-    body += `<div class="row wrap" style="margin-top:12px;gap:8px">${act && q.track === 'check' ? `<button class="btn-s btn-p" data-a="sideDone" data-id="${q.id}">Complete</button>` : ''}${act ? `<button class="btn-s" data-a="sideEdit" data-id="${q.id}">Edit</button><span class="sp"></span><button class="btn-g small" data-a="sideGive" data-id="${q.id}">Give up</button>` : `<span class="sp"></span><button class="btn-g bad small" data-a="sideDel" data-id="${q.id}">Delete</button>`}</div>`;
+    body += `<div class="row wrap" style="margin-top:12px;gap:8px">${act && q.track === 'check' ? `<button class="btn-s btn-p" data-a="sideDone" data-id="${q.id}">Complete</button>` : ''}${act ? `<button class="btn-s" data-a="sideEdit" data-id="${q.id}">Edit</button>${lockCtl('side', q.id)}<span class="sp"></span><button class="btn-g small" data-a="sideGive" data-id="${q.id}">Give up</button>` : `<span class="sp"></span><button class="btn-g bad small" data-a="sideDel" data-id="${q.id}">Delete</button>`}</div>`;
   }
-  return `<div class="card side-card ${q.status}"><div class="row" data-a="sideOpen" data-id="${q.id}" role="button"><div class="sp"><div>${esc(q.title)} <span class="pill">${SIDE_DIFF[q.diff || 2]}</span>${act && sideCounts(q) && sideHasDue(q) ? ' <span class="pill gold">Counts</span>' : ''}${q.failed ? ' <span class="pill bad">Failed</span>' : ''}</div><div class="mu small">${esc(sideLeft(q))}${q.track === 'cp' ? ` · ${q.cps.filter(c => c.done).length}/${q.cps.length} checkpoints` : q.track === 'time' ? ` · ${(sideMin(q) / 60).toFixed(1)}/${(q.goalMin / 60).toFixed(0)} h` : ''}</div>
+  return `<div class="card side-card ${q.status}"><div class="row" data-a="sideOpen" data-id="${q.id}" role="button"><div class="sp"><div>${esc(q.title)} <span class="pill">${SIDE_DIFF[q.diff || 2]}</span>${act && sideCounts(q) && sideHasDue(q) ? ' <span class="pill gold">Counts</span>' : ''}${act && sideLockOn(q, tk) ? ` <span class="pill gold">${ICON.lock} Locked</span> <span class="pill gold">+${sideXpAt(q, tk)} XP</span>` : ''}${q.failed ? ' <span class="pill bad">Failed</span>' : ''}</div><div class="mu small">${esc(sideLeft(q))}${q.track === 'cp' ? ` · ${q.cps.filter(c => c.done).length}/${q.cps.length} checkpoints` : q.track === 'time' ? ` · ${(sideMin(q) / 60).toFixed(1)}/${(q.goalMin / 60).toFixed(0)} h` : ''}</div>
     ${q.track !== 'check' ? `<div class="bar"><i style="width:${(p * 100).toFixed(1)}%"></i></div>` : ''}</div>${q.reward && q.reward.kind !== 'none' ? `<span class="rw-ic">${ICON.gift}</span>` : ''}<span class="chev ${open ? 'open' : ''}">${ICON.chev}</span></div>${body}</div>`;
 }
 function boardSide(type) {
-  const all = (S.side || []).filter(q => q.type === type), act = all.filter(q => q.status === 'active'), past = all.filter(q => q.status !== 'active').sort((a, b) => (b.doneOn || b.due || '') < (a.doneOn || a.due || '') ? -1 : 1);
+  const em = emergencyPause(), all = (S.side || []).filter(q => q.type === type), act = all.filter(q => q.status === 'active'), past = all.filter(q => q.status !== 'active').sort((a, b) => (b.doneOn || b.due || '') < (a.doneOn || a.due || '') ? -1 : 1);
   const have = new Set(all.filter(q => q.status === 'active').map(q => q.title)), ideas = SIDE_TEMPLATES[type].filter(t => !have.has(t.title));
   const intro = type === 'once' ? 'Things to do once, like going camping with friends. Set an optional deadline and a reward.' : 'Projects with their own clock: days, weeks, months, years, or until they’re done. Track them with checkpoints or time logged.';
   return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">${intro} With a deadline they count toward your day on their due dates (switch that off per quest).</p><button class="btn-p btn-s" data-a="sideNew" data-id="${type}">+ New</button></div>
-  <h2>Active</h2>${act.length ? act.map(sideCard).join('') : `<div class="card mu small">No ${type === 'once' ? 'one-time' : 'time-limited'} quests yet. Start one, or adopt an idea below.</div>`}
+  <h2>Active</h2>${em ? `<div class="card em-paused"><div class="row">${ICON.pause}<b class="sp">Paused by an emergency until ${em.end ? fmtDate(em.end) : 'you end it'}</b></div><div class="mu small" style="margin-top:4px">Your side quests are safe and their clocks are stopped. They come back when the emergency ends.</div></div>` : act.length ? act.map(sideCard).join('') : `<div class="card mu small">No ${type === 'once' ? 'one-time' : 'time-limited'} quests yet. Start one, or adopt an idea below.</div>`}
   ${ideas.length ? `<h2>Ideas</h2><div class="card">${ideas.map((t, i) => `<div class="list-item"><div class="sp"><div>${esc(t.title)}</div><div class="mu small">${esc([SIDE_DIFF[t.diff], type === 'timed' ? (t.dur ? durTxt(t.dur[0], t.dur[1]) : 'until done') : '', t.track === 'cp' ? t.cps.length + ' checkpoints' : t.track === 'time' ? t.goalH + ' h' : '', t.reward ? 'reward' : ''].filter(Boolean).join(' · '))}</div></div><button class="chip" data-a="sideIdea" data-id="${type}" data-k="${SIDE_TEMPLATES[type].indexOf(t)}">Adopt</button></div>`).join('')}</div>` : ''}
   ${past.length ? `<h2>History</h2>${past.slice(0, 20).map(sideCard).join('')}` : ''}`;
 }
@@ -2012,6 +2292,7 @@ function sideModal(q, type, tpl) {
     const t = tpl || {}, dur = t.dur === null ? [1, 'done'] : t.dur || [2, 'w'];
     ui.sd = { id: null, type, title: t.title || '', note: '', diff: t.diff || 2, start: tk, due: null, durN: dur[0], durU: dur[1], track: type === 'once' ? 'check' : t.track || 'cp',
       cps: (t.cps || []).map(x => ({ id: uid(), t: x, day: null, done: null })), goalMin: (t.goalH || 10) * 60, log: [], reward: t.reward ? Object.assign({ days: 1, all: true, lists: [], skills: [], tasks: [] }, t.reward) : { kind: 'none', days: 1, all: true, lists: [], skills: [], tasks: [] }, status: 'active' };
+    if (t.school) Object.assign(ui.sd, { school: Object.assign({}, t.school), list: 'Schoolwork', needDate: !!t.needDate }); // v19: dated school items
     if (type === 'timed' && !ui.sd.cps.length && ui.sd.track === 'cp') ui.sd.cps = [{ id: uid(), t: '', day: null, done: null }];
   }
   ui.sd.reward = Object.assign({ kind: 'none', text: '', days: 1, all: true, lists: [], skills: [], tasks: [] }, ui.sd.reward || {});
@@ -2029,13 +2310,15 @@ function sdBody() {
   const d = ui.sd, rw = d.reward, tk = todayKey(), started = d.id && d.start <= tk;
   let h = `<label>Quest</label><input data-i="sd" data-k="title" value="${esc(d.title)}" placeholder="${d.type === 'once' ? 'e.g. Go camping with friends' : 'e.g. Finish my game demo'}" maxlength="80">
     <label>Notes (optional)</label><input data-i="sd" data-k="note" value="${esc(d.note || '')}" maxlength="140">
+    <label>Schoolwork subject (optional)</label><select data-c="sdSub"><option value="">None</option>${(SUBJECTS || []).map(x => `<option value="${x.id}" ${d.school && d.school.subject === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
     <label>Difficulty · ${sideXp(d)} XP when done</label><div class="seg tight">${[1, 2, 3, 4].map(v => `<button class="${d.diff === v ? 'on' : ''}" data-a="sdSet" data-k="diff" data-id="${v}">${SIDE_DIFF[v]}</button>`).join('')}</div>`;
-  if (d.type === 'once') h += `<label>Deadline (optional)</label><input type="date" min="${tk}" data-c="sd" data-k="due" value="${d.due || ''}"><div class="mu2 small">${sideCounts(d) ? 'On the deadline it joins that day’s quests. Not done by the end of that day = failed, with penalties.' : 'Past the deadline it quietly expires. No penalty.'}</div>`;
+  const dueT = `<div class="grid2"><div><label>Deadline time (optional)</label><input type="time" data-i="sd" data-k="dueTime" value="${d.dueTime || ''}"></div><div><label>&nbsp;</label><label class="check" style="margin:0"><input type="checkbox" data-c="sd" data-k="strict" ${d.strict ? 'checked' : ''}> Close ${GRACE_MIN} min after</label></div></div><div class="mu2 small">With a time, the deadline day's quest shows when it's due. It can be ticked until bedtime, or until ${GRACE_MIN} minutes after the time if you tick the box.</div>`;
+  if (d.type === 'once') h += `<label>Deadline (optional)</label><input type="date" min="${tk}" data-c="sd" data-k="due" value="${d.due || ''}">${dueT}<div class="mu2 small">${sideCounts(d) ? 'On the deadline it joins that day’s quests. Not done by the end of that day = failed, with penalties.' : 'Past the deadline it quietly expires. No penalty.'}</div>`;
   else {
     h += `<div class="grid2"><div><label>Starts</label><input type="date" ${started ? 'disabled' : `min="${tk}"`} data-c="sd" data-k="start" value="${d.start}"></div><div><label>Time limit</label><div class="row" style="gap:6px">${d.durU === 'done' ? '' : `<input type="number" inputmode="numeric" min="1" data-i="sd" data-k="durN" value="${d.durN || 1}" style="width:64px;flex:none">`}<select data-c="sd" data-k="durU">${[['d', 'Days'], ['w', 'Weeks'], ['m', 'Months'], ['y', 'Years'], ['done', 'Until done']].map(([v, n]) => `<option value="${v}" ${d.durU === v ? 'selected' : ''}>${n}</option>`).join('')}</select></div></div></div>
-      <div class="mu2 small" id="sdEnd">${sdEndTxt()}</div>
+      <div class="mu2 small" id="sdEnd">${sdEndTxt()}</div>${d.durU === 'done' ? '' : dueT}
       <label>Track progress by</label><div class="seg tight"><button class="${d.track === 'cp' ? 'on' : ''}" data-a="sdSet" data-k="track" data-id="cp">Checkpoints</button><button class="${d.track === 'time' ? 'on' : ''}" data-a="sdSet" data-k="track" data-id="time">Time logged</button></div>`;
-    if (d.track === 'cp') h += `<div class="mu2 small">Optional: the quest day each checkpoint should be done by (day 1 = the start).</div><div class="cp-ed">${d.cps.map((c, i) => `<div class="row"><input data-i="sdCp" data-id="${i}" data-k="t" value="${esc(c.t)}" placeholder="Checkpoint ${i + 1}" ${c.done ? 'disabled' : ''}><input type="number" inputmode="numeric" min="1" data-i="sdCp" data-id="${i}" data-k="day" value="${c.day || ''}" placeholder="Day" style="width:70px;flex:none" ${c.done ? 'disabled' : ''}>${c.done ? '<span class="gold small">done</span>' : `<button class="btn-g x" data-a="sdCpDel" data-id="${i}" aria-label="Remove">✕</button>`}</div>`).join('')}</div><button class="btn-s" data-a="sdCpAdd" style="margin-top:8px">+ Checkpoint</button>`;
+    if (d.track === 'cp') h += `<div class="mu2 small">Optional: the quest day each checkpoint should be done by (day 1 = the start).</div><div class="cp-ed">${d.cps.map((c, i) => `<div class="row"><input data-i="sdCp" data-id="${i}" data-k="t" value="${esc(c.t)}" placeholder="Checkpoint ${i + 1}" ${c.done ? 'disabled' : ''}><input type="number" inputmode="numeric" min="1" data-i="sdCp" data-id="${i}" data-k="day" value="${c.day || ''}" placeholder="Day" style="width:70px;flex:none" ${c.done ? 'disabled' : ''}><input type="time" data-i="sdCp" data-id="${i}" data-k="time" value="${c.time || ''}" title="Time (optional)" aria-label="Checkpoint time" style="width:104px;flex:none" ${c.done ? 'disabled' : ''}>${c.done ? '<span class="gold small">done</span>' : `<button class="btn-g x" data-a="sdCpDel" data-id="${i}" aria-label="Remove">✕</button>`}</div>`).join('')}</div><button class="btn-s" data-a="sdCpAdd" style="margin-top:8px">+ Checkpoint</button>`;
     else h += `<label>Goal (hours)</label><input type="number" inputmode="decimal" step="any" min="0.5" data-i="sd" data-k="goalH" value="${(d.goalMin || 600) / 60}"><div class="mu2 small">Log time on the quest card. At most 24 h counts per day.</div>`;
   }
   const on = sideCounts(d), cpDays = d.type === 'timed' && d.track === 'cp';
@@ -2055,17 +2338,22 @@ function sdEndTxt() {
   const d = ui.sd; if (d.type !== 'timed') return '';
   if (d.durU === 'done') return 'No deadline: it runs until you finish it.';
   const n = Math.round(num(d.durN) || 0); if (n < 1) return '<span class="bad">Set how long.</span>';
-  return `Ends ${fmtDate(addDur(d.start, n, d.durU))}. ${sideCounts(d) ? 'That day it counts toward your quests: not finished by its end = failed, with penalties.' : 'It expires on its own after that, with no penalty.'}`;
+  return `Ends ${fmtDate(effSideDate(d, addDur(d.start, n, d.durU)))}. ${sideCounts(d) ? 'That day it counts toward your quests: not finished by its end = failed, with penalties.' : 'It expires on its own after that, with no penalty.'}`;
 }
 function saveSide() {
   const d = ui.sd, tk = todayKey(), bad = m => { toast(m, 'bad'); return false; };
+  if (d.id && lockRefuse('side', d.id, 'edit it')) return false;
   d.title = (d.title || '').trim(); if (!d.title) return bad('Name the quest');
   if (d.type === 'timed') {
     if (d.durU !== 'done') { const n = Math.round(num(d.durN) || 0); if (n < 1 || n > 999) return bad('Set a time limit'); d.durN = n; d.due = addDur(d.start, n, d.durU); } else d.due = null;
     if (d.track === 'cp') { d.cps = d.cps.filter(c => (c.t || '').trim()).map(c => Object.assign(c, { t: c.t.trim(), day: c.day ? Math.max(1, Math.round(c.day)) : null })); if (!d.cps.length) return bad('Add at least one checkpoint'); }
     else { if (!(d.goalMin >= 30)) return bad('Set a goal of at least half an hour'); }
   }
-  if (d.due && d.due < tk) return bad('That deadline is in the past');
+  if (d.needDate && d.type === 'once' && !d.due) return bad('Pick the date');
+  if (d.due && effSideDate(d, d.due) < tk) return bad('That deadline is in the past');
+  if (!d.due) { delete d.dueTime; } else if (!d.dueTime) delete d.dueTime; // v19: a time only means something with a deadline
+  if (!d.dueTime && !(d.cps || []).some(c => c.time)) d.strict = false;
+  (d.cps || []).forEach(c => { if (!c.time) delete c.time; });
   const rw = d.reward;
   if (rw.kind === 'custom' && !(rw.text || '').trim()) return bad('Describe your treat');
   if (rw.kind === 'pass') { rw.days = clamp(Math.round(rw.days || 1), 1, 14); if (!rw.all && !rw.lists.length && !rw.skills.length && !rw.tasks.length) return bad('Pick what the pass covers'); }
@@ -2101,11 +2389,13 @@ function usePass(r, start) {
   closeModal(true); if (start === tk) regenToday(); afterChange(); toast(start === tk ? 'Rest pass active · enjoy it' : 'Rest pass scheduled for ' + fmtDate(start), 'ti');
 }
 /* ---------- coins & the shop (v11) ----------
-   S.coins: +1 for every perfect day (given when the day is evaluated). The shop sells, for 10 coins each:
-   a Streak Saver (S.savers; brings back a streak a missed day just ended) and a Rest Day Pass (a 1-day, everything
-   pass in S.rewards, used exactly like one earned from a quest). S.streakBreak = { n, day, last, miss, days[], asked }
-   is the streak the latest miss ended; it can be restored until the end of the day after the last missed day. */
+   S.coins: +1 for every perfect day (given when the day is evaluated). The shop sells a Streak Saver (S.savers; brings
+   back a streak a missed day just ended), a Rest Day Pass (a 1-day, everything pass in S.rewards, used exactly like one
+   earned from a quest), and (v18.1) a Lockpick (S.picks) that ends one schedule lock early and takes back its bonus XP.
+   S.streakBreak = { n, day, last, miss, days[], asked } is the streak the latest miss ended; it can be restored until
+   the end of the day after the last missed day. */
 const SHOP_COST = 30; // v16 (was 10): perfect days pay more as the streak grows
+const SHOP_PICK = 10; // v18.1: a Lockpick costs 10 coins
 /* v16: coins per perfect day by streak: 1, then 2 from day 10, 3 from 100, 4 from 1,000, 5 from 10,000, and 1,000,000 from 100,000 */
 const COIN_TIERS = [[100000, 1000000], [10000, 5], [1000, 4], [100, 3], [10, 2], [0, 1]];
 const coinRate = n => COIN_TIERS.find(([at]) => n >= at)[1];
@@ -2120,24 +2410,28 @@ function showCoinNote() {
   else toast(`${S.streak.cur.toLocaleString()}-day streak · perfect days now pay ${r} coins`, 'ti');
 }
 const SHOP = [
-  ['saver', 'Streak Saver', 'Brings back a streak you just lost. One saver covers one missed day. The penalty for that day still happens.'],
-  ['pass', 'Rest Day Pass', 'One complete rest day you can use any time: nothing to log, no penalties, streak frozen.']];
+  ['saver', 'Streak Saver', 'Brings back a streak you just lost. One saver covers one missed day. The penalty for that day still happens.', SHOP_COST],
+  ['pass', 'Rest Day Pass', 'One complete rest day you can use any time: nothing to log, no penalties, streak frozen.', SHOP_COST],
+  ['pick', 'Lockpick', 'Ends one schedule lock early. The +25% bonus XP earned under that lock is taken back.', SHOP_PICK]];
 function shopCard() {
   const c = S.coins || 0, sb = sbValid() ? S.streakBreak : null;
-  const row = ([id, n, d]) => `<div class="list-item shop-item"><span class="rw-ic">${id === 'saver' ? ICON.saver : ICON.gift}</span><div class="sp"><div>${n}${id === 'saver' && S.savers ? ` <span class="pill gold">${S.savers} owned</span>` : ''}</div><div class="mu small">${d}</div></div>
-    <button class="btn-s btn-p buy" data-a="buy" data-id="${id}" ${c < SHOP_COST ? 'disabled' : ''}>${ICON.coin}<span class="num">${SHOP_COST}</span></button></div>`;
+  const row = ([id, n, d, cost]) => { const owned = id === 'saver' ? (S.savers || 0) : id === 'pick' ? (S.picks || 0) : 0;
+    return `<div class="list-item shop-item"><span class="rw-ic">${id === 'saver' ? ICON.saver : id === 'pick' ? ICON.pick : ICON.gift}</span><div class="sp"><div>${n}${owned ? ` <span class="pill gold">${owned} owned</span>` : ''}</div><div class="mu small">${d}</div></div>
+    <button class="btn-s btn-p buy" data-a="buy" data-id="${id}" ${c < cost ? 'disabled' : ''}>${ICON.coin}<span class="num">${cost}</span></button></div>`; };
   return `<div class="card shop" style="margin-top:14px"><div class="row"><span class="coin-big">${ICON.coin}</span><div class="sp"><h3><span class="num">${c}</span> coin${c === 1 ? '' : 's'}</h3><div class="mu small">You earn ${coinRate(S.streak.cur).toLocaleString()} coin${coinRate(S.streak.cur) === 1 ? '' : 's'} for each perfect day (every quest done). More as your streak grows: 2 from a 10-day streak, 3 from 100, 4 from 1,000, 5 from 10,000.</div></div></div>
     ${sb ? `<div class="banner sv" style="margin-top:10px"><div class="row">${ICON.saver}<b class="sp">Your ${sb.n}-day streak can still be saved</b></div><div class="row" style="margin-top:8px;gap:8px"><button class="btn-s btn-p" data-a="svRestore">Bring it back</button></div></div>` : ''}
     ${SHOP.map(row).join('')}</div>`;
 }
 function buyItem(id) {
   const it = SHOP.find(x => x[0] === id); if (!it) return;
-  if ((S.coins || 0) < SHOP_COST) { toast(`You need ${SHOP_COST} coins · you have ${S.coins || 0}`, 'bad'); return; }
-  if (!confirm(`Spend ${SHOP_COST} coins on a ${it[1]}?`)) return;
-  S.coins -= SHOP_COST;
+  const cost = it[3] || SHOP_COST;
+  if ((S.coins || 0) < cost) { toast(`You need ${cost} coins · you have ${S.coins || 0}`, 'bad'); return; }
+  if (!confirm(`Spend ${cost} coins on a ${it[1]}?`)) return;
+  S.coins -= cost;
   if (id === 'saver') S.savers = (S.savers || 0) + 1;
+  else if (id === 'pick') S.picks = (S.picks || 0) + 1;
   else S.rewards.push({ id: uid(), qid: null, from: 'Coin shop', kind: 'pass', text: '', earned: todayKey(), used: null, bought: true, pass: { days: 1, all: true, lists: [], skills: [], tasks: [] } });
-  afterChange(); fx('check'); toast(id === 'saver' ? `Streak Saver bought · you have ${S.savers}` : 'Rest Day Pass bought · use it from Ready below', 'ti');
+  afterChange(); fx('check'); toast(id === 'saver' ? `Streak Saver bought · you have ${S.savers}` : id === 'pick' ? `Lockpick bought · you have ${S.picks}` : 'Rest Day Pass bought · use it from Ready below', 'ti');
 }
 const sbValid = () => { const b = S.streakBreak; return !!(b && b.n > 0 && todayKey() <= addDays(b.last, 1)); };
 function streakNag(k) {
@@ -2197,7 +2491,21 @@ function boardTasks() {
   return `<div class="row" style="margin-top:14px"><p class="mu small sp" style="margin:0">Everyday basics: no hexagon, just an XP bar and achievements. Several sessions a day are fine (brush teeth 2×).</p><button class="btn-p btn-s" data-a="tkNew">+ New task</button></div>
   <h2>Active</h2>${act.length ? act.map(taskCard).join('') : '<div class="card mu small">No task quests yet. Adopt some below.</div>'}
   ${off.length ? `<h2>Paused</h2>${off.map(taskCard).join('')}` : ''}
-  ${lib.length ? `<h2>Library</h2><div class="card">${lib.map(d => `<div class="list-item"><div class="sp"><div>${esc(d.name)}</div><div class="mu small">${esc(taskDesc(d))} · ${esc(d.list)}</div></div><button class="chip" data-a="tkAdopt" data-id="${d.id}">Adopt</button><button class="btn-g x lib-del" data-a="tkHide" data-id="${d.id}" aria-label="Delete ${esc(d.name)}">${ICON.trash}</button></div>`).join('')}</div>` : ''}`;
+  ${lib.length ? `<h2>Library</h2><div class="card">${lib.filter(d => !d.school).map(d => `<div class="list-item"><div class="sp"><div>${esc(d.name)}</div><div class="mu small">${esc(taskDesc(d))} · ${esc(d.list)}</div></div><button class="chip" data-a="tkAdopt" data-id="${d.id}">Adopt</button><button class="btn-g x lib-del" data-a="tkHide" data-id="${d.id}" aria-label="Delete ${esc(d.name)}">${ICON.trash}</button></div>`).join('')}</div>` : ''}
+  ${schoolLib(lib)}`;
+}
+function schoolLib(lib) { // v19 Phase D: Board → Tasks → Schoolwork, one folder per subject: recurring tasks to adopt + things with a date
+  const tk = todayKey(), up = (S.side || []).filter(q => q.school && q.status === 'active');
+  const sub = sb => {
+    const tasks = lib.filter(d => d.school && d.school.subject === sb.id), dated = up.filter(q => q.school.subject === sb.id).sort((a, b) => (effDue(a) || '') < (effDue(b) || '') ? -1 : 1), fid = 'tk_' + sb.f;
+    const mine = Object.values(S.tasks || {}).filter(t => t.school && t.school.subject === sb.id && !hiddenTk(t.id)).length;
+    return `<details data-f="${fid}" ${ui.libOpen.has(fid) ? 'open' : ''}><summary><span class="sp">${esc(sb.name)}</span><span class="mu2 small num">${mine + dated.length ? `${mine} task${mine === 1 ? '' : 's'} · ${dated.length} upcoming` : ''}</span>${ICON.chev}</summary><div class="lib-body">
+      ${dated.length ? `<div class="tg">Upcoming</div>${dated.map(q => `<div class="list-item"><div class="sp"><div>${esc(q.title)}</div><div class="mu small">${fmtDate(effDue(q))}${q.dueTime ? ' · ' + fmtTime(q.dueTime) : ''} · ${esc(sideLeft(q))}</div></div><button class="chip" data-a="sideOpen" data-id="${q.id}">Open</button></div>`).join('')}` : ''}
+      <div class="tg">Add with a date</div><div class="chips">${(SCHOOL_DATED || []).map(([k, n]) => `<button class="chip" data-a="schAdd" data-s="${sb.id}" data-k="${k}">+ ${esc(n)}</button>`).join('')}</div>
+      ${tasks.length ? `<div class="tg">Recurring</div>${tasks.map(d => `<div class="list-item"><div class="sp"><div>${esc(d.name)}</div><div class="mu small">${esc(taskDesc(d))}</div></div><button class="chip" data-a="tkAdopt" data-id="${d.id}">Adopt</button></div>`).join('')}` : ''}
+    </div></details>`;
+  };
+  return `<h2>Schoolwork</h2><div class="card lib sch-lib"><p class="mu small" style="margin-top:0">Homework, assignments and project work per subject, plus quizzes, exams, midterms, finals and due dates (those get a date and count on their day).${S.profile.student ? ` School breaks pause all of it.` : ''}</p>${(SUBJECTS || []).map(sub).join('')}</div>`;
 }
 function taskModal(t, def) { // t = existing task, def = a library task being adopted, neither = brand new custom task
   const src = t || def || { name: '', unit: 'times', sessions: 1, base: 10, max: 30, diff: 1, list: 'Daily', days: [0, 1, 2, 3, 4, 5, 6] };
@@ -2212,6 +2520,7 @@ function taskModal(t, def) { // t = existing task, def = a library task being ad
       <div class="mu2 small">The session grows about 5% each time the task levels up, so it stays approachable.</div></div>
     <label>Difficulty</label><select name="diff">${[[1, 'Easy · 4 XP a session'], [2, 'Medium · 7 XP'], [3, 'Hard · 12 XP']].map(([v, n]) => `<option value="${v}" ${(src.diff || 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
     <label>Quest list</label><select name="list">${[...new Set([...S.lists, 'Wind Down', src.list].filter(Boolean))].map(l => `<option ${l === src.list ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
+    <label>Schoolwork subject (optional)</label><select name="sub" data-c="tkSub"><option value="">None</option>${(SUBJECTS || []).map(x => `<option value="${x.id}" ${src.school && src.school.subject === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><div class="mu2 small">A subject puts it in the Schoolwork list, so a school break pauses it.</div>
     <label>Days</label><div class="chips days" id="tkDays">${WD.map((w, i) => `<button type="button" class="chip ${(src.days || []).includes(i) ? 'on' : ''}" data-a="chipT" data-k="${i}">${w}</button>`).join('')}</div>
   </form>
   <div class="actions">${t ? `<button class="btn-g bad" data-a="${t.custom ? 'tkDel' : 'tkHide'}" data-id="${t.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="tkSave" data-id="${t ? t.id : ''}" data-d="${def ? def.id : ''}">${t ? 'Save' : def ? 'Adopt' : 'Create'}</button></div>`);
@@ -2224,6 +2533,9 @@ function saveTask(id, defId) {
   if (id && lockedDays('task', id).some(d => !days.includes(d))) { lockRefuse('task', id, 'remove a locked day'); return; }
   if (unit === 'min' && (base < 1 || base > 600)) { toast('Minutes should be 1–600'); return; }
   const cfg = { name, unit, sessions, diff, list: f.get('list'), days, base: unit === 'min' ? base : 0, max: unit === 'min' ? Math.max(base, max || base) : 0 };
+  const sub = f.get('sub'); // v19: a school subject means the Schoolwork list
+  if (sub) { const was = (id && S.tasks[id] && S.tasks[id].school) || (defId && (TASKS.find(x => x.id === defId) || {}).school) || {}; cfg.school = Object.assign({}, was, { subject: sub }); cfg.list = 'Schoolwork'; cfg.f = 'sch_' + sub; }
+  else { cfg.school = null; }
   let t = id ? S.tasks[id] : null;
   if (t) { if (unit === 'min') { if (t.unit !== 'min' || !t.base) cfg.base = cfg.base0 = base; else cfg.base = base !== taskTarget(t) ? base / (1 + 0.05 * (taskLevel(t).L - 1)) : t.base; } Object.assign(t, cfg); }
   else if (defId) { t = adoptTask(defId, Object.assign(cfg, { exp: f.get('exp') || 'some', base0: cfg.base })); }
@@ -2251,32 +2563,34 @@ function viewCal() {
   const repTxt = e => ({ none: 'Once', daily: 'Daily', weekly: 'Weekly · ' + (e.days && e.days.length ? e.days : [dparse(e.start).getDay()]).map(i => WD[i]).join(' '), monthly: 'Monthly', yearly: 'Yearly' })[e.repeat || 'none'];
   const active = SKL.filter(s => isLib(s) && S.skills[s.id] && S.skills[s.id].active), tks = activeTasks();
   const pauses = S.pauses.filter(p => !p.end || p.end >= tk).sort((a, b) => a.start < b.start ? -1 : 1);
-  const sideDue = (S.side || []).filter(q => q.status === 'active' && (q.due === sel || q.cps && q.cps.some(c => !c.done && cpDate(q, c) === sel)));
+  const sideDue = spi && spi.emergency ? [] : (S.side || []).filter(q => q.status === 'active' && (effDue(q) === sel || q.cps && q.cps.some(c => !c.done && cpDate(q, c) === sel)));
   return `<div class="row month"><button class="btn-g" data-a="calNav" data-id="-1" aria-label="Previous month">‹</button><h3 class="sp">${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3><button class="btn-g" data-a="calNav" data-id="1" aria-label="Next month">›</button></div>
   <div class="cal">${cells}</div>
   <div class="legend cal-legend"><span><i class="dot" style="background:var(--ac)"></i>event</span><span><i class="dot" style="background:var(--gold)"></i>perfect</span><span><i class="dot" style="background:var(--bad)"></i>missed</span><span><i class="dash" style="background:#5b7fa6"></i>vacation</span><span><i class="dash" style="background:var(--bad)"></i>emergency</span><span><i class="dash" style="background:var(--gold)"></i>fast</span></div>
   <h2>${fmtDate(sel)}</h2>
   <div class="card">
     ${fastOn(sel) ? `<div class="small" style="margin-bottom:8px"><span class="gold">Fast${fastOn(sel).note ? ' · ' + esc(fastOn(sel).note) : ''}</span> · day ${fastDay(fastOn(sel), sel)} of ${fastLen(fastOn(sel))} · diet quest off</div>` : ''}
-    ${spi ?`<div class="small" style="margin-bottom:8px">${ICON.pause} <span class="${spi.emergency ? 'bad' : 'acc'}">${spi.emergency ? 'Extreme emergency' : 'Vacation'}</span> · paused: ${esc(spi.all ? 'everything' : [...spi.lists, ...[...spi.skills].map(id => SK[id] ? SK[id].name : id)].join(', '))}</div>` : ''}
+    ${spi ?`<div class="small" style="margin-bottom:8px">${ICON.pause} <span class="${spi.emergency ? 'bad' : 'acc'}">${spi.emergency ? 'Emergency' : 'Vacation'}</span> · paused: ${esc(spi.all ? 'everything' : [...spi.lists, ...[...spi.skills].map(id => SK[id] ? SK[id].name : id)].join(', '))}</div>` : ''}
     ${evs.length ? evs.map(e => `<div class="list-item"><div class="sp"><div>${esc(e.title)}</div><div class="mu small">${esc(e.list || '')} · ${esc(repTxt(e))}${e.skill && SK[e.skill] ? ' · ' + esc(SK[e.skill].name) : ''}</div></div>${lockCtl('event', e.id)}<button class="btn-s" data-a="evEdit" data-id="${e.id}">Edit</button></div>`).join('') : '<div class="mu small">No events this day.</div>'}
     ${day && day.ev ? `<div class="mu small" style="margin-top:8px">Result: ${day.frozen ? 'paused (streak frozen)' : `<span class="num">${Math.round(day.pct * 100)}%</span>${dayPenTxt(day) ? ` · <span class="bad">${esc(dayPenTxt(day))}</span>` : ''}${day.saved ? ' · <span class="gold">streak saved</span>' : ''}`}</div>` : ''}
     <div class="row" style="margin-top:12px"><button class="btn-p btn-s" data-a="evNew">+ Event</button><span class="sp"></span>
     ${sel >= tk ? `<button class="btn-s" data-a="restToggle" data-id="${sel}">${S.rest.includes(sel) ? 'Unset rest day' : 'Mark rest day'}</button>` : ''}</div>
-    ${sideDue.length ? `<div class="mu small" style="margin-top:10px">${sideDue.map(q => `<div class="list-item"><span class="rw-ic">${ICON.board}</span><span class="sp">${esc(q.title)}</span><span class="mu2 small">${q.due === sel ? 'deadline' : 'checkpoint'}</span></div>`).join('')}</div>` : ''}
+    ${sideDue.length ? `<div class="mu small" style="margin-top:10px">${sideDue.map(q => `<div class="list-item"><span class="rw-ic">${ICON.board}</span><span class="sp">${esc(q.title)}</span><span class="mu2 small">${effDue(q) === sel ? 'deadline' : 'checkpoint'}</span></div>`).join('')}</div>` : ''}
   </div>
   <h2>Pauses</h2>
-  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Extreme emergency</span>' : p.type === 'pass' ? '<span class="gold">Rest pass</span>' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
+  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Emergency</span>' : p.type === 'pass' ? '<span class="gold">Rest pass</span>' : p.type === 'school' ? 'School break' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
       <div class="mu small">${fmtDate(p.start)} → ${p.end ? fmtDate(p.end) : 'until ended'} · ${esc(scopeTxt(p))}</div></div>
       ${p.start >= tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">Cancel</button>` : ''}${p.start <= tk && p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">End</button>` : ''}</div>`).join('') : '<div class="mu small">No upcoming pauses. Plan vacations ahead; paused quests don\'t count against you.</div>'}
-    <div class="row" style="margin-top:12px"><button class="btn-s" data-a="vacNew">+ Vacation pause</button></div></div>
+    <div class="row" style="margin-top:12px;gap:8px"><button class="btn-s" data-a="vacNew">+ Vacation pause</button>${S.profile.student ? '<button class="btn-s" data-a="sbNew">+ School break</button>' : ''}</div></div>
   <h2>Weekly plan</h2>
   <div class="card"><p class="mu small" style="margin-top:0">Which days each active skill shows up as a quest. An event linked to a skill replaces its automatic quest that day.</p>
   ${active.length ? active.map(s => { const ld = lockedDays('skill', s.id); return `<div class="list-item col"><div class="row"><span class="sp">${esc(s.name)}</span><span class="mu small num">${esc(fmtTarget(skillTarget(s.id, tk), s.unit))}</span></div>
-    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}</button>`).join('')}</div><div class="row lk-row">${lockCtl('skill', s.id)}</div></div>`; }).join('') : '<div class="mu small">No active skills. Turn some on in Board → Skills.</div>'}
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}${(S.skills[s.id].times || {})[i] ? `<small class="chip-t">${shortTime(S.skills[s.id].times[i])}</small>` : ''}</button>`).join('')}</div><div class="row lk-row">${lockCtl('skill', s.id)}</div></div>`; }).join('') : '<div class="mu small">No active skills. Turn some on in Board → Skills.</div>'}
   ${tks.length ? `<div class="tg" style="margin-top:14px">Tasks</div>${tks.map(t => { const ld = lockedDays('task', t.id); return `<div class="list-item col"><div class="row"><span class="sp">${esc(t.name)}</span><span class="mu small">${esc(taskDesc(t))}</span></div>
-    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}</button>`).join('')}</div><div class="row lk-row">${lockCtl('task', t.id)}</div></div>`; }).join('')}` : ''}
-  <p class="mu2 small" style="margin-top:10px">${ICON.lock} Lock a schedule to commit to it for a while: its days can't be removed until the lock ends, and those quests earn +${Math.round(LOCK_BONUS * 100)}% XP.</p>
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}${(t.times || {})[i] ? `<small class="chip-t">${shortTime(t.times[i])}</small>` : ''}</button>`).join('')}</div><div class="row lk-row">${lockCtl('task', t.id)}</div></div>`; }).join('')}` : ''}
+  <div class="list-item col" style="margin-top:14px"><div class="row"><span class="sp">Bed schedule</span><span class="mu small">by ${fmtClock(S.profile.sleep)}</span></div><div class="row lk-row">${lockCtl('sleep', 'sleep')}</div></div>
+  <p class="mu2 small" style="margin-top:10px">${ICON.clock} Long-press a day to set a time. A quest with a time opens at it and closes at bedtime (or ${GRACE_MIN} minutes after their time, if you choose).</p>
+  <p class="mu2 small" style="margin-top:6px">${ICON.lock} Lock a schedule to commit to it for a while: its days can't be removed until the lock ends, and those quests earn +${Math.round(LOCK_BONUS * 100)}% XP. A Lockpick from the shop ends a lock early and takes its bonus XP back.</p>
   </div>`;
 }
 /* v14: tap a date on the calendar → every quest that day: what was done (past), live (today) or planned (ahead) */
@@ -2285,7 +2599,7 @@ function dayPreviewHtml(k) {
   const q = d ? d.q : past ? null : generate(k), evs = S.events.filter(e => occursOn(e, k));
   const tag = today ? 'Today' : past ? 'Past' : 'Planned', tom = addDays(tk, 1) === k && S.pendingPen && (S.pendingPen.tier || (S.pendingPen.fixed || []).length);
   const badges = [S.rest.includes(k) ? '<span class="pill">Rest day</span>' : '', isDeload(k) ? '<span class="pill">Deload week · −25%</span>' : '',
-    pi ? `<span class="pill ${pi.emergency ? 'bad' : ''}">${pi.emergency ? 'Extreme emergency' : 'Paused'} · ${esc(pi.all ? 'everything' : 'some lists')}</span>` : '',
+    pi ? `<span class="pill ${pi.emergency ? 'bad' : ''}">${pi.emergency ? 'Emergency' : 'Paused'} · ${esc(pi.all ? 'everything' : 'some lists')}</span>` : '',
     fst ? `<span class="pill gold">Fast · day ${fastDay(fst, k)}/${fastLen(fst)}</span>` : '', d && d.penTier ? `<span class="pill bad">Penalty · ${esc(penTierName(d.penTier))}</span>` : ''].filter(Boolean).join(' ');
   const row = x => {
     const n = x.sessions || 1, part = x.task && n > 1 && x.progress > 0 && !x.done;
@@ -2325,6 +2639,7 @@ function eventModal(ev) {
   <label>Repeats</label><select name="repeat" data-c="evRepeat">${[['none', 'Does not repeat'], ['daily', 'Every day'], ['weekly', 'Weekly on…'], ['monthly', 'Every month'], ['yearly', 'Every year']].map(([v, n]) => `<option value="${v}" ${v === e.repeat ? 'selected' : ''}>${n}</option>`).join('')}</select>
   <div id="evDays" class="chips days" style="margin-top:8px;${e.repeat === 'weekly' ? '' : 'display:none'}">${WD.map((w, i) => `<button type="button" class="chip ${(e.days || []).includes(i) ? 'on' : ''}" data-a="chipT" data-k="${i}">${w}</button>`).join('')}</div>
   <div class="grid2"><div><label>Start</label><input name="start" type="date" value="${e.start}"></div><div><label>End (optional)</label><input name="end" type="date" value="${e.end || ''}"></div></div>
+  <label>Time (optional)</label><input name="time" type="time" value="${e.time || ''}" style="max-width:180px">
   </form>
   <div class="actions">${ev ? `<button class="btn-g bad" data-a="evDel" data-id="${e.id}">Delete</button><span class="sp"></span>` : ''}<button data-a="close">Cancel</button><button class="btn-p" data-a="evSave" data-id="${e.id || ''}">Save</button></div>`);
 }
@@ -2334,7 +2649,7 @@ function saveEvent(id) {
   const start = f.get('start') || todayKey(), end = f.get('end') || '';
   if (end && end < start) { toast('End date is before start'); return; }
   const days = chipsOn('#evDays').map(Number);
-  const e = { id: id || uid(), title: title || SK[skill].name, list: f.get('list'), skill: skill || null, repeat: f.get('repeat'), days, start, end, target: num(f.get('target')), unit: (f.get('unit') || '').trim() };
+  const e = { id: id || uid(), title: title || SK[skill].name, list: f.get('list'), skill: skill || null, repeat: f.get('repeat'), days, start, end, target: num(f.get('target')), unit: (f.get('unit') || '').trim(), time: f.get('time') || undefined };
   const old = id && S.events.find(x => x.id === id);
   if (old && isLocked('event', id) && (old.repeat !== e.repeat || old.start !== e.start || (old.end || '') !== e.end || (old.days || []).some(d => !e.days.includes(d)))) { lockRefuse('event', id, 'change its dates (you can add days)'); return; }
   if (skill) skState(skill);
@@ -2344,7 +2659,7 @@ function saveEvent(id) {
 function vacModal() {
   const tk = todayKey(), active = SKL.filter(s => isLib(s) && (S.skills[s.id] || {}).active), y = tk.slice(0, 4), left = Math.max(0, vacAllow(y) - vacDaysIn(y).size);
   openModal(`<h3>Vacation pause</h3><p class="mu small">Plan it ahead. Paused quests don't appear on those days. Days with nothing left don't touch your streak or give penalties.</p>
-  <div class="dg-aim small"><b class="num">${left}</b> of ${vacAllow(y)} vacation days left in ${y} (${S.profile.student ? 'student' : 'adult'}: ${S.profile.student ? VAC_DAYS.student : VAC_DAYS.adult} a year${(S.vacBought || {})[y] ? `, +${S.vacBought[y]} bought` : ''}). Extra days cost ${VAC_EXTRA_COST} coins each.</div>
+  <div class="dg-aim small"><b class="num">${left}</b> of ${vacAllow(y)} vacation days left in ${y}${(S.vacBought || {})[y] ? `, including +${S.vacBought[y]} bought` : ''}. Extra days cost ${VAC_EXTRA_COST} coins each.</div>
   <label>Label (optional)</label><input id="vNote" placeholder="e.g. Seoul trip">
   <div class="grid2"><div><label>First day</label><input id="vStart" type="date" min="${tk}" value="${addDays(tk, 1)}"></div><div><label>Last day</label><input id="vEnd" type="date" min="${tk}" value="${addDays(tk, 7)}"></div></div>
   <label class="check"><input type="checkbox" id="vAll"> Pause everything</label>
@@ -2355,8 +2670,8 @@ function vacModal() {
 }
 function emModal() {
   ui.emDur = 3; const y = todayKey().slice(0, 4), left = EM_PER_YEAR - emUsed(y);
-  if (left <= 0) { openModal(`<h3 class="bad">Extreme emergency</h3><p class="mu">You've used all ${EM_PER_YEAR} extreme emergencies for ${y}. They come back on January 1. For time off you can plan, use a vacation pause or a Rest Day Pass.</p><div class="actions"><button data-a="close">OK</button></div>`, { cls: 'danger' }); return; }
-  openModal(`<h3 class="bad">Extreme emergency</h3><p class="mu">Pauses <b>every</b> quest starting today, penalties included. Your streak is frozen and no penalties are given. Any pending penalty exercises wait until you're back.</p>
+  if (left <= 0) { openModal(`<h3 class="bad">Emergency</h3><p class="mu">You've used all ${EM_PER_YEAR} emergencies for ${y}. They come back on January 1. For time off you can plan, use a vacation pause or a Rest Day Pass.</p><div class="actions"><button data-a="close">OK</button></div>`, { cls: 'danger' }); return; }
+  openModal(`<h3 class="bad">Emergency</h3><p class="mu">Pauses <b>every</b> quest starting today, penalties included. Your streak is frozen and no penalties are given. Any pending penalty exercises wait until you're back.</p>
   <div class="small mu2">${left} of ${EM_PER_YEAR} left for ${y}.</div>
   <label>How long?</label><div class="chips" id="emDur">${[[1, 'Today only'], [3, '3 days'], [7, '1 week'], [14, '2 weeks'], [0, 'Until I end it']].map(([v, n]) => `<button class="chip ${v === 3 ? 'on' : ''}" data-a="emDur" data-id="${v}">${n}</button>`).join('')}</div>
   <label>Note (optional)</label><input id="emNote" placeholder="Only you see this">
@@ -2905,7 +3220,7 @@ function libFolder(f, depth = 0) {
   return `<details data-f="${f.id}" ${ui.libOpen.has(f.id) ? 'open' : ''}><summary><span class="sp">${user ? '<span class="fd-ic">' + ICON.folder + '</span>' : ''}${esc(f.name)}</span><span class="mu2 small num">${on}/${all.length}</span>${ICON.chev}</summary><div class="lib-body">
     ${subFolders(f.id).map(c => libFolder(c, depth + 1)).join('')}
     ${own.map(s => { const a = (S.skills[s.id] || {}).active;
-      return `<div class="list-item"><span class="sp">${esc(s.name)}${s.custom ? ' <span class="pill">Custom</span>' : ''}</span><span class="mu2 small num">Lv ${skLevel(s.id).L} · ${esc(skillRank(s.id))}</span><button class="chip ${a ? 'on' : ''}" data-a="skToggle" data-id="${s.id}">${a ? 'Active' : 'Add'}</button><button class="btn-g x lib-del" data-a="${s.custom ? 'csDel' : 'skHide'}" data-id="${s.id}" aria-label="Delete ${esc(s.name)}">${ICON.trash}</button></div>`; }).join('')}
+      return `<div class="list-item"><span class="sp">${esc(s.name)}${s.custom ? ' <span class="pill">Custom</span>' : ''}${s.variant === 'school' || s.school ? ' <span class="pill sch">Schoolwork</span>' : s.variant === 'personal' ? ' <span class="pill">Personal / Professional</span>' : ''}</span><span class="mu2 small num">Lv ${skLevel(s.id).L} · ${esc(skillRank(s.id))}</span><button class="chip ${a ? 'on' : ''}" data-a="skToggle" data-id="${s.id}">${a ? 'Active' : 'Add'}</button><button class="btn-g x lib-del" data-a="${s.custom ? 'csDel' : 'skHide'}" data-id="${s.id}" aria-label="Delete ${esc(s.name)}">${ICON.trash}</button></div>`; }).join('')}
     <div class="lib-acts"><button class="btn-g small" data-a="csNew" data-f="${f.id}">+ Skill here</button><button class="btn-g small" data-a="fdNew" data-f="${f.id}">+ Folder here</button>${user ? `<span class="sp"></span><button class="btn-g small" data-a="fdEdit" data-id="${f.id}">Rename</button><button class="btn-g small bad" data-a="fdDel" data-id="${f.id}">Delete</button>` : ''}</div></div></details>`;
 }
 function meSkills() {
@@ -2970,7 +3285,9 @@ function saveCustomSkill(id) {
   const unit = f.get('unit');
   let fid = f.get('f') || 'custom';
   if (fid === '__new') { const fn = (f.get('fNew') || '').trim(); if (!fn) { toast('Name the new folder'); return; } fid = 'u_' + uid().slice(0, 8); S.folders.push({ id: fid, name: fn, parent: f.get('fNewP') || null }); }
-  const def = { id: id || 'c_' + uid().slice(0, 8), name, f: fid, role: (f.get('role') || '').trim(), list: f.get('list'), unit, base, max: Math.max(base, max || base * 4), phys: !!f.get('phys'), act: f.get('act') || null, scale: Math.max(1, num(f.get('scale')) || 100), stats };
+  const schoolF = /^sch_/.test(fid) ? fid.slice(4) : null; // v19: in a Schoolwork subject folder = a school skill
+  const def = { id: id || 'c_' + uid().slice(0, 8), name, f: fid, role: (f.get('role') || '').trim(), list: schoolF ? 'Schoolwork' : f.get('list'), unit, base, max: Math.max(base, max || base * 4), phys: !!f.get('phys'), act: f.get('act') || null, scale: Math.max(1, num(f.get('scale')) || 100), stats };
+  if (schoolF) def.school = { subject: schoolF };
   const i = S.customSkills.findIndex(c => c.id === def.id);
   if (i >= 0) S.customSkills[i] = def; else S.customSkills.push(def);
   rebuildSK();
@@ -3012,15 +3329,18 @@ function meBooks() {
     ${b.finished ? '' : `<div class="bar"><i style="width:${Math.min(100, (b.read || 0) / b.pages * 100)}%"></i></div><div class="row" style="margin-top:10px"><input type="number" inputmode="numeric" placeholder="Current page" id="bkr_${b.id}" style="flex:1"><button class="btn-s" data-a="bkPage" data-id="${b.id}">Update</button><button class="btn-s btn-p" data-a="bkFin" data-id="${b.id}">Finished</button></div>`}</div>`).join('')}`;
 }
 function meSettings() {
-  const p = S.profile, ft = Math.floor((p.heightCm || 0) / 2.54 / 12), inch = Math.round((p.heightCm || 0) / 2.54 - ft * 12), seg = ui.setSeg === 'look' ? 'look' : 'gen';
+  const p = S.profile, bedLocked = isLocked('sleep', 'sleep'), ft = Math.floor((p.heightCm || 0) / 2.54 / 12), inch = Math.round((p.heightCm || 0) / 2.54 - ft * 12), seg = ui.setSeg === 'look' ? 'look' : 'gen';
   const tabs = `<div class="seg set-seg">${[['gen', 'General'], ['look', 'Themes & display']].map(([v, n]) => `<button class="${seg === v ? 'on' : ''}" data-a="setSeg" data-id="${v}">${n}</button>`).join('')}</div>`;
   if (seg === 'look') return tabs + themeCard() + styleCard() + colorCard() + rankCard() + htCard() + szCard(); // v13: everything about the look in one tab (v17: + rank style)
   return `${tabs}<div class="card"><h3>Profile</h3><form id="setForm" onsubmit="return false">
     <label>Name</label><input name="name" value="${esc(p.name)}">
     <div class="grid2"><div><label>Sex</label><select name="sex"><option value="M" ${p.sex === 'M' ? 'selected' : ''}>Male</option><option value="F" ${p.sex === 'F' ? 'selected' : ''}>Female</option></select></div><div><label>Birth year</label><input name="birthYear" type="number" value="${p.birthYear}"></div></div>
     <div class="grid2"><div><label>Height (${imperial() ? 'total in' : 'cm'}, optional)</label><input name="height" type="number" value="${p.heightCm ? (imperial() ? Math.round(p.heightCm / 2.54) : p.heightCm) : ''}" placeholder="—"></div><div><label>Units</label><select name="units"><option value="imperial" ${imperial() ? 'selected' : ''}>Imperial</option><option value="metric" ${!imperial() ? 'selected' : ''}>Metric</option></select></div></div>
-    <label class="check" style="margin-top:12px"><input type="checkbox" name="student" ${p.student ? 'checked' : ''}> I'm a student <span class="mu2 small">(${VAC_DAYS.student} vacation days a year instead of ${VAC_DAYS.adult})</span></label>
-    <div class="grid2"><div><label>Wake (day reset)</label><input name="wake" type="time" value="${p.wake}"></div><div><label>Sleep deadline</label><input name="sleep" type="time" value="${p.sleep}"></div></div>
+    <label>Time format</label><select name="time24"><option value="0" ${!p.time24 ? 'selected' : ''}>12-hour (11:00 PM)</option><option value="1" ${p.time24 ? 'selected' : ''}>24-hour (23:00)</option></select>
+    <label style="margin-top:12px">Student?</label><select name="studentLevel"><option value="">Not a student</option>${STUDENT_LEVELS.map(([v, n]) => `<option value="${v}" ${p.studentLevel === v ? 'selected' : ''}>${n}</option>`).join('')}</select><div class="mu2 small">Students get School Break: ${SCHOOL_BREAK_DAYS} days a year that pause only Schoolwork.</div>
+    <div class="grid2"><div><label>Wake (day reset)</label><input name="wake" type="time" value="${p.wake}" ${bedLocked ? 'disabled' : ''}></div><div><label>Sleep deadline</label><input name="sleep" type="time" value="${p.sleep}" ${bedLocked ? 'disabled' : ''}></div></div>
+    <div class="row lk-row">${lockCtl('sleep', 'sleep')}</div>
+    ${bedLocked ? `<div class="mu2 small">Wake and sleep times are locked until ${fmtDate(lockEnd('sleep', 'sleep'))}.</div>` : ''}
     <label>Diet goal</label><div class="row dg-sum"><div class="sp small">${esc(dietSummary())}</div><button type="button" class="btn-s" data-a="dietGoal">Edit</button></div>
     <button class="btn-p btn-big" data-a="setSave">Save profile</button></form>
     <div class="mu2 small" style="margin-top:8px">${p.heightCm ? `${ft}′${inch}″ · ` : ''}started ${p.start ? fmtDate(p.start) : '—'}</div></div>
@@ -3051,7 +3371,7 @@ function deletedCard() { // built-in skills and tasks the user deleted (hidden, 
 }
 
 /* ---------- backups ---------- */
-const backupName = () => `deificatio-backup-${todayKey()}`;
+const backupName = () => `eutaxia-backup-${todayKey()}`;
 function markBackup(msg) { S.lastBackup = todayKey(); S.backupSnooze = null; save(); render(); toast(msg, 'ti'); }
 const backupText = () => JSON.stringify(custPhoto.data ? Object.assign({}, S, { _bgPhoto: custPhoto.data }) : S);
 function downloadBackup() {
@@ -3078,7 +3398,7 @@ function shareBackup() {
   const opts = isAndroid() || ui.bkTxt ? [txt] : [new File([data], backupName() + '.json', { type: 'application/json' }), txt];
   const file = navigator.share && navigator.canShare ? opts.find(f => { try { return navigator.canShare({ files: [f] }); } catch (e) { return false; } }) : null;
   if (!file) { backupModal('noshare'); return; }
-  navigator.share({ files: [file], title: 'Deificatio backup' }).then(() => { closeModal(true); markBackup('Backup saved'); })
+  navigator.share({ files: [file], title: 'Eutaxia backup' }).then(() => { closeModal(true); markBackup('Backup saved'); })
     .catch(e => { if (e && e.name === 'AbortError') return; // closed the share list: the question stays open
       ui.bkTxt = true; backupModal('fail'); }); // next try sends the .txt copy (accepted everywhere)
 }
@@ -3097,6 +3417,8 @@ const A = {
   seasonReset: () => { ui.previewHu = null; render(); },
   tab: el => { ui.tab = el.dataset.id; render(); window.scrollTo(0, 0); },
   tq: el => toggleQuest(el.dataset.id),
+  tmSave: () => timeSave(false),
+  tmClear: () => timeSave(true),
   tqMinus: el => { const d = S.days[todayKey()], q = d && d.q.find(x => x.key === el.dataset.id); if (q) stepTask(q, -1); },
   goBoard: el => { ui.tab = 'board'; ui.boardSeg = el.dataset.id || 'tasks'; render(); window.scrollTo(0, 0); },
   boardSeg: el => { ui.boardSeg = el.dataset.id; render(); },
@@ -3120,14 +3442,14 @@ const A = {
   sideNew: el => sideModal(null, el.dataset.id),
   sideIdea: el => sideModal(null, el.dataset.id, SIDE_TEMPLATES[el.dataset.id][+el.dataset.k]),
   sideOpen: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; if (ui.tab !== 'board') { ui.tab = 'board'; ui.boardSeg = q.type; ui.sideOpen = q.id; render(); window.scrollTo(0, 0); return; } ui.sideOpen = ui.sideOpen === q.id ? null : q.id; render(); },
-  sideEdit: el => { const q = S.side.find(x => x.id === el.dataset.id); if (q) sideModal(q, q.type); },
+  sideEdit: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; if (lockRefuse('side', q.id, 'edit it')) return; sideModal(q, q.type); },
   sideDone: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q || q.status !== 'active') return; if (!confirm(`Complete "${q.title}"?`)) return; completeSide(q); },
   sideGive: el => {
-    const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; const tk = todayKey(), fail = sideCounts(q) && q.start <= tk && sideFutureDue(q, tk);
+    const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; if (lockRefuse('side', q.id, 'give it up')) return; const tk = todayKey(), fail = sideCounts(q) && q.start <= tk && sideFutureDue(q, tk);
     if (!confirm(fail ? 'Give up on this quest? It counts toward your day, so giving up counts as failing it: today won’t be complete, and you’ll get penalty exercises tomorrow.' : 'Give up on this quest? There’s no penalty.')) return;
     q.status = 'given'; q.doneOn = tk; if (fail) q.failed = true; afterChange();
   },
-  sideDel: el => { if (!confirm('Delete this quest from your history?')) return; S.side = S.side.filter(x => x.id !== el.dataset.id); afterChange(); },
+  sideDel: el => { const q = S.side.find(x => x.id === el.dataset.id); if (!q) return; if (q.status === 'active' && lockRefuse('side', q.id, 'delete it')) return; if (!confirm('Delete this quest from your history?')) return; S.side = S.side.filter(x => x.id !== q.id); S.locks = (S.locks || []).filter(l => !(l.kind === 'side' && l.ref === q.id)); afterChange(); },
   sideLog: el => {
     const q = S.side.find(x => x.id === el.dataset.id), k = todayKey(); if (!q || q.status !== 'active') return;
     let m = Math.round(num($('#sl_' + q.id).value) || 0); if (m <= 0) { toast('Enter minutes'); return; }
@@ -3195,6 +3517,20 @@ const A = {
   restToggle: el => { const k = el.dataset.id; S.rest = S.rest.includes(k) ? S.rest.filter(x => x !== k) : [...S.rest, k]; if (k === todayKey()) regenToday(); afterChange(); },
   skDay: el => { const s = skState(el.dataset.id), d = +el.dataset.d; if (s.days.includes(d) && lockedDays('skill', el.dataset.id).includes(d)) { lockRefuse('skill', el.dataset.id, 'remove a locked day'); return; } s.days = s.days.includes(d) ? s.days.filter(x => x !== d) : [...s.days, d].sort(); regenToday(); afterChange(); },
   vacNew: () => vacModal(),
+  sbNew: () => schoolModal(),
+  sbSave: () => {
+    const tk = todayKey(), start = $('#sbStart').value, end = $('#sbEnd').value;
+    if (!S.profile.student) { toast('School breaks are for students'); return; }
+    if (!start || !end) { toast('Pick both dates'); return; }
+    if (start < tk) { toast("A break can't start in the past"); return; }
+    if (end < start) { toast('Last day is before first day'); return; }
+    const over = schoolNeed(start, end).filter(x => x.over);
+    if (over.length) { toast(`That's past your ${SCHOOL_BREAK_DAYS} school-break days for ${over.map(x => x.y).join(', ')} (${over.map(x => x.over).reduce((a, b) => a + b, 0)} too many)`, 'bad'); return; }
+    S.pauses.push({ id: uid(), type: 'school', start, end, all: false, lists: ['Schoolwork'], skills: [], tasks: [], note: $('#sbNote').value.trim() });
+    closeModal(true); if (start === tk) regenToday(); afterChange(); toast('School break scheduled');
+  },
+  schAdd: el => { const sb = SUBJ(el.dataset.s), kd = (SCHOOL_DATED || []).find(x => x[0] === el.dataset.k); if (!sb || !kd) return;
+    sideModal(null, 'once', { title: `${sb.short} ${kd[1].toLowerCase()}`, diff: kd[2], school: { subject: sb.id, kind: kd[0] }, list: 'Schoolwork', needDate: true }); },
   vacSave: () => {
     const tk = todayKey(), start = $('#vStart').value, end = $('#vEnd').value, all = $('#vAll').checked;
     const lists = chipsOn('#vLists'), skills = $('#vSkills') ? chipsOn('#vSkills') : [], tasks = $('#vTasks') ? chipsOn('#vTasks') : [];
@@ -3298,6 +3634,16 @@ const A = {
   rwHide: () => { S.rwHidden = (S.rewards || []).filter(r => !r.used).map(r => r.id); afterChange(); },
   lockNew: el => lockModal(el.dataset.k, el.dataset.id),
   lkGo: () => lockGo(),
+  pickOpen: el => pickModal(el.dataset.k, el.dataset.id),
+  pickGo: el => pickGo(el.dataset.id),
+  pickBuy: () => {
+    if ((S.picks || 0) > 0) return;
+    if ((S.coins || 0) < SHOP_PICK) { toast(`You need ${SHOP_PICK} coins · you have ${S.coins || 0}`, 'bad'); return; }
+    if (!confirm(`Spend ${SHOP_PICK} coins on a Lockpick?`)) return;
+    S.coins -= SHOP_PICK; S.picks = (S.picks || 0) + 1; afterChange();
+    if (ui.pick) pickModal(ui.pick.kind, ui.pick.ref);
+    toast(`Lockpick bought · you have ${S.picks}`, 'ti');
+  },
   htWd: el => { htSet(o => { o.wd = el.dataset.id === '1'; }); htRefresh(true); },
   htExtra: el => { const [m, pos] = el.dataset.id.split(':'); htSet(o => { o.extra[m] = pos || null; }); htRefresh(true); },
   suBg: el => { S.theme = { id: 'custom', custom: Object.assign(custOpts(), { mode: 'color', bg: el.dataset.id }) }; ui.season = applySeason(); suRefresh(); },
@@ -3416,10 +3762,13 @@ const A = {
   setSave: () => {
     const f = new FormData($('#setForm')), p = S.profile;
     const h = num(f.get('height')), wasImp = imperial();
-    p.name = f.get('name').trim(); p.sex = f.get('sex'); p.birthYear = +f.get('birthYear') || p.birthYear; p.student = !!f.get('student');
+    p.name = f.get('name').trim(); p.sex = f.get('sex'); p.birthYear = +f.get('birthYear') || p.birthYear; p.studentLevel = f.get('studentLevel') || null; p.student = !!p.studentLevel; p.time24 = f.get('time24') === '1';
     p.heightCm = h > 0 ? (wasImp ? Math.round(h * 2.54) : h) : null; // empty = not given
     p.units = f.get('units');
-    const oldWake = p.wake; p.wake = f.get('wake') || p.wake; p.sleep = f.get('sleep') || p.sleep;
+    const oldWake = p.wake; if (!isLocked('sleep', 'sleep')) p.wake = f.get('wake') || p.wake; // v19: the bed lock freezes wake too
+    else if (f.get('wake') && f.get('wake') !== p.wake) toast(`Wake time is locked until ${fmtDate(lockEnd('sleep', 'sleep'))}`, 'bad');
+    if (!isLocked('sleep', 'sleep')) p.sleep = f.get('sleep') || p.sleep;
+    else if (f.get('sleep') && f.get('sleep') !== p.sleep) toast(`Sleep time is locked until ${fmtDate(lockEnd('sleep', 'sleep'))}`, 'bad');
     if (oldWake !== p.wake) { save(); boot(); } else { regenToday(); afterChange(); }
     toast('Saved');
   },
@@ -3441,8 +3790,10 @@ const A = {
   },
   reset: () => { if (!confirm('Erase ALL data? This cannot be undone.') || !confirm('Really erase everything?')) return; localStorage.removeItem(STORE); IDB.del('bgPhoto').catch(() => { }); custPhoto.url = custPhoto.data = null; lookKey = null; S = fresh(); rebuildSK(); boot(); },
 };
+bindLongPress('.chips.days .chip[data-a=skDay], .chips.days .chip[data-a=tkDay]', 450, el => timeModal(el.dataset.a === 'skDay' ? 'skill' : 'task', el.dataset.id, +el.dataset.d)); // v19
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-a]'); if (!el) return;
+  if (ui.lpAt && Date.now() - ui.lpAt < 900 && /^(skDay|tkDay)$/.test(el.dataset.a)) { ui.lpAt = 0; e.preventDefault(); return; } // v19: the tap that ends a long press
   if (el.tagName === 'A' || el.tagName === 'BUTTON') e.preventDefault();
   const fn = A[el.dataset.a]; if (fn) fn(el, e);
 });
@@ -3488,6 +3839,9 @@ document.addEventListener('change', e => {
   if (k === 'be' && ui.be) ui.be.rows[+t.dataset.id][t.dataset.k] = t.value;
   if (k === 'beWord' && ui.be) { ui.be.word = t.value; $('#beBody').innerHTML = beBody(); }
   if (k === 'tkExp') { const b = $('#tkForm [name=base]'); if (b) b.value = roundUnit((+b.dataset.b || 10) * EXP_MULT[t.value], 'min'); }
+  if (k === 'sd' && ui.sd && t.type === 'checkbox') { ui.sd[t.dataset.k] = t.checked; return; }
+  if (k === 'sdSub' && ui.sd) { if (t.value) { ui.sd.school = Object.assign({}, ui.sd.school || {}, { subject: t.value }); ui.sd.list = 'Schoolwork'; } else { delete ui.sd.school; delete ui.sd.list; ui.sd.needDate = false; } return; }
+  if (k === 'tkSub') return;
   if (k === 'sd' && ui.sd) { const f = t.dataset.k; ui.sd[f] = t.value || null; if (f === 'start' && !ui.sd.start) ui.sd.start = todayKey(); if (f === 'durU') $('#sdBody').innerHTML = sdBody(); else if ($('#sdEnd')) $('#sdEnd').innerHTML = sdEndTxt(); }
   if (k === 'htDate') { htSet(o => { o.date = t.value; }); htRefresh(true); }
   if (k === 'peUnit' && ui.pe) { const it = ui.pe.items[+t.dataset.n]; it.unit = t.value; if (t.value === 'money') { it.sym = it.sym || '$'; it.grow = false; } peRefresh(); }

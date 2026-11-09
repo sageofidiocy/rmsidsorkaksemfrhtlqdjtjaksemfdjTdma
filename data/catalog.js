@@ -105,7 +105,7 @@
     S('video', 'Video Editing', 'Craft', 'Craft', 'min', 30, 180, [r('cut', 'Cutting & pacing'), r('color', 'Color'), r('sound', 'Sound'), r('motion', 'Motion graphics'), H(250), C]),
     S('drawing', 'Drawing', 'Craft', 'Craft', 'min', 30, 180, [r('fund', 'Fundamentals'), r('anat', 'Anatomy'), r('persp', 'Perspective'), r('color', 'Color'), H(250), C]),
     inst('piano', 'Piano'), inst('guitar', 'Guitar'), inst('cajon', 'Cajón'), inst('harmonica', 'Harmonica'), inst('trumpet', 'Trumpet'),
-    S('work', 'Ability at Work', 'Work', 'Work', 'min', 60, 240, [r('output', 'Output'), r('quality', 'Quality'), r('focus', 'Focus'), r('comms', 'Communication'), H(400), C]),
+    S('work', 'Job Performance', 'Work', 'Work', 'min', 60, 240, [r('output', 'Output'), r('quality', 'Quality'), r('focus', 'Focus'), r('comms', 'Communication'), H(400), C]),
     S('discipline', 'Discipline', 'Core', null, null, 0, 0, [
       { k: 'd_comp', n: 'Completion (30d)', t: 'a' }, { k: 'd_streak', n: 'Streak', t: 'a' }, { k: 'd_sleep', n: 'Sleep on time', t: 'a' },
       { k: 'd_clean', n: 'Penalty-free', t: 'a' }, { k: 'd_perfect', n: 'Perfect days', t: 'a' }]),
@@ -240,6 +240,24 @@
   const ID_FOLDER = { skiing: 'outdoor', swimming: 'water', waterpolo: 'water', basketball: 'ball', soccer: 'ball', tennis: 'ball', cycling: 'outdoor', hiking: 'outdoor' };
   SKILLS.forEach(s => { if (!s.f) s.f = ID_FOLDER[s.id] || CAT_FOLDER[s.cat] || 'custom'; });
 
+  /* v19 Schoolwork: a top-level folder with one subfolder per subject (ids sch_<subject>, permanent). */
+  const SUBJECTS = [
+    ['math', 'Mathematics', 'Math'], ['eng', 'English & Literature', 'English'], ['sci', 'Science', 'Science'], ['bio', 'Biology', 'Biology'],
+    ['chem', 'Chemistry', 'Chemistry'], ['phys', 'Physics', 'Physics'], ['hist', 'History & Social Studies', 'History'], ['lang', 'World Language', 'Language'],
+    ['cs', 'Computer Science', 'Computer Science'], ['art', 'Art', 'Art'], ['music', 'Music', 'Music'], ['pe', 'Physical Education', 'PE'],
+    ['econ', 'Economics', 'Economics'], ['psych', 'Psychology', 'Psychology'], ['other', 'Other subject', 'Other'],
+  ].map(([id, name, short]) => ({ id, name, short, f: 'sch_' + id }));
+  FOLDERS.splice(FOLDERS.findIndex(f => f.id === 'workout'), 0, F('school', 'Schoolwork'), ...SUBJECTS.map(x => F(x.f, x.name, 'school')));
+  /* School twins: separate skills (their own XP) of the personal ones, for classes. id school_<id>, list Schoolwork. */
+  const TWIN = { math: 'math', literature: 'eng', biology: 'bio', chemistry: 'chem', physics: 'phys', history: 'hist', economics: 'econ', psychology: 'psych' };
+  Object.entries(TWIN).forEach(([id, sub]) => {
+    const o = SKILLS.find(x => x.id === id); if (!o) return; o.variant = 'personal';
+    SKILLS.push(Object.assign({}, o, { id: 'school_' + id, name: o.name + ' (school)', list: 'Schoolwork', f: 'sch_' + sub, variant: 'school', twin: id, school: { subject: sub } }));
+  });
+  SKILLS.push(Object.assign(lang('school_lang', 'World Language (school)'), { list: 'Schoolwork', f: 'sch_lang', variant: 'school', school: { subject: 'lang' } }));
+  SKILLS.push(Object.assign(RS('school_cs', 'Computer Science (school)', 'sch_cs', 'Study', 'Schoolwork', 'min', 30, 180, ['Programming', 'Algorithms', 'Theory', 'Projects'], 300), { variant: 'school', school: { subject: 'cs' } }));
+  SKILLS.push(Object.assign(RS('school_sci', 'Science (school)', 'sch_sci', 'Study', 'Schoolwork', 'min', 20, 120, ['Concepts', 'Lab work', 'Problem solving'], 250), { variant: 'school', school: { subject: 'sci' } }));
+
   /* Belt ladders (common adult systems; they vary by school, so the app lets you edit them).
      m = how many marks a belt can carry, ml = what they're called: stripe / degree / dan / kyu; d0 = first dan number on that belt. */
   const B = (n, c, m = 0, ml = 'stripe', c2 = null, d0 = 1) => ({ n, c, c2, m, ml, d0 });
@@ -321,6 +339,15 @@
     T('goschool', 'Go to school', 'times', 1, 0, 0, 1, 'Study', [1, 2, 3, 4, 5], ['First Bell', 'Present!', 'Perfect Attendance', 'Hallway Regular', 'Honor Roll Commuter', 'Lifelong Learner']),
     T('leaveschool', 'Leave school', 'times', 1, 0, 0, 1, 'Study', [1, 2, 3, 4, 5], ['Final Bell', 'Homeward Bound', 'Backpack Unloaded', 'Bus Line Veteran', 'Recess Forever', 'Graduate of Going Home']),
   ];
+  /* v19: recurring school tasks, one per subject and type (ids sch_<subject>_<type>, permanent). Not adopted by default. */
+  const SCHOOL_TASK_TYPES = [
+    { type: 'hw', name: 'homework', unit: 'min', base: 30, max: 120, diff: 2, ach: ['Homework Done', 'Never Late', 'Study Habit', 'Desk Warrior', "Teacher's Favorite", 'Honor Roll'] },
+    { type: 'asg', name: 'assignment', unit: 'min', base: 30, max: 180, diff: 2, ach: ['Turned In', 'On the Rubric', 'Assignment Ace', 'Deadline Destroyer', 'Gradebook Hero', 'Straight-A Streak'] },
+    { type: 'proj', name: 'project work', unit: 'min', base: 30, max: 180, diff: 3, ach: ['Project Started', 'Making Progress', 'Group Project Survivor', 'Presentation Pro', 'Science Fair Legend', 'Capstone Champion'] },
+  ];
+  SUBJECTS.forEach(sb => SCHOOL_TASK_TYPES.forEach(tt => TASKS.push(T(`sch_${sb.id}_${tt.type}`, `${sb.short} ${tt.name}`, tt.unit, 1, tt.base, tt.max, tt.diff, 'Schoolwork', [1, 2, 3, 4, 5], tt.ach, { f: sb.f, school: { subject: sb.id, kind: tt.type } }))));
+  /* v19: things that happen once (a date is required): added as one-time side quests in the Schoolwork list */
+  const SCHOOL_DATED = [['quiz', 'Quiz', 1], ['exam', 'Exam', 3], ['midterm', 'Midterm', 3], ['final', 'Final', 4], ['projdue', 'Project due', 3], ['paper', 'Paper due', 3]];
 
   /* One-time and time-limited quest ideas the user can adopt and edit. dur: [n, 'd'|'w'|'m'|'y'] or null = until done. */
   const SIDE_TEMPLATES = {
@@ -345,5 +372,5 @@
     ],
   };
 
-  window.CATALOG = { ACTIVITIES, SKILLS, FOLDERS, BELTS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES };
+  window.CATALOG = { ACTIVITIES, SKILLS, FOLDERS, BELTS, NORMS, CEFR, CEFR_PCT, RATING_PCT, RATING_LABEL, PENALTY, TITLE_CATALOG, TASKS, SIDE_TEMPLATES, SUBJECTS, SCHOOL_DATED };
 })();
