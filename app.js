@@ -876,7 +876,7 @@ const hhmmOf = ms => { const d = new Date(ms); return `${pad(d.getHours())}:${pa
 const GRACE_MIN = 30; // v19: a strict quest closes this long after its time
 const WD_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function byTime(list, k) { // v19: timed quests first, by time; the rest keep their order
-  return list.map((x, i) => [x, i, x.at ? dayTime(k, x.at) : x.end ? dayTime(k, x.end) : Infinity]).sort((a, b) => a[2] - b[2] || a[1] - b[1]).map(r => r[0]);
+  return list.map((x, i) => { const v = slotView(x, k); return [x, i, v.at ? dayTime(k, v.at) : v.end ? dayTime(k, v.end) : Infinity]; }).sort((a, b) => a[2] - b[2] || a[1] - b[1]).map(r => r[0]);
 }
 /* v19 long press: hold a weekday chip in the weekly plan (450 ms) to set that day's time. A plain tap still toggles the day. */
 function bindLongPress(sel, ms, fn) {
@@ -891,9 +891,14 @@ const timeCfg = (kind, ref) => kind === 'skill' ? skState(ref) : S.tasks[ref];
 /* v19.6 (Daniel: "give each quest an end time, a start time, or both"). times[weekday] = { s: 'HH:MM', e: 'HH:MM' } (either optional).
    Start = can't be ticked before it. End = shown as the deadline; with "Don't allow after the end time" (c.strict) it closes
    GRACE_MIN minutes after the end, otherwise it stays open until bedtime. v19.0–19.5 stored a plain 'HH:MM' start (migrate). */
-const tOf = (c, wd) => { const t = c && c.times && c.times[wd]; if (!t) return null; return typeof t === 'string' ? { s: t } : (t.s || t.e) ? t : null; };
+/* v19.9: a task done several times a day (sessions > 1) can have one slot per session: times[wd] = [{ s, e } | null, …] */
+const tSlots = (c, wd) => { const t = c && c.times && c.times[wd]; if (!t) return []; return (Array.isArray(t) ? t : [typeof t === 'string' ? { s: t } : t]).map(x => x && (x.s || x.e) ? x : null); };
+const tOf = (c, wd) => tSlots(c, wd).find(Boolean) || null;
+const ordinal = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+const nSess = (kind, c) => kind === 'task' ? Math.max(1, (c && c.sessions) || 1) : 1;
 const timeSpan = (s0, e0) => s0 && e0 ? `${fmtTime(s0)} – ${fmtTime(e0)}` : s0 ? `From ${fmtTime(s0)}` : e0 ? `By ${fmtTime(e0)}` : '';
-const chipTime = t => !t ? '' : t.s && t.e ? `${shortTime(t.s)}–${shortTime(t.e)}` : t.s ? shortTime(t.s) : '–' + shortTime(t.e);
+const chipTime1 = t => !t ? '' : t.s && t.e ? `${shortTime(t.s)}–${shortTime(t.e)}` : t.s ? shortTime(t.s) : '–' + shortTime(t.e);
+const chipTime = (t, c, wd) => { const n = c ? tSlots(c, wd).filter(Boolean).length : 1; return chipTime1(t) + (n > 1 ? ` +${n - 1}` : ''); };
 function timeModal(kind, ref, wd) { // the times for every scheduled day of a skill or task; wd = the day that was held (highlighted)
   const c = timeCfg(kind, ref); if (!c) return;
   if (wd != null && !(c.days || []).includes(wd)) { // holding an unscheduled day schedules it too
@@ -902,11 +907,15 @@ function timeModal(kind, ref, wd) { // the times for every scheduled day of a sk
   ui.tm = { kind, ref, wd };
   const locked = lockedDays(kind, ref), anyLock = isLocked(kind, ref), name = kind === 'skill' ? (SK[ref] || {}).name : c.name;
   const days = (c.days || []).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)); // Monday first
-  const row = d => { const t = tOf(c, d) || {}, lk = locked.includes(d);
-    return `<div class="tm-row${d === wd ? ' hi' : ''}${lk ? ' lk' : ''}"><b>${WD_LONG[d].slice(0, 3)}</b><input type="time" class="tmS" data-wd="${d}" value="${t.s || ''}" aria-label="${WD_LONG[d]} start" ${lk ? 'disabled' : ''}><span class="mu2">to</span><input type="time" class="tmE" data-wd="${d}" value="${t.e || ''}" aria-label="${WD_LONG[d]} end" ${lk ? 'disabled' : ''}>${lk ? ICON.lock : `<button class="btn-g x" data-a="tmRowClear" data-wd="${d}" aria-label="Clear ${WD_LONG[d]}">✕</button>`}</div>`; };
+  const n = nSess(kind, c), sl = d => { const a = tSlots(c, d); return Array.from({ length: n }, (_, i) => a[i] || {}); };
+  const pair = (d, i, t, lk) => `<input type="time" class="tmS" data-wd="${d}" data-i="${i}" value="${t.s || ''}" aria-label="${WD_LONG[d]} start${n > 1 ? ' ' + (i + 1) : ''}" ${lk ? 'disabled' : ''}><span class="mu2">to</span><input type="time" class="tmE" data-wd="${d}" data-i="${i}" value="${t.e || ''}" aria-label="${WD_LONG[d]} end${n > 1 ? ' ' + (i + 1) : ''}" ${lk ? 'disabled' : ''}>`;
+  const row = d => { const lk = locked.includes(d);
+    return `<div class="tm-row${d === wd ? ' hi' : ''}${lk ? ' lk' : ''}${n > 1 ? ' multi' : ''}">${sl(d).map((t, i) => `<b>${i ? `<span class="mu2 small">${ordinal(i + 1)}</span>` : WD_LONG[d].slice(0, 3)}</b>${pair(d, i, t, lk)}${i ? '<span></span>' : lk ? ICON.lock : `<button class="btn-g x" data-a="tmRowClear" data-wd="${d}" aria-label="Clear ${WD_LONG[d]}">✕</button>`}`).join('')}</div>`; };
+  const allRow = Array.from({ length: n }, (_, i) => `<b>${i ? `<span class="mu2 small">${ordinal(i + 1)}</span>` : 'All days'}</b><input type="time" class="tmAS" data-i="${i}" aria-label="Start ${i + 1}, every day"><span class="mu2">to</span><input type="time" class="tmAE" data-i="${i}" aria-label="End ${i + 1}, every day">${i ? '<span></span>' : '<button class="btn-s" data-a="tmApply">Apply</button>'}`).join('');
   openModal(`<h3>${ICON.clock} Times · ${esc(name || '')}</h3>
     <p class="mu small">Give any day a <b>start time</b>, an <b>end time</b>, or both. Leave both empty for no time. Before the start it can't be ticked; the end shows as its deadline.</p>
-    <div class="tm-all"><b>All days</b><input type="time" id="tmAS" aria-label="Start, every day"><span class="mu2">to</span><input type="time" id="tmAE" aria-label="End, every day"><button class="btn-s" data-a="tmApply">Apply</button></div>
+    ${n > 1 ? `<p class="mu small" style="margin-top:-4px">Done <b>${n}× a day</b>: each time gets its own slot (1st, 2nd…). Each tick uses the slot that's open now.</p>` : ''}
+    <div class="tm-all${n > 1 ? ' multi' : ''}">${allRow}</div>
     <div class="tm-grid">${days.length ? days.map(row).join('') : '<div class="mu small">No days scheduled.</div>'}</div>
     <label class="check" style="margin-top:10px"><input type="checkbox" id="tmStrict" ${c.strict ? 'checked' : ''} ${anyLock ? 'disabled' : ''}> Don't allow after the end time (${GRACE_MIN}-minute grace)</label>
     <div class="mu2 small">Off: after the end time it's late but can still be ticked until bedtime (${fmtTime(S.profile.sleep)}). On: it closes ${GRACE_MIN} minutes after the end time.</div>
@@ -917,23 +926,41 @@ function timeModal(kind, ref, wd) { // the times for every scheduled day of a sk
 function timeSave() {
   const T = ui.tm; if (!T) return; const c = timeCfg(T.kind, T.ref); if (!c) return;
   const locked = lockedDays(T.kind, T.ref), anyLock = isLocked(T.kind, T.ref), tk = todayKey(), next = {};
-  locked.forEach(d => { const t = tOf(c, d); if (t) next[d] = t; }); // locked days keep what they had
+  locked.forEach(d => { if (c.times && c.times[d]) next[d] = c.times[d]; }); // locked days keep what they had
+  const n = nSess(T.kind, c);
   for (const r of document.querySelectorAll('.tm-row')) {
-    const sI = r.querySelector('.tmS'), eI = r.querySelector('.tmE'), d = +sI.dataset.wd; if (locked.includes(d)) continue;
-    const s0 = sI.value, e0 = eI.value;
-    if (s0 && e0 && dayTime(tk, e0) <= dayTime(tk, s0)) { toast(`${WD_LONG[d]}: the end time is before the start time`, 'bad'); eI.focus(); return; }
-    if (s0 && dayTime(tk, s0) >= bedAt(tk)) { toast(`${WD_LONG[d]}: the start time is after your bedtime (${fmtTime(S.profile.sleep)})`, 'bad'); sI.focus(); return; }
-    if (e0 && dayTime(tk, e0) > bedAt(tk) + 15 * 60000) { toast(`${WD_LONG[d]}: the end time is after your bedtime (${fmtTime(S.profile.sleep)})`, 'bad'); eI.focus(); return; }
-    if (s0 || e0) next[d] = Object.assign({}, s0 ? { s: s0 } : {}, e0 ? { e: e0 } : {});
+    const first = r.querySelector('.tmS'); if (!first) continue; const d = +first.dataset.wd; if (locked.includes(d)) continue;
+    const slots = [];
+    for (const sI of r.querySelectorAll('.tmS')) {
+      const i = +sI.dataset.i, eI = r.querySelector(`.tmE[data-i="${i}"]`), s0 = sI.value, e0 = eI.value, lab = WD_LONG[d] + (n > 1 ? ` (${ordinal(i + 1)})` : '');
+      if (s0 && e0 && dayTime(tk, e0) <= dayTime(tk, s0)) { toast(`${lab}: the end time is before the start time`, 'bad'); eI.focus(); return; }
+      if (s0 && dayTime(tk, s0) >= bedAt(tk)) { toast(`${lab}: the start time is after your bedtime (${fmtTime(S.profile.sleep)})`, 'bad'); sI.focus(); return; }
+      if (e0 && dayTime(tk, e0) > bedAt(tk) + 15 * 60000) { toast(`${lab}: the end time is after your bedtime (${fmtTime(S.profile.sleep)})`, 'bad'); eI.focus(); return; }
+      slots[i] = s0 || e0 ? Object.assign({}, s0 ? { s: s0 } : {}, e0 ? { e: e0 } : {}) : null;
+    }
+    while (slots.length && !slots[slots.length - 1]) slots.pop();
+    if (slots.length) next[d] = n > 1 ? slots : slots[0];
   }
   const had = !!(c.times && Object.keys(c.times).length);
   if (Object.keys(next).length) c.times = next; else delete c.times;
-  if (!anyLock) { const st = ($('#tmStrict') || {}).checked; c.strict = !!st && Object.values(next).some(t => t.e); }
+  if (!anyLock) { const st = ($('#tmStrict') || {}).checked; c.strict = !!st && Object.keys(next).some(d => tSlots({ times: next }, d).some(x => x && x.e)); }
   closeModal(true); regenToday(); afterChange();
   toast(Object.keys(next).length ? `Times saved for ${esc(T.kind === 'skill' ? (SK[T.ref] || {}).name : c.name)}${locked.length ? ' (locked days kept)' : ''}` : had ? 'Times removed' : 'No times set');
 }
 /* v19: one source of truth for "can this quest be ticked now?" (see the Phase B rules in the v19 blueprint) */
-function questWindow(q, k) {
+function slotPick(q, k, now = Date.now()) { // v19.9: which session slot a tick now uses (-1 = none left)
+  const n = q.sessions || 1, done = q.slotDone || [], open = [];
+  for (let i = 0; i < n; i++) if (!done[i]) open.push(i);
+  if (!open.length) return -1;
+  const w = i => baseWindow(slotOf(q, i), k), inside = open.find(i => { const x = w(i); return (x.from == null || now >= x.from) && (x.until == null || now <= x.until); });
+  if (inside != null) return inside;
+  const fut = open.filter(i => { const x = w(i); return x.from != null && now < x.from; }).sort((a, b) => w(a).from - w(b).from);
+  return fut.length ? fut[0] : open[open.length - 1];
+}
+const slotOf = (q, i) => { const t = (q.slots || [])[i] || {}; return Object.assign({}, q, { at: t.s, end: t.e, slots: null }); };
+function slotView(q, k, now = Date.now()) { if (!q || !q.slots || q.done) return q; const i = slotPick(q, k, now); return i < 0 ? q : Object.assign(slotOf(q, i), { slotI: i }); }
+function questWindow(q, k) { return baseWindow(slotView(q, k), k); }
+function baseWindow(q, k) {
   const start = dayTime(k, S.profile.wake), B = bedAt(k);
   if (!q || q.auto || q.pen) return { from: null, until: null, why: '' }; // diet and penalty rows are unchanged
   const t = q.task && S.tasks[q.task];
@@ -944,6 +971,7 @@ function questWindow(q, k) {
 }
 function canCheck(q, k, now = Date.now()) {
   if (!q) return { ok: false, msg: 'That quest is gone' };
+  if (q.slots && !q.done) q = slotView(q, k, now);
   if (q.done) return { ok: true, msg: '' }; // unticking (undo) is always allowed
   const w = questWindow(q, k);
   if (w.from != null && now < w.from) return { ok: false, msg: `Opens at ${fmtTime(q.at)}` };
@@ -955,6 +983,7 @@ function canCheck(q, k, now = Date.now()) {
 }
 function questState(q, k, now = Date.now()) {
   if (!q || q.done || q.auto || q.pen) return '';
+  if (q.slots) q = slotView(q, k, now);
   const w = questWindow(q, k);
   if (w.from != null && now < w.from) return 'early';
   if (w.until != null && now > w.until) return 'closed';
@@ -1270,6 +1299,7 @@ function generate(k) {
     if (!(t.days || []).includes(wd)) continue;
     const per = taskXpPer(t), n = Math.max(1, t.sessions || 1); let tq = { key: 't:' + t.id, title: taskTitle(t), list: t.list || 'Daily', task: t.id, unit: t.unit === 'min' ? 'min' : '', target: taskTarget(t), sessions: n, progress: 0, done: false, xpPer: per, xp: per * n };
     const tt = tOf(t, wd); if (tt) { if (tt.s) tq.at = tt.s; if (tt.e) { tq.end = tt.e; if (t.strict) tq.strict = true; } }
+    if (n > 1) { const sl = tSlots(t, wd); if (sl.filter(Boolean).length) { tq.slots = Array.from({ length: n }, (_, i) => sl[i] || null); if (t.strict && sl.some(x => x && x.e)) tq.strict = true; } } // v19.9
     if (t.lock === 'sleep') tq.lockAt = sleepDeadline(k) + 15 * 60000;
     tq = lockBonus(tq, 'task', t.id, k);
     if (t.lock === 'sleep') tq = lockBonus(tq, 'sleep', 'sleep', k);
@@ -1337,7 +1367,7 @@ function ensureToday() {
 function regenToday() {
   const k = todayKey(), d = ensureDay(k), old = d.q, nq = generate(k), pi = pauseInfo(k);
   const byKey = Object.fromEntries(old.map(q => [q.key, q]));
-  const merged = nq.map(q => { const o = byKey[q.key]; if (!o) return q; const keep = o.done || (o.task && o.progress > 0); return Object.assign(q, { progress: o.progress, done: o.done, addMin: o.addMin, smAdd: o.smAdd, wid: o.wid, xp: keep ? o.xp : q.xp, xpPer: keep && o.xpPer ? o.xpPer : q.xpPer, target: keep ? o.target : q.target, lockExtra: keep ? o.lockExtra : q.lockExtra, lockB: keep ? o.lockB : q.lockB, at: o.done ? (o.at ?? q.at) : q.at, strict: o.done ? o.strict : q.strict }, q.task && !o.done && o.progress > (q.sessions || 1) ? { progress: q.sessions } : {}); });
+  const merged = nq.map(q => { const o = byKey[q.key]; if (!o) return q; const keep = o.done || (o.task && o.progress > 0); return Object.assign(q, { slotDone: keep ? o.slotDone : undefined, slotOrder: keep ? o.slotOrder : undefined, progress: o.progress, done: o.done, addMin: o.addMin, smAdd: o.smAdd, wid: o.wid, xp: keep ? o.xp : q.xp, xpPer: keep && o.xpPer ? o.xpPer : q.xpPer, target: keep ? o.target : q.target, lockExtra: keep ? o.lockExtra : q.lockExtra, lockB: keep ? o.lockB : q.lockB, at: o.done ? (o.at ?? q.at) : q.at, strict: o.done ? o.strict : q.strict }, q.task && !o.done && o.progress > (q.sessions || 1) ? { progress: q.sessions } : {}); });
   const keys = new Set(merged.map(q => q.key)), fasting = !!fastOn(k);
   old.forEach(o => {
     if (keys.has(o.key)) return;
@@ -1468,11 +1498,13 @@ function stepTask(q, dir) { // one session of a task quest forward (+1) or back 
   if (dir > 0 && !q.done) { const win = canCheck(q, todayKey()); if (!win.ok) { toast(win.msg, 'bad'); return; } }
   if (dir > 0 && q.done) dir = -1; // tapping a finished task takes its last session back
   if (dir > 0) {
+    if (q.slots) { const i = slotPick(q, todayKey()); if (i >= 0) { (q.slotDone = q.slotDone || [])[i] = true; (q.slotOrder = q.slotOrder || []).push(i); } } // v19.9
     if ((q.progress || 0) < n) { q.progress = (q.progress || 0) + 1; if (t) t.logs = (t.logs || 0) + 1; taskXp(t, per); addXp(null, per); }
     if (q.progress >= n) { q.done = true; S.stats.qdone++; addXp('discipline', 2, true); if (t) t.done = (t.done || 0) + 1; fx('check'); } else fx('tick');
   } else {
     if (!q.progress) return;
     if (q.done) { q.done = false; S.stats.qdone = Math.max(0, S.stats.qdone - 1); addXp('discipline', -2, true); if (t) t.done = Math.max(0, (t.done || 0) - 1); }
+    if (q.slotOrder && q.slotOrder.length) { const i = q.slotOrder.pop(); if (q.slotDone) q.slotDone[i] = false; }
     q.progress--; if (t) t.logs = Math.max(0, (t.logs || 0) - 1); taskXp(t, -per); addXp(null, -per, true);
   }
   afterChange();
@@ -2125,7 +2157,8 @@ function viewToday() {
     const hasProg = x.progress > 0 && !x.done && !x.task;
     const prog = hasProg && x.target ? `<div class="prog"><i style="width:${Math.min(100, x.progress / x.target * 100)}%"></i></div>` : '';
     const sub = x.key === 'diet' ? dietSub(k) : [x.task ? (x.unit === 'min' ? fmtTarget(x.target, 'min') + (n > 1 ? ' each' : '') : '') : hasProg ? `${fmtTarget(x.progress, x.unit)} of ${fmtTarget(x.target, x.unit)}` : fmtTarget(x.target, x.unit), x.task && n > 1 ? `${x.progress || 0} of ${n}` : '', lv, locked ? 'locked' : ''].filter(Boolean).join(' · ');
-    const atTxt = st === 'early' ? `Opens ${fmtTime(x.at)}${x.end ? ' · ends ' + fmtTime(x.end) : ''}` : st === 'late' ? `Ended ${fmtTime(x.end)} · late` : timeSpan(x.at, x.end), grace = st === 'grace' ? Math.max(1, Math.ceil((questWindow(x, k).until - now) / 60000)) : 0;
+    const xv = slotView(x, k, now), sN = xv.slotI != null && (xv.at || xv.end) ? `${ordinal(xv.slotI + 1)}: ` : '';
+    const atTxt = sN + (st === 'early' ? `Opens ${fmtTime(xv.at)}${xv.end ? ' · ends ' + fmtTime(xv.end) : ''}` : st === 'late' ? `Ended ${fmtTime(xv.end)} · late` : timeSpan(xv.at, xv.end)), grace = st === 'grace' ? Math.max(1, Math.ceil((questWindow(x, k).until - now) / 60000)) : 0;
     const pips = x.task && n > 1 ? `<div class="pips">${Array.from({ length: n }, (_, i) => `<i class="${i < (x.progress || 0) ? 'on' : ''}"></i>`).join('')}</div>` : '';
     const minus = x.task && n > 1 && x.progress > 0 && !x.done ? `<button class="btn-g x" data-a="tqMinus" data-id="${esc(x.key)}" aria-label="Undo one">${ICON.minus}</button>` : '';
     const plus = !x.task && !x.auto && !x.side && x.unit && x.target > 0 && !locked && st !== 'early' ? `<button class="btn-g x qplus" data-a="qLog" data-id="${esc(x.key)}" aria-label="Log ${esc(UNIT_NAME[x.unit] || 'amount')}">${ICON.plus}</button>` : '';
@@ -2635,9 +2668,9 @@ function viewCal() {
   <div class="card"><p class="mu small" style="margin-top:0">Which days each active skill shows up as a quest. An event linked to a skill replaces its automatic quest that day.</p>
   ${S.tipTimes ? '' : `<div class="tip-times"><div class="row">${ICON.clock}<b class="sp">Give quests a start time, an end time, or both</b><button class="btn-g x" data-a="tipTimesX" aria-label="Hide this tip">✕</button></div><div class="small">Press and hold any day below, tap <b>Set times</b>, or hold a quest on the Quests tab. A start time keeps it closed until then; an end time is its deadline.</div></div>`}
   ${active.length ? active.map(s => { const ld = lockedDays('skill', s.id); return `<div class="list-item col"><div class="row"><span class="sp">${esc(s.name)}</span><span class="mu small num">${esc(fmtTarget(skillTarget(s.id, tk), s.unit))}</span></div>
-    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" title="Tap: on/off · Hold: times" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}${tOf(S.skills[s.id], i) ? `<small class="chip-t">${chipTime(tOf(S.skills[s.id], i))}</small>` : ''}</button>`).join('')}</div><div class="row lk-row"><button class="btn-s tm-btn" data-a="tmOpen" data-k="skill" data-id="${s.id}">${ICON.clock} ${S.skills[s.id].times ? 'Edit times' : 'Set times'}</button>${lockCtl('skill', s.id)}</div></div>`; }).join('') : '<div class="mu small">No active skills. Turn some on in Board → Skills.</div>'}
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${S.skills[s.id].days.includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" title="Tap: on/off · Hold: times" data-a="skDay" data-id="${s.id}" data-d="${i}">${w}${tOf(S.skills[s.id], i) ? `<small class="chip-t">${chipTime(tOf(S.skills[s.id], i), S.skills[s.id], i)}</small>` : ''}</button>`).join('')}</div><div class="row lk-row"><button class="btn-s tm-btn" data-a="tmOpen" data-k="skill" data-id="${s.id}">${ICON.clock} ${S.skills[s.id].times ? 'Edit times' : 'Set times'}</button>${lockCtl('skill', s.id)}</div></div>`; }).join('') : '<div class="mu small">No active skills. Turn some on in Board → Skills.</div>'}
   ${tks.length ? `<div class="tg" style="margin-top:14px">Tasks</div>${tks.map(t => { const ld = lockedDays('task', t.id); return `<div class="list-item col"><div class="row"><span class="sp">${esc(t.name)}</span><span class="mu small">${esc(taskDesc(t))}</span></div>
-    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" title="Tap: on/off · Hold: times" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}${tOf(t, i) ? `<small class="chip-t">${chipTime(tOf(t, i))}</small>` : ''}</button>`).join('')}</div><div class="row lk-row"><button class="btn-s tm-btn" data-a="tmOpen" data-k="task" data-id="${t.id}">${ICON.clock} ${t.times ? 'Edit times' : 'Set times'}</button>${lockCtl('task', t.id)}</div></div>`; }).join('')}` : ''}
+    <div class="chips days" style="margin-top:8px">${WD.map((w, i) => `<button class="chip ${(t.days || []).includes(i) ? 'on' : ''}${ld.includes(i) ? ' locked' : ''}" title="Tap: on/off · Hold: times" data-a="tkDay" data-id="${t.id}" data-d="${i}">${w}${tOf(t, i) ? `<small class="chip-t">${chipTime(tOf(t, i), t, i)}</small>` : ''}</button>`).join('')}</div><div class="row lk-row"><button class="btn-s tm-btn" data-a="tmOpen" data-k="task" data-id="${t.id}">${ICON.clock} ${t.times ? 'Edit times' : 'Set times'}</button>${lockCtl('task', t.id)}</div></div>`; }).join('')}` : ''}
   <div class="list-item col" style="margin-top:14px"><div class="row"><span class="sp">Bed schedule</span><span class="mu small">by ${fmtClock(S.profile.sleep)}</span></div><div class="row lk-row">${lockCtl('sleep', 'sleep')}</div></div>
   <p class="mu2 small" style="margin-top:10px">${ICON.clock} Hold a day (or tap Set times) for start and end times. A quest opens at its start time; after its end time it's late until bedtime, or closes ${GRACE_MIN} minutes after the end if you choose.</p>
   <p class="mu2 small" style="margin-top:6px">${ICON.lock} Lock a schedule to commit to it for a while: its days can't be removed until the lock ends, and those quests earn +${Math.round(LOCK_BONUS * 100)}% XP. A Lockpick from the shop ends a lock early and takes its bonus XP back.</p>
@@ -3470,8 +3503,9 @@ const A = {
   tq: el => toggleQuest(el.dataset.id),
   tmSave: () => timeSave(),
   tmOpen: el => timeModal(el.dataset.k, el.dataset.id, null),
-  tmApply: () => { const a = $('#tmAS').value, b2 = $('#tmAE').value; document.querySelectorAll('.tm-row:not(.lk)').forEach(r => { r.querySelector('.tmS').value = a; r.querySelector('.tmE').value = b2; }); },
-  tmRowClear: el => { const r = el.closest('.tm-row'); r.querySelector('.tmS').value = ''; r.querySelector('.tmE').value = ''; },
+  tmApply: () => { document.querySelectorAll('.tmAS').forEach(a => { const i = a.dataset.i, e = document.querySelector(`.tmAE[data-i="${i}"]`).value;
+    document.querySelectorAll('.tm-row:not(.lk)').forEach(r => { const sI = r.querySelector(`.tmS[data-i="${i}"]`), eI = r.querySelector(`.tmE[data-i="${i}"]`); if (sI) { sI.value = a.value; eI.value = e; } }); }); },
+  tmRowClear: el => { el.closest('.tm-row').querySelectorAll('input').forEach(i => { i.value = ''; }); },
   tipTimesX: () => { S.tipTimes = 1; save(); render(); },
   tqMinus: el => { const d = S.days[todayKey()], q = d && d.q.find(x => x.key === el.dataset.id); if (q) stepTask(q, -1); },
   goBoard: el => { ui.tab = 'board'; ui.boardSeg = el.dataset.id || 'tasks'; render(); window.scrollTo(0, 0); },

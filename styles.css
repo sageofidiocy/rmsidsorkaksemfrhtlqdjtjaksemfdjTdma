@@ -1308,3 +1308,7 @@ html, body { overflow-x: clip; max-width: 100%; }
 .tip-times .row .x { margin: -6px -6px 0 0; }
 .tip-times .small { margin-top: 4px; line-height: 1.35; }
 .q.qst-late .q-at { color: #e8a06a; }
+
+/* v19.9: one slot per session for tasks done several times a day */
+.tm-row.multi, .tm-all.multi { row-gap: 4px; }
+.tm-row.multi > b .small, .tm-all.multi > b .small { font-weight: 600; }
