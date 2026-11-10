@@ -966,13 +966,13 @@ function questState(q, k, now = Date.now()) {
 const pausesOn = k => S.pauses.filter(p => k >= p.start && (!p.end || k <= p.end));
 function pauseInfo(k) {
   const ps = pausesOn(k); if (!ps.length) return null;
-  const lists = new Set(), skills = new Set(), tasks = new Set();
-  ps.forEach(p => { (p.lists || []).forEach(x => lists.add(x)); (p.skills || []).forEach(x => skills.add(x)); (p.tasks || []).forEach(x => tasks.add(x)); });
-  return { ps, lists, skills, tasks, all: ps.some(p => p.all), emergency: ps.some(p => p.type === 'emergency') };
+  const lists = new Set(), skills = new Set(), tasks = new Set(), keys = new Set();
+  ps.forEach(p => { (p.lists || []).forEach(x => lists.add(x)); (p.skills || []).forEach(x => skills.add(x)); (p.tasks || []).forEach(x => tasks.add(x)); (p.keys || []).forEach(x => keys.add(x)); });
+  return { ps, lists, skills, tasks, keys, all: ps.some(p => p.all), emergency: ps.some(p => p.type === 'emergency') };
 }
 function scopeTxt(p) {
   if (p.all) return 'everything';
-  return [...(p.lists || []), ...(p.skills || []).map(id => SK[id] ? SK[id].name : id), ...(p.tasks || []).map(id => S.tasks[id] ? S.tasks[id].name : id)].join(', ') || 'nothing';
+  return [...(p.lists || []), ...(p.skills || []).map(id => SK[id] ? SK[id].name : id), ...(p.tasks || []).map(id => S.tasks[id] ? S.tasks[id].name : id), ...(p.keyNames || p.keys || [])].join(', ') || 'nothing';
 }
 const PAUSE_NAME = { vacation: 'Vacation', emergency: 'Emergency', pass: 'Rest pass', school: 'School break', start: 'Free first day' };
 /* v19.5: a bedtime that's less than 8 hours after waking is almost always AM/PM mixed up (e.g. 10:30 instead of 22:30) */
@@ -1031,6 +1031,7 @@ function vacNeed(start, end) { // per year: { y: [new days, already used, allowa
 function sidePauseStops(p, q) {
   if (p.type === 'emergency') return true;
   if (p.type === 'school') return q.list === 'Schoolwork';
+  if (p.one && (p.keys || []).some(x => x === 'sd:' + q.id || x.startsWith('sc:' + q.id + ':'))) return true; // v19.8: a skipped side quest gets the day back
   return false;
 }
 function sidePausedDays(q) {
@@ -1276,7 +1277,7 @@ function generate(k) {
   }
   q.push(...sideDueQuests(k)); // v11: side quests due today (deadline / checkpoint day) count toward the day
   const pi = pauseInfo(k);
-  if (pi) q = pi.all ? [] : q.filter(x => !pi.lists.has(x.list) && !(x.skill && pi.skills.has(x.skill)) && !(x.task && pi.tasks.has(x.task)));
+  if (pi) q = pi.all ? [] : q.filter(x => !pi.lists.has(x.list) && !(x.skill && pi.skills.has(x.skill)) && !(x.task && pi.tasks.has(x.task)) && !pi.keys.has(x.key));
   return q;
 }
 // owed fixed penalties: older saves (and backups) list just the day ("2026-01-01" = the $5 donation)
@@ -1760,7 +1761,7 @@ const fastOn = k => (S.fasts || []).find(f => k >= f.start && k <= f.end) || nul
 const fastNext = () => (S.fasts || []).filter(f => f.end >= todayKey()).sort((a, b) => a.start < b.start ? -1 : 1)[0] || null;
 const fastLen = f => daysBetween(f.start, f.end) + 1;
 const fastDay = (f, k) => daysBetween(f.start, k) + 1;
-const dietWanted = k => S.profile.goal !== 'none' && S.profile.dietQuest !== false && !fastOn(k);
+const dietWanted = k => S.profile.goal !== 'none' && S.profile.dietQuest !== false && !fastOn(k) && !((pauseInfo(k) || { keys: new Set() }).keys.has('diet')); // v19.8: a 1 Quest Pass can skip it
 function dietStatus(k) {
   const a = aimFor(k), items = S.food.filter(f => f.date === k);
   const eaten = Math.round(items.reduce((s, f) => s + f.kcal, 0));
@@ -2098,8 +2099,8 @@ function finishSetup() {
 function pauseBanner(p, tk) {
   const em = p.type === 'emergency';
   const until = p.end ? (p.end === tk ? 'Ends today' : 'Until ' + fmtDate(p.end)) : 'Until you end it';
-  return `<div class="banner ${em ? 'em' : p.type === 'pass' ? 'ps' : ''}"><div class="row">${p.type === 'pass' ? ICON.gift : ICON.pause}<b class="sp">${PAUSE_NAME[p.type] || 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</b></div>
-    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : p.type === 'pass' ? `You earned this. Paused: ${esc(scopeTxt(p))}. No logging needed, no penalties.` : p.type === 'school' ? 'Schoolwork is paused; everything else keeps going.' : p.type === 'start' ? 'Your quests start tomorrow morning. Today is free: look around, adjust your skills and tasks, nothing counts yet.' : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
+  return `<div class="banner ${em ? 'em' : p.type === 'pass' ? 'ps' : ''}"><div class="row">${p.type === 'pass' ? ICON.gift : ICON.pause}<b class="sp">${p.one ? '1 Quest Pass' : (PAUSE_NAME[p.type] || 'Vacation') + (p.note ? ' · ' + esc(p.note) : '')}</b></div>
+    <div class="small mu" style="margin-top:4px">${em ? 'All quests paused, including penalties. Streak frozen, no penalties.' : p.one ? `Skipped: ${esc(scopeTxt(p))}. Everything else still counts.` : p.type === 'pass' ? `You earned this. Paused: ${esc(scopeTxt(p))}. No logging needed, no penalties.` : p.type === 'school' ? 'Schoolwork is paused; everything else keeps going.' : p.type === 'start' ? 'Your quests start tomorrow morning. Today is free: look around, adjust your skills and tasks, nothing counts yet.' : 'Paused: ' + esc(scopeTxt(p)) + '.'} ${esc(until)}.</div>
     <div class="row" style="margin-top:10px;gap:8px">${p.start === tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">${em ? 'Resume today' : p.type === 'start' ? 'Start today instead' : 'Cancel pause'}</button>` : ''}${p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">${em ? 'Resume tomorrow' : 'End early'}</button>` : ''}</div></div>`;
 }
 function seasonMini(si) { // one-line season label for the Quests tab (the full header lives on Home)
@@ -2208,7 +2209,7 @@ function sideEntryDone(x, k) {
 }
 function syncSide(k) { // keep a day's "Due today" quests in step with the side quests (never touches evaluated days)
   const d = S.days[k]; if (!d || d.ev) return;
-  const pi = pauseInfo(k), want = pi && pi.all ? [] : sideDueQuests(k).filter(w => !(pi && pi.lists.has(w.list)));
+  const pi = pauseInfo(k), want = pi && pi.all ? [] : sideDueQuests(k).filter(w => !(pi && (pi.lists.has(w.list) || pi.keys.has(w.key))));
   const keys = new Set(want.map(w => w.key));
   d.q = d.q.filter(x => !x.side || keys.has(x.key));
   const have = new Set(d.q.map(x => x.key));
@@ -2230,7 +2231,7 @@ function sideTap(x) { // checking a "Due today" quest on the Quests tab
   if (q.track === 'cp') { const c = q.cps.find(z => !z.done); if (c) cpToggle(q, c); return; }
   ui.tab = 'board'; ui.boardSeg = q.type; ui.sideOpen = q.id; render(); window.scrollTo(0, 0); // time logged: log it on the card
 }
-function passName(p) { const d = p.days || 1; return `${d === 1 ? 'A complete rest day' : d + ' complete rest days'}${p.all ? '' : ' · ' + scopeTxt(p)}`; }
+function passName(p) { if (p.one) return p.skills && p.skills[0] ? `1 Quest Pass · ${(SK[p.skills[0]] || {}).name || 'a skill'}` : p.tasks && p.tasks[0] ? `1 Quest Pass · ${(S.tasks[p.tasks[0]] || {}).name || 'a task'}` : p.keyNames && p.keyNames[0] ? `1 Quest Pass · ${p.keyNames[0]}` : '1 Quest Pass (skip one quest for a day)'; const d = p.days || 1; return `${d === 1 ? 'A complete rest day' : d + ' complete rest days'}${p.all ? '' : ' · ' + scopeTxt(p)}`; }
 const rewardName = r => r.kind === 'pass' ? passName(r.pass || {}) : r.text || 'A treat';
 function completeSide(q) {
   const k = todayKey(); q.status = 'done'; q.doneOn = k;
@@ -2396,8 +2397,21 @@ function boardRewards() {
   <h2>Ready · ${ready.length}</h2><div class="card">${ready.length ? ready.map(row).join('') : '<div class="mu small">Nothing yet. Add a reward to a quest and finish it.</div>'}</div>
   ${used.length ? `<h2>Used</h2><div class="card">${used.slice(0, 30).map(row).join('')}</div>` : ''}`;
 }
+function qpOptions(k) { // v19.7: the skill and task quests that day (unticked ones only, for today)
+  const d = k === todayKey() ? ensureDay(k) : { q: generate(k) }, out = [];
+  (d.q || []).forEach(q => { if (q.done || q.pen) return; // v19.8: everything except penalties
+    if (q.task && S.tasks[q.task]) out.push({ v: 't:' + q.task, n: q.title });
+    else if (q.skill && q.key === 'skill:' + q.skill) out.push({ v: 's:' + q.skill, n: q.title });
+    else out.push({ v: 'k:' + q.key, n: q.key === 'diet' ? 'Diet requirements' : q.side ? `${q.title} (${q.cp ? 'checkpoint' : 'deadline'}: moves to the next day)` : q.title }); });
+  return out;
+}
+const qpList = (k) => { const o = qpOptions(k); return o.length ? o.map((x, i) => `<label class="check"><input type="radio" name="qpPick" value="${esc(x.v)}" ${i === 0 ? 'checked' : ''}> ${esc(x.n)}</label>`).join('') : '<div class="mu small">Nothing left to skip that day.</div>'; };
 function passModal(r) {
   const tk = todayKey(); ui.pass = r.id;
+  if (r.pass.one) return openModal(`<h3>Use a 1 Quest Pass</h3><p class="mu small">Pick any one quest to skip for one day (penalties can't be skipped). It leaves that day's list: no penalty, and the rest of the day still counts for your streak and a perfect day. A one-time or timed quest's deadline or checkpoint moves to the next day.</p>
+    <label>Day</label><input id="psStart" type="date" min="${tk}" value="${tk}" data-c="psCalc">
+    <label>Quest</label><div id="qpList">${qpList(tk)}</div>
+    <div class="actions"><button data-a="close">Not now</button><button class="btn-p" data-a="psGo" data-id="${r.id}">Skip it</button></div>`);
   openModal(`<h3>Use rest pass</h3><p class="mu small">${esc(passName(r.pass))}. Those days are paused: nothing to log, your streak is frozen, and no penalties.${r.pass.all ? ' Any pending penalty exercises wait until you’re back.' : ''}</p>
     <label>First day</label><input id="psStart" type="date" min="${tk}" value="${tk}" data-c="psCalc">
     <div class="dg-aim" id="psEnd">${psEndTxt(tk, r)}</div>
@@ -2406,6 +2420,15 @@ function passModal(r) {
 const psEndTxt = (start, r) => `Paused ${r.pass.days === 1 ? '' : 'through '}<b>${fmtDate(addDays(start, r.pass.days - 1))}</b> · back on ${fmtDate(addDays(start, r.pass.days))}`;
 function usePass(r, start) {
   const tk = todayKey(); if (!start || start < tk) { toast("A pass can't start in the past", 'bad'); return; }
+  if (r.pass.one) { // v19.7: one skill or task, one day
+    const pick = (document.querySelector('input[name=qpPick]:checked') || {}).value; if (!pick) { toast('Pick a quest to skip', 'bad'); return; }
+    const kind = pick[0], ref = pick.slice(2), opt = qpOptions(start).find(x => x.v === pick), nm = opt ? opt.n.replace(/ \((deadline|checkpoint): moves to the next day\)$/, '') : ref;
+    r.pass.skills = kind === 's' ? [ref] : []; r.pass.tasks = kind === 't' ? [ref] : []; r.pass.keys = kind === 'k' ? [ref] : []; r.pass.keyNames = kind === 'k' ? [nm] : [];
+    const pz = { id: uid(), type: 'pass', start, end: start, all: false, one: true, lists: [], skills: r.pass.skills.slice(), tasks: r.pass.tasks.slice(), keys: r.pass.keys.slice(), keyNames: r.pass.keyNames.slice(), note: '1 Quest Pass', reward: r.id };
+    S.pauses.push(pz); r.used = start; r.pauseId = pz.id;
+    closeModal(true); if (start === tk) regenToday(); afterChange();
+    toast(`${nm} skipped ${start === tk ? 'today' : 'on ' + fmtDate(start)}`, 'ti'); return;
+  }
   const p = r.pass, end = addDays(start, p.days - 1), pz = { id: uid(), type: 'pass', start, end, all: p.all, lists: p.all ? [] : p.lists.slice(), skills: p.all ? [] : p.skills.slice(), tasks: p.all ? [] : p.tasks.slice(), note: r.from, reward: r.id };
   if (start === tk && p.all) { const d = ensureDay(tk); if (d.q.some(q => q.pen && !q.done)) { S.pendingPen = { tier: Math.max(d.penTier || (d.q.some(q => q.pen && !q.done && /^pen:/.test(q.key)) ? 1 : 0), (S.pendingPen || {}).tier || 0), fixed: [...new Set([...(d.penFixed || []), ...((S.pendingPen || {}).fixed || [])])] }; delete d.penTier; delete d.penFixed; } }
   S.pauses.push(pz); r.used = start; r.pauseId = pz.id;
@@ -2435,11 +2458,13 @@ function showCoinNote() {
 const SHOP = [
   ['saver', 'Streak Saver', 'Brings back a streak you just lost. One saver covers one missed day. The penalty for that day still happens.', SHOP_COST],
   ['pass', 'Rest Day Pass', 'One complete rest day you can use any time: nothing to log, no penalties, streak frozen.', SHOP_COST],
-  ['pick', 'Lockpick', 'Ends one schedule lock early. The +25% bonus XP earned under that lock is taken back.', SHOP_PICK]];
+  ['pick', 'Lockpick', 'Ends one schedule lock early. The +25% bonus XP earned under that lock is taken back.', SHOP_PICK],
+  ['qpass', '1 Quest Pass', 'Skips any one quest (not penalties) for one day: it leaves that day\'s list, no penalty, and it doesn\'t count against a perfect day.', 1]]; // v19.7
 function shopCard() {
   const c = S.coins || 0, sb = sbValid() ? S.streakBreak : null;
   const row = ([id, n, d, cost]) => { const owned = id === 'saver' ? (S.savers || 0) : id === 'pick' ? (S.picks || 0) : 0;
-    return `<div class="list-item shop-item"><span class="rw-ic">${id === 'saver' ? ICON.saver : id === 'pick' ? ICON.pick : ICON.gift}</span><div class="sp"><div>${n}${owned ? ` <span class="pill gold">${owned} owned</span>` : ''}</div><div class="mu small">${d}</div></div>
+    const owned2 = id === 'qpass' ? S.rewards.filter(r => r.pass && r.pass.one && !r.used).length : owned;
+    return `<div class="list-item shop-item"><span class="rw-ic">${id === 'saver' ? ICON.saver : id === 'pick' ? ICON.pick : ICON.gift}</span><div class="sp"><div>${n}${owned2 ? ` <span class="pill gold">${owned2} owned</span>` : ''}</div><div class="mu small">${d}</div></div>
     <button class="btn-s btn-p buy" data-a="buy" data-id="${id}" ${c < cost ? 'disabled' : ''}>${ICON.coin}<span class="num">${cost}</span></button></div>`; };
   return `<div class="card shop" style="margin-top:14px"><div class="row"><span class="coin-big">${ICON.coin}</span><div class="sp"><h3><span class="num">${c}</span> coin${c === 1 ? '' : 's'}</h3><div class="mu small">You earn ${coinRate(S.streak.cur).toLocaleString()} coin${coinRate(S.streak.cur) === 1 ? '' : 's'} for each perfect day (every quest done). More as your streak grows: 2 from a 10-day streak, 3 from 100, 4 from 1,000, 5 from 10,000.</div></div></div>
     ${sb ? `<div class="banner sv" style="margin-top:10px"><div class="row">${ICON.saver}<b class="sp">Your ${sb.n}-day streak can still be saved</b></div><div class="row" style="margin-top:8px;gap:8px"><button class="btn-s btn-p" data-a="svRestore">Bring it back</button></div></div>` : ''}
@@ -2448,13 +2473,14 @@ function shopCard() {
 function buyItem(id) {
   const it = SHOP.find(x => x[0] === id); if (!it) return;
   const cost = it[3] || SHOP_COST;
-  if ((S.coins || 0) < cost) { toast(`You need ${cost} coins · you have ${S.coins || 0}`, 'bad'); return; }
-  if (!confirm(`Spend ${cost} coins on a ${it[1]}?`)) return;
+  if ((S.coins || 0) < cost) { toast(`You need ${cost} coin${cost === 1 ? '' : 's'} · you have ${S.coins || 0}`, 'bad'); return; }
+  if (!confirm(`Spend ${cost} coin${cost === 1 ? '' : 's'} on a ${it[1]}?`)) return;
   S.coins -= cost;
   if (id === 'saver') S.savers = (S.savers || 0) + 1;
   else if (id === 'pick') S.picks = (S.picks || 0) + 1;
+  else if (id === 'qpass') S.rewards.push({ id: uid(), qid: null, from: 'Coin shop', kind: 'pass', text: '', earned: todayKey(), used: null, bought: true, pass: { days: 1, all: false, one: true, lists: [], skills: [], tasks: [] } });
   else S.rewards.push({ id: uid(), qid: null, from: 'Coin shop', kind: 'pass', text: '', earned: todayKey(), used: null, bought: true, pass: { days: 1, all: true, lists: [], skills: [], tasks: [] } });
-  afterChange(); fx('check'); toast(id === 'saver' ? `Streak Saver bought · you have ${S.savers}` : id === 'pick' ? `Lockpick bought · you have ${S.picks}` : 'Rest Day Pass bought · use it from Ready below', 'ti');
+  afterChange(); fx('check'); toast(id === 'saver' ? `Streak Saver bought · you have ${S.savers}` : id === 'pick' ? `Lockpick bought · you have ${S.picks}` : id === 'qpass' ? '1 Quest Pass bought · use it from Ready below' : 'Rest Day Pass bought · use it from Ready below', 'ti');
 }
 const sbValid = () => { const b = S.streakBreak; return !!(b && b.n > 0 && todayKey() <= addDays(b.last, 1)); };
 function streakNag(k) {
@@ -2601,7 +2627,7 @@ function viewCal() {
     ${sideDue.length ? `<div class="mu small" style="margin-top:10px">${sideDue.map(q => `<div class="list-item"><span class="rw-ic">${ICON.board}</span><span class="sp">${esc(q.title)}</span><span class="mu2 small">${effDue(q) === sel ? 'deadline' : 'checkpoint'}</span></div>`).join('')}</div>` : ''}
   </div>
   <h2>Pauses</h2>
-  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Emergency</span>' : p.type === 'pass' ? '<span class="gold">Rest pass</span>' : p.type === 'school' ? 'School break' : p.type === 'start' ? 'Free first day' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
+  <div class="card">${pauses.length ? pauses.map(p => `<div class="list-item"><div class="sp"><div>${p.type === 'emergency' ? '<span class="bad">Emergency</span>' : p.type === 'pass' ? `<span class="gold">${p.one ? '1 Quest Pass' : 'Rest pass'}</span>` : p.type === 'school' ? 'School break' : p.type === 'start' ? 'Free first day' : 'Vacation'}${p.note ? ' · ' + esc(p.note) : ''}</div>
       <div class="mu small">${fmtDate(p.start)} → ${p.end ? fmtDate(p.end) : 'until ended'} · ${esc(scopeTxt(p))}</div></div>
       ${p.start >= tk ? `<button class="btn-s" data-a="pCancel" data-id="${p.id}">Cancel</button>` : ''}${p.start <= tk && p.end !== tk ? `<button class="btn-s" data-a="pEnd" data-id="${p.id}">End</button>` : ''}</div>`).join('') : '<div class="mu small">No upcoming pauses. Plan vacations ahead; paused quests don\'t count against you.</div>'}
     <div class="row" style="margin-top:12px;gap:8px"><button class="btn-s" data-a="vacNew">+ Vacation pause</button>${S.profile.student ? '<button class="btn-s" data-a="sbNew">+ School break</button>' : ''}</div></div>
@@ -3880,7 +3906,7 @@ document.addEventListener('change', e => {
   if (k === 'peGrow' && ui.pe) ui.pe.items[+t.dataset.n].grow = t.checked;
   if (k === 'sdReq' && ui.sd) { ui.sd.req = t.checked; $('#sdBody').innerHTML = sdBody(); }
   if (k === 'sdRwAll' && ui.sd) { ui.sd.reward.all = t.checked; const sc = $('#sdScope'); if (sc) sc.hidden = t.checked; }
-  if (k === 'psCalc') { const r = S.rewards.find(x => x.id === ui.pass); if (r && t.value) $('#psEnd').innerHTML = psEndTxt(t.value, r); }
+  if (k === 'psCalc') { const r = S.rewards.find(x => x.id === ui.pass); if (r && t.value) { if (r.pass.one) $('#qpList').innerHTML = qpList(t.value); else $('#psEnd').innerHTML = psEndTxt(t.value, r); } }
   if (k === 'szChk') { szSet(o => { o.show[t.dataset.l][t.dataset.p] = t.checked ? 1 : 0; }); szRefresh(); }
   if (k === 'dgBurn' && ui.dg) { ui.dg.burn = t.checked; $('#dgAim').innerHTML = dgAimTxt(); }
   if (k === 'dgQuest' && ui.dg) ui.dg.quest = t.checked;
