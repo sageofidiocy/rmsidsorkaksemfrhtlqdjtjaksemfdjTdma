@@ -1291,3 +1291,20 @@ button.rs-tile br { display: none; }
 html, body { overflow-x: clip; max-width: 100%; }
 .banner .row > svg { flex: none; width: 18px; height: 18px; }
 .banner .row > .sp { min-width: 0; }
+
+/* v19.6: start / end times */
+.tm-all, .tm-row { display: grid; grid-template-columns: 52px 1fr auto 1fr 30px; align-items: center; gap: 6px; }
+.tm-all { grid-template-columns: 52px 1fr auto 1fr auto; font-size: 13px; padding: 8px; margin: 10px 0 4px; border-radius: 10px; background: rgba(127,127,127,.08); }
+.tm-all input, .tm-row input { min-width: 0; width: 100%; padding: 6px 4px; font-variant-numeric: tabular-nums; }
+.tm-grid { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.tm-row { padding: 4px 6px; border-radius: 10px; }
+.tm-row.hi { background: rgba(226,194,122,.13); box-shadow: 0 0 0 1px rgba(226,194,122,.45) inset; }
+.tm-row.lk { opacity: .7; }
+.tm-row > svg { width: 15px; height: 15px; justify-self: center; }
+.tm-btn svg { width: 15px; height: 15px; vertical-align: -3px; }
+.lk-row { gap: 8px; flex-wrap: wrap; }
+.tip-times { margin: 4px 0 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(226,194,122,.5); background: rgba(226,194,122,.1); }
+.tip-times .row > svg { width: 18px; height: 18px; flex: none; color: var(--gold); }
+.tip-times .row .x { margin: -6px -6px 0 0; }
+.tip-times .small { margin-top: 4px; line-height: 1.35; }
+.q.qst-late .q-at { color: #e8a06a; }
